@@ -12,9 +12,10 @@ import { L } from '../../layout';
 import { ClanChat, Social } from '../../net/social';
 import { FriendsView } from './social/FriendsView';
 import { ClanView } from './social/ClanView';
+import { IdeasView } from './social/IdeasView';
 
 type Scope = 'global' | 'arena' | 'friends';
-type Section = 'rankings' | 'friends' | 'clan';
+type Section = 'rankings' | 'friends' | 'clan' | 'ideas';
 const BAR_H = 76;
 const ROW = 76;
 
@@ -54,7 +55,7 @@ export class SocialTab extends Tab {
   //  y un `= null` aquí borraría lo que ese primer build creó
   declare private countdown: Phaser.GameObjects.Text | null;
   private alive = true;
-  declare private view: FriendsView | ClanView | null;
+  declare private view: FriendsView | ClanView | IdeasView | null;
   /** Chat del clan: dura mientras la pestaña está abierta (sobrevive a los redibujados). */
   declare private chat: ClanChat | null;
   /** Lo que se pintó la última vez (para no redibujar si el resumen no cambió). */
@@ -76,7 +77,7 @@ export class SocialTab extends Tab {
     const s = Social.summary;
     const sec = SocialTab.section;
     const base = `${sec}|${Social.pending}|${s ? 1 : 0}`;
-    if (!s || sec === 'rankings') return base;
+    if (!s || sec === 'rankings' || sec === 'ideas') return base;
     if (sec === 'friends') return `${base}|${JSON.stringify([s.code, s.friends, s.incoming, s.outgoing, s.invites])}`;
     return `${base}|${JSON.stringify(s.clan)}|${s.mutedUntil}|${Social.blocked.size}`;
   }
@@ -115,6 +116,10 @@ export class SocialTab extends Tab {
       this.view = new FriendsView(this, A);
       return;
     }
+    if (sec === 'ideas') {
+      this.view = new IdeasView(this, A);
+      return;
+    }
     if (sec === 'clan') {
       const clanId = Social.summary?.clan?.id ?? null;
       if (this.chat && this.chat.clanId !== clanId) {
@@ -147,20 +152,21 @@ export class SocialTab extends Tab {
   private sectionBar(A: Area): void {
     const s = this.scene;
     const pad = L.pc ? 0 : 20;
-    const w = Math.min(L.pc ? 760 : A.w, A.w) - pad * 2;
+    const w = Math.min(L.pc ? 960 : A.w, A.w) - pad * 2;
     const x0 = A.x + pad;
     const items: Array<[Section, string, string]> = [
       ['rankings', t('social.secRankings'), 'ic_trophy'],
       ['friends', t('social.secFriends'), 'ic_profile'],
       ['clan', t('social.secClan'), 'ic_social'],
+      ['ideas', t('social.secIdeas'), 'ic_idea'],
     ];
-    const bw = (w - 2 * 12) / 3;
+    const bw = (w - (items.length - 1) * 12) / items.length;
     items.forEach(([key, label, icon], i) => {
       const on = SocialTab.section === key;
       const x = x0 + bw / 2 + i * (bw + 12);
       const b = kit.button(s, x, A.y + 32, bw, 60, label, on ? 'primary' : 'dark', () => this.setSection(key), {
         icon,
-        size: L.pc ? 22 : 19,
+        size: L.pc ? 22 : 17,
       });
       this.root.add(b);
       const n = key === 'friends' ? Social.pending : 0;

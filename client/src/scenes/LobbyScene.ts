@@ -12,6 +12,7 @@ import { ShopTab } from '../ui/tabs/ShopTab';
 import { RoadTab } from '../ui/tabs/RoadTab';
 import { ProfileTab } from '../ui/tabs/ProfileTab';
 import { SocialTab, tierLabel } from '../ui/tabs/SocialTab';
+import { AdminTab } from '../ui/tabs/AdminTab';
 import { openModal } from '../ui/Modal';
 import { Social } from '../net/social';
 import { SIDEBAR_W, TOP_BAR, playerName, runAction, type MenuScene, type Tab, type TabKey } from '../ui/tabs/Tab';
@@ -23,10 +24,15 @@ const shownInvites = new Set<string>();
 
 export const TOP = TOP_BAR; // alto de la barra superior
 export const NAV_Y = 1136; // inicio de la barra de pestañas (móvil)
-const NAV_STEP = 120; // ancho de cada pestaña en móvil (720 / 6)
 
 type TabClass = new (scene: MenuScene) => Tab;
-const TABS: Array<{ key: TabKey; label: string; icon: string; cls: TabClass }> = [
+interface TabDef {
+  key: TabKey;
+  label: string;
+  icon: string;
+  cls: TabClass;
+}
+const TABS: TabDef[] = [
   { key: 'shop', label: 'nav.shop', icon: 'ic_shop', cls: ShopTab },
   { key: 'cards', label: 'nav.cards', icon: 'ic_cards', cls: CardsTab },
   { key: 'battle', label: 'nav.battle', icon: 'ic_battle', cls: BattleTab },
@@ -34,6 +40,8 @@ const TABS: Array<{ key: TabKey; label: string; icon: string; cls: TabClass }> =
   { key: 'social', label: 'nav.social', icon: 'ic_social', cls: SocialTab },
   { key: 'profile', label: 'nav.profile', icon: 'ic_profile', cls: ProfileTab },
 ];
+/** Solo para cuentas con una wallet de ADMIN_WALLETS (el servidor lo vuelve a comprobar en cada petición). */
+const ADMIN_TAB: TabDef = { key: 'admin', label: 'nav.admin', icon: 'ic_admin', cls: AdminTab };
 
 interface NavItem {
   key: TabKey;
@@ -70,7 +78,14 @@ export class LobbyScene extends BaseScene implements MenuScene {
     super('Lobby');
   }
 
+  /** Pestañas de esta cuenta (con la de admin si lo es). */
+  private tabs: TabDef[] = TABS;
+  /** Ancho de cada pestaña en móvil. */
+  private navStep = 120;
+
   create(data?: { tab?: TabKey }): void {
+    this.tabs = Profile.admin ? [...TABS, ADMIN_TAB] : TABS;
+    this.navStep = Math.floor(720 / this.tabs.length);
     this.modalOpen = 0;
     this.tab = null;
     this.current = null;
@@ -82,6 +97,11 @@ export class LobbyScene extends BaseScene implements MenuScene {
     // lo que cambie en la cuenta (respuestas del servidor) se refleja en la barra y los avisos
     const off = Profile.onChange(() => {
       if (!this.sys.isActive()) return;
+      // al entrar o salir con una wallet de admin cambia la barra de pestañas
+      if (Profile.admin !== this.tabs.includes(ADMIN_TAB)) {
+        this.scene.restart({ tab: this.current === 'admin' ? 'profile' : (this.current ?? 'battle') });
+        return;
+      }
       this.refreshTop();
       this.drawBadges();
     });
@@ -188,9 +208,10 @@ export class LobbyScene extends BaseScene implements MenuScene {
       kit.panel(this, -20, NAV_Y - 4, L.w + 40, L.h - NAV_Y + 40, 'dark').setDepth(99);
     }
     this.accent = this.add.graphics().setDepth(101);
-    this.navItems = TABS.map((tb, i) => {
+    const NAV_STEP = this.navStep;
+    this.navItems = this.tabs.map((tb, i) => {
       const x = L.pc ? 62 : NAV_STEP / 2 + i * NAV_STEP;
-      const y = L.pc ? TOP + 72 + i * 120 : NAV_Y + 62;
+      const y = L.pc ? TOP + 72 + i * (this.tabs.length > 6 ? 112 : 120) : NAV_Y + 62;
       const active = L.pc
         ? kit.panel(this, 12, y - 50, SIDEBAR_W - 26, 96, 'gold')
         : kit.panel(this, x - NAV_STEP / 2 + 2, NAV_Y - 22, NAV_STEP - 4, 158, 'gold');
@@ -251,9 +272,9 @@ export class LobbyScene extends BaseScene implements MenuScene {
     kb.on('keydown', (e: KeyboardEvent) => {
       if (this.modalOpen) return;
       const n = Number(e.key);
-      if (n >= 1 && n <= TABS.length) {
+      if (n >= 1 && n <= this.tabs.length) {
         Sfx.play('select');
-        this.showTab(TABS[n - 1].key);
+        this.showTab(this.tabs[n - 1].key);
       } else if (e.key === 'Enter' && this.current === 'battle' && this.tab instanceof BattleTab) {
         this.tab.startBattle();
       }
@@ -286,8 +307,9 @@ export class LobbyScene extends BaseScene implements MenuScene {
   showTab(key: TabKey, instant = false): void {
     if (this.current === key && this.tab) return;
     if (this.tab) this.tab.destroy();
-    this.current = key;
-    const Cls = (TABS.find((tb) => tb.key === key) ?? TABS[2]).cls;
+    const def = this.tabs.find((tb) => tb.key === key) ?? TABS[2];
+    this.current = def.key;
+    const Cls = def.cls;
     this.tab = new Cls(this);
     if (!instant) {
       this.tab.root.setAlpha(0).setY(16);

@@ -199,7 +199,12 @@ export class ClanView {
   }
 
   private async doSearch(): Promise<void> {
-    const q = await textPrompt(t('clan.searchTitle'), { maxLength: CLAN.nameMax, placeholder: t('clan.searchHint') });
+    const q = await textPrompt(t('clan.searchTitle'), {
+      maxLength: CLAN.nameMax,
+      placeholder: t('clan.searchHint'),
+      kind: 'text',
+      allowEmpty: true,
+    });
     if (q === null) return;
     st.query = q.trim();
     st.search = null;
@@ -254,7 +259,7 @@ export class ClanView {
           t('clan.fieldName'),
           f.name,
           () =>
-            void textPrompt(t('clan.fieldName'), { maxLength: CLAN.nameMax }).then((v) => {
+            void textPrompt(t('clan.fieldName'), { maxLength: CLAN.nameMax, kind: 'text', value: f.name }).then((v) => {
               if (v !== null) f.name = v.trim();
               draw();
             }),
@@ -264,7 +269,12 @@ export class ClanView {
           t('clan.fieldDesc'),
           f.description.slice(0, 40),
           () =>
-            void textPrompt(t('clan.fieldDesc'), { maxLength: CLAN.descMax }).then((v) => {
+            void textPrompt(t('clan.fieldDesc'), {
+              maxLength: CLAN.descMax,
+              kind: 'long',
+              value: f.description,
+              allowEmpty: true,
+            }).then((v) => {
               if (v !== null) f.description = v.trim();
               draw();
             }),
@@ -644,7 +654,7 @@ export class ClanView {
 
   async write(): Promise<void> {
     if (Social.summary?.mutedUntil) return toast(this.scene, t('err.chat.muted'), '#ff9a9a');
-    const text = await textPrompt(t('chat.prompt'), { maxLength: 140 });
+    const text = await textPrompt(t('chat.prompt'), { maxLength: 140, kind: 'text' });
     if (text?.trim()) this.chat?.say(text);
   }
 

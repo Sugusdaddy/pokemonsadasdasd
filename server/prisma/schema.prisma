@@ -180,9 +180,58 @@ model Report {
   message    ClanMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
   reason     String
   text       String
+  /// Lo resolvió un admin (se guarda para el historial del jugador).
+  resolved   Boolean      @default(false)
   createdAt  DateTime     @default(now())
 
   @@unique([reporterId, messageId])
   @@index([targetId])
+  @@index([createdAt])
+}
+
+/// Idea del buzón. Cualquiera la propone; los admins le cambian el estado y responden.
+model Idea {
+  id        String     @id @default(cuid())
+  accountId String
+  name      String
+  title     String
+  body      String
+  /// cards | balance | modes | ui | other
+  category  String     @default("other")
+  /// open | planned | done | rejected
+  status    String     @default("open")
+  reply     String     @default("")
+  /// Votos (copia de COUNT(IdeaVote) para ordenar rápido).
+  votes     Int        @default(0)
+  hidden    Boolean    @default(false)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  voters    IdeaVote[]
+
+  @@index([status, votes])
+  @@index([createdAt])
+  @@index([accountId, createdAt])
+}
+
+/// Un voto por cuenta e idea.
+model IdeaVote {
+  ideaId    String
+  idea      Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  accountId String
+  createdAt DateTime @default(now())
+
+  @@id([ideaId, accountId])
+}
+
+/// Registro de lo que hace cada admin (quién, qué y sobre quién).
+model AdminLog {
+  id        String   @id @default(cuid())
+  adminId   String
+  adminName String
+  action    String
+  target    String   @default("")
+  details   Json     @default("{}")
+  createdAt DateTime @default(now())
+
   @@index([createdAt])
 }

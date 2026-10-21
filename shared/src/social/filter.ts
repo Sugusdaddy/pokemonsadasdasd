@@ -80,16 +80,18 @@ const LEET: Record<string, string> = {
 
 /** Minúsculas, sin acentos (salvo la ñ), leet traducido y letras repetidas reducidas a una. */
 export function normalizeWord(w: string): string {
-  return w
-    .toLowerCase()
-    .replace(/ñ/g, '\u0001')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    // eslint-disable-next-line no-control-regex -- marcador temporal para conservar la ñ
-    .replace(/\u0001/g, 'ñ')
-    .replace(/[013457@$!]/g, (c) => LEET[c] ?? c)
-    .replace(/[^a-zñ]/g, '')
-    .replace(/(.)\1+/g, '$1');
+  return (
+    w
+      .toLowerCase()
+      .replace(/ñ/g, '\u0001')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      // eslint-disable-next-line no-control-regex -- marcador temporal para conservar la ñ
+      .replace(/\u0001/g, 'ñ')
+      .replace(/[013457@$!]/g, (c) => LEET[c] ?? c)
+      .replace(/[^a-zñ]/g, '')
+      .replace(/(.)\1+/g, '$1')
+  );
 }
 
 const BAD = new Set(WORDS.map(normalizeWord));

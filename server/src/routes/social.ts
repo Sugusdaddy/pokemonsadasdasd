@@ -1,9 +1,8 @@
 import crypto from 'node:crypto';
-import express, { type NextFunction, type Request, type Response } from 'express';
+import express from 'express';
 import {
   CHAT,
   CLAN,
-  EconError,
   FRIENDLY_CODE_ALPHABET,
   FRIENDS,
   ROLES,
@@ -19,13 +18,11 @@ import {
   payClanCreation,
   type ClanRole,
 } from '@arena/shared';
-import { bearer, verifySession } from '../auth';
 import { ctx } from '../context';
 import { chatView, systemBody, toClan } from '../rooms/ClanRoom';
 import type { ClanRow, MemberRow, PublicProfile, Store } from '../store/types';
 import { view } from './account';
-
-type Authed = Request & { accountId?: string };
+import { type Authed, fail, handle as _handle, requireSession } from './util';
 
 const newCode = (): string => {
   let c = '';
@@ -36,10 +33,6 @@ const newCode = (): string => {
 
 /** Código tal como lo escribe la gente: sin #, espacios ni guiones, en mayúsculas. */
 const normCode = (c: unknown): string => (typeof c === 'string' ? c.replace(/[#\s-]/g, '').toUpperCase() : '');
-
-const fail = (code: string): never => {
-  throw new Error(code);
-};
 
 const shortWallet = (w: string | null) => (w ? `${w.slice(0, 4)}…${w.slice(-4)}` : null);
 
@@ -73,26 +66,8 @@ export function socialRoutes(store: Store): express.Router {
   const r = express.Router();
   r.use(express.json({ limit: '8kb' }));
 
-  const auth = async (req: Authed, res: Response, next: NextFunction) => {
-    const s = await verifySession(bearer(req.headers.authorization));
-    if (!s) return void res.status(401).json({ error: 'err.session' });
-    req.accountId = s.accountId;
-    next();
-  };
-
-  /** Responde con lo que devuelva `fn`, o con el código de error de la regla. */
-  const handle =
-    <T>(fn: (req: Authed, me: string) => Promise<T>) =>
-    async (req: Authed, res: Response) => {
-      try {
-        res.json(await fn(req, req.accountId!));
-      } catch (e) {
-        const code =
-          e instanceof EconError ? e.code : e instanceof Error && e.message.startsWith('err.') ? e.message : null;
-        if (!code) console.error('[social]', e);
-        res.status(code ? 400 : 500).json({ error: code ?? 'err.server' });
-      }
-    };
+  const auth = requireSession;
+  const handle = <T>(fn: (req: Authed, me: string) => Promise<T>) => _handle('social', fn);
 
   const myClan = async (me: string): Promise<MemberRow> => (await store.memberOf(me)) ?? fail('err.clan.none');
 

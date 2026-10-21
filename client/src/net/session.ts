@@ -16,6 +16,8 @@ export interface AccountView {
   state: ProfileState;
   serverNow: number;
   shop: { offers: CardOffer[]; msToReset: number };
+  /** Tiene una wallet de admin: ve la pestaña de admin (el servidor lo comprueba en cada petición). */
+  admin?: boolean;
 }
 
 /** Error que devuelve el servidor (`code` es una clave de traducción). */

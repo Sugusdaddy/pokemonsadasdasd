@@ -478,6 +478,34 @@ export function createIconTextures(scene: Phaser.Scene): void {
     g.fillStyle(O).fillCircle(32, 22, 15).fillRoundedRect(8, 36, 48, 26, 12);
     g.fillStyle(0x3fbf5a).fillCircle(32, 22, 12).fillRoundedRect(11, 39, 42, 20, 10);
   });
+  make('ic_idea', (g) => {
+    // bombilla
+    g.fillStyle(O).fillCircle(32, 26, 21).fillRoundedRect(20, 38, 24, 22, 5);
+    g.fillStyle(0xffd75a).fillCircle(32, 26, 18);
+    g.fillStyle(0xfff3b8).fillCircle(26, 20, 7);
+    g.fillStyle(0xb9c2e8).fillRoundedRect(23, 42, 18, 14, 3);
+    g.fillStyle(O).fillRect(23, 47, 18, 2).fillRect(23, 52, 18, 2);
+  });
+  make('ic_admin', (g) => {
+    // escudo con estrella
+    const shield = (inset: number) => [
+      { x: 8 + inset, y: 8 + inset },
+      { x: 56 - inset, y: 8 + inset },
+      { x: 56 - inset, y: 34 - inset * 0.3 },
+      { x: 32, y: 60 - inset * 1.4 },
+      { x: 8 + inset, y: 34 - inset * 0.3 },
+    ];
+    g.fillStyle(O).fillPoints(shield(0), true);
+    g.fillStyle(0xe0454f).fillPoints(shield(3), true);
+    g.fillStyle(0xffffff, 0.25).fillRect(12, 12, 40, 7);
+    const star = [];
+    for (let k = 0; k < 10; k++) {
+      const r = k % 2 ? 6 : 13,
+        a = -Math.PI / 2 + (k * Math.PI) / 5;
+      star.push({ x: 32 + Math.cos(a) * r, y: 32 + Math.sin(a) * r });
+    }
+    g.fillStyle(0xffd75a).fillPoints(star, true);
+  });
   make('ic_social', (g) => {
     // podio de tres escalones
     g.fillStyle(O)

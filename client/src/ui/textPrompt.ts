@@ -6,7 +6,16 @@ import { t } from '../i18n';
  */
 export function textPrompt(
   title: string,
-  opts: { maxLength?: number; upper?: boolean; placeholder?: string } = {},
+  opts: {
+    maxLength?: number;
+    upper?: boolean;
+    placeholder?: string;
+    value?: string;
+    /** code: letras grandes centradas (códigos); text: una línea normal; long: varias líneas. */
+    kind?: 'code' | 'text' | 'long';
+    /** Aceptar el texto vacío (p. ej. para borrar una respuesta). */
+    allowEmpty?: boolean;
+  } = {},
 ): Promise<string | null> {
   return new Promise((resolve) => {
     const wrap = document.createElement('div');
@@ -18,13 +27,20 @@ export function textPrompt(
     const h = document.createElement('div');
     h.textContent = title;
     h.style.cssText = 'font-size:26px;text-shadow:0 3px 0 #0b0d1f';
-    const input = document.createElement('input');
+    const kind = opts.kind ?? 'code';
+    const input = document.createElement(kind === 'long' ? 'textarea' : 'input');
+    if (input instanceof HTMLTextAreaElement) input.rows = 5;
     input.maxLength = opts.maxLength ?? 24;
     input.placeholder = opts.placeholder ?? '';
+    input.value = opts.value ?? '';
     input.autocomplete = 'off';
+    const field =
+      'padding:10px;border-radius:14px;border:3px solid #0b0d1f;background:#10143a;box-shadow:inset 0 4px 8px rgba(0,0,0,.4);outline:none;';
     input.style.cssText =
-      'font:inherit;font-size:28px;text-align:center;letter-spacing:4px;padding:10px;border-radius:14px;border:3px solid #0b0d1f;background:#10143a;color:#ffd75a;box-shadow:inset 0 4px 8px rgba(0,0,0,.4);outline:none;text-transform:' +
-      (opts.upper ? 'uppercase' : 'none');
+      kind === 'code'
+        ? `${field}font:inherit;font-size:28px;text-align:center;letter-spacing:4px;color:#ffd75a;text-transform:${opts.upper ? 'uppercase' : 'none'}`
+        : `${field}font:500 19px Rubik,system-ui,sans-serif;text-align:left;color:#fff;resize:none;line-height:1.35`;
+    if (kind !== 'code') box.style.width = 'min(92vw,560px)';
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;gap:10px';
     const mk = (label: string, bg: string, type: 'submit' | 'button') => {
@@ -39,6 +55,10 @@ export function textPrompt(
     row.append(cancel, ok);
     box.append(h, input, row);
     wrap.append(box);
+    // Phaser escucha los clics en toda la ventana: sin esto, tocar la caja (o sus botones)
+    // también pulsaría lo que haya debajo en el juego
+    for (const ev of ['mousedown', 'mouseup', 'touchstart', 'touchend', 'pointerdown', 'pointerup', 'wheel'])
+      wrap.addEventListener(ev, (e) => e.stopPropagation());
     document.body.append(wrap);
     input.focus();
     const done = (v: string | null) => {
@@ -48,11 +68,13 @@ export function textPrompt(
     cancel.onclick = () => done(null);
     input.onkeydown = (e) => {
       if (e.key === 'Escape') done(null);
+      // en varias líneas, Ctrl+Intro envía
+      else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && kind === 'long') box.requestSubmit();
     };
     box.onsubmit = (e) => {
       e.preventDefault();
       const v = input.value.trim();
-      done(v ? (opts.upper ? v.toUpperCase() : v) : null);
+      done(v || opts.allowEmpty ? (opts.upper ? v.toUpperCase() : v) : null);
     };
   });
 }

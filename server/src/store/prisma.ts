@@ -6,6 +6,8 @@ import {
   type ClanRole,
   type ClanType,
   type DonationState,
+  type IdeaCategory,
+  type IdeaStatus,
   type MatchMode,
   type PlayerInfo,
   type ProfileState,
@@ -15,6 +17,12 @@ import {
 } from '@arena/shared';
 import type {
   AccountRow,
+  AdminLogRow,
+  AdminPlayerRow,
+  AdminStats,
+  IdeaQuery,
+  IdeaRow,
+  ReportGroup,
   ClanMessageKind,
   ClanMessageRow,
   ClanRow,
@@ -606,11 +614,202 @@ export class PrismaStore implements Store {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new Error('err.report.dupe');
       throw e;
     }
-    return this.db.report.count({ where: { messageId: r.messageId } });
+    return this.db.report.count({ where: { messageId: r.messageId, resolved: false } });
   }
 
   async hideMessage(id: string): Promise<void> {
     await this.db.clanMessage.update({ where: { id }, data: { hidden: true } });
+  }
+
+  // ───────────────────────── Ideas y admin ─────────────────────────
+
+  private toIdea = (i: Prisma.IdeaGetPayload<object>): IdeaRow => ({
+    id: i.id,
+    accountId: i.accountId,
+    name: i.name,
+    title: i.title,
+    body: i.body,
+    category: i.category as IdeaCategory,
+    status: i.status as IdeaStatus,
+    reply: i.reply,
+    votes: i.votes,
+    hidden: i.hidden,
+    createdAt: i.createdAt,
+    updatedAt: i.updatedAt,
+  });
+
+  async createIdea(i: Pick<IdeaRow, 'accountId' | 'name' | 'title' | 'body' | 'category'>): Promise<IdeaRow> {
+    return this.toIdea(await this.db.idea.create({ data: i }));
+  }
+
+  async countIdeasSince(accountId: string, since: Date): Promise<number> {
+    return this.db.idea.count({ where: { accountId, createdAt: { gte: since } } });
+  }
+
+  async listIdeas(q: IdeaQuery): Promise<{ rows: IdeaRow[]; total: number }> {
+    const where: Prisma.IdeaWhereInput = {
+      ...(q.includeHidden ? {} : { hidden: false }),
+      ...(q.status ? { status: q.status } : {}),
+      ...(q.accountId ? { accountId: q.accountId } : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.db.idea.findMany({
+        where,
+        orderBy: q.sort === 'top' ? [{ votes: 'desc' }, { createdAt: 'desc' }] : [{ createdAt: 'desc' }],
+        take: q.limit,
+        skip: q.offset,
+      }),
+      this.db.idea.count({ where }),
+    ]);
+    return { rows: rows.map(this.toIdea), total };
+  }
+
+  async votedIdeas(accountId: string, ids: string[]): Promise<string[]> {
+    if (!ids.length) return [];
+    const v = await this.db.ideaVote.findMany({ where: { accountId, ideaId: { in: ids } }, select: { ideaId: true } });
+    return v.map((x) => x.ideaId);
+  }
+
+  async getIdea(id: string): Promise<IdeaRow | null> {
+    const i = await this.db.idea.findUnique({ where: { id } });
+    return i ? this.toIdea(i) : null;
+  }
+
+  async toggleVote(ideaId: string, accountId: string): Promise<{ voted: boolean; votes: number }> {
+    return this.db.$transaction(async (tx) => {
+      // la idea bloqueada: dos votos a la vez del mismo jugador no cuentan doble
+      const locked = await tx.$queryRaw<Array<{ hidden: boolean }>>`
+        SELECT hidden FROM "Idea" WHERE id = ${ideaId} FOR UPDATE`;
+      if (!locked.length || locked[0].hidden) throw new Error('err.idea.notFound');
+      const had = await tx.ideaVote.deleteMany({ where: { ideaId, accountId } });
+      if (!had.count) await tx.ideaVote.create({ data: { ideaId, accountId } });
+      const i = await tx.idea.update({
+        where: { id: ideaId },
+        data: { votes: { increment: had.count ? -1 : 1 } },
+      });
+      return { voted: !had.count, votes: i.votes };
+    });
+  }
+
+  async updateIdea(id: string, patch: Partial<Pick<IdeaRow, 'status' | 'reply' | 'hidden'>>): Promise<IdeaRow | null> {
+    try {
+      return this.toIdea(await this.db.idea.update({ where: { id }, data: patch }));
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') return null;
+      throw e;
+    }
+  }
+
+  async deleteIdea(id: string): Promise<void> {
+    await this.db.idea.deleteMany({ where: { id } });
+  }
+
+  async adminStats(since: Date): Promise<AdminStats> {
+    const now = new Date();
+    const [accounts, withWallet, active24h, matches24h, clans, ideasOpen, reports24h, muted] = await Promise.all([
+      this.db.account.count(),
+      this.db.account.count({ where: { isGuest: false } }),
+      this.db.account.count({ where: { lastSeenAt: { gte: since } } }),
+      this.db.match.count({ where: { endedAt: { gte: since } } }),
+      this.db.clan.count(),
+      this.db.idea.count({ where: { status: 'open', hidden: false } }),
+      this.db.report.count({ where: { createdAt: { gte: since } } }),
+      this.db.account.count({ where: { mutedUntil: { gt: now } } }),
+    ]);
+    return { accounts, withWallet, active24h, matches24h, clans, ideasOpen, reports24h, muted };
+  }
+
+  async listReports(limit: number): Promise<ReportGroup[]> {
+    // las denuncias recientes, agrupadas por mensaje
+    const reports = await this.db.report.findMany({
+      where: { messageId: { not: null }, resolved: false },
+      orderBy: { createdAt: 'desc' },
+      take: 1000,
+      include: { message: { select: { clanId: true, hidden: true } } },
+    });
+    const groups = new Map<string, ReportGroup>();
+    for (const r of reports) {
+      let g = groups.get(r.messageId!);
+      if (!g) {
+        g = {
+          messageId: r.messageId!,
+          clanId: r.message?.clanId ?? null,
+          targetId: r.targetId,
+          targetName: '',
+          text: r.text,
+          hidden: r.message?.hidden ?? false,
+          count: 0,
+          reasons: {},
+          lastAt: r.createdAt,
+        };
+        groups.set(r.messageId!, g);
+      }
+      g.count += 1;
+      g.reasons[r.reason] = (g.reasons[r.reason] ?? 0) + 1;
+    }
+    const list = [...groups.values()].slice(0, limit);
+    const names = await this.db.account.findMany({
+      where: { id: { in: [...new Set(list.map((g) => g.targetId))] } },
+      select: { id: true, name: true },
+    });
+    const byId = new Map(names.map((n) => [n.id, n.name]));
+    for (const g of list) g.targetName = byId.get(g.targetId) ?? '?';
+    return list;
+  }
+
+  async resolveReports(messageId: string): Promise<void> {
+    await this.db.report.updateMany({ where: { messageId }, data: { resolved: true } });
+  }
+
+  async unhideMessage(id: string): Promise<void> {
+    await this.db.clanMessage.updateMany({ where: { id }, data: { hidden: false } });
+  }
+
+  async searchAccounts(q: string, limit: number): Promise<AdminPlayerRow[]> {
+    const needle = q.trim();
+    if (!needle) return [];
+    const code = needle.replace(/[#\s-]/g, '').toUpperCase();
+    const rows = await this.db.account.findMany({
+      where: {
+        OR: [
+          { id: needle },
+          { code },
+          { wallets: { some: { address: { startsWith: needle } } } },
+          { name: { contains: needle, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: { lastSeenAt: 'desc' },
+      take: limit,
+      include: { wallets: { select: { address: true } }, clan: { include: { clan: { select: { name: true } } } } },
+    });
+    const reports = await this.db.report.groupBy({
+      by: ['targetId'],
+      where: { targetId: { in: rows.map((r) => r.id) } },
+      _count: { _all: true },
+    });
+    const rc = new Map(reports.map((r) => [r.targetId, r._count._all]));
+    return rows.map((a) => ({
+      accountId: a.id,
+      name: a.name,
+      trophies: a.trophies,
+      kingLevel: a.kingLevel,
+      wallets: a.wallets.map((w) => w.address),
+      code: a.code,
+      mutedUntil: a.mutedUntil,
+      createdAt: a.createdAt,
+      lastSeenAt: a.lastSeenAt,
+      clan: a.clan?.clan.name ?? null,
+      reports: rc.get(a.id) ?? 0,
+    }));
+  }
+
+  async logAdmin(e: Omit<AdminLogRow, 'id' | 'createdAt'>): Promise<void> {
+    await this.db.adminLog.create({ data: { ...e, details: e.details as Prisma.InputJsonValue } });
+  }
+
+  async listAdminLog(limit: number): Promise<AdminLogRow[]> {
+    const rows = await this.db.adminLog.findMany({ orderBy: { createdAt: 'desc' }, take: limit });
+    return rows.map((r) => ({ ...r, details: (r.details ?? {}) as Record<string, unknown> }));
   }
 
   async close(): Promise<void> {

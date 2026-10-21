@@ -40,7 +40,12 @@ type Listener = () => void;
 class ProfileStore {
   /** Estado de la cuenta (lo último que mandó el servidor). */
   d: ProfileState = freshProfile(Date.now());
-  account: { id: string; guest: boolean; wallets: string[] } = { id: '', guest: true, wallets: [] };
+  account: { id: string; guest: boolean; wallets: string[]; admin: boolean } = {
+    id: '',
+    guest: true,
+    wallets: [],
+    admin: false,
+  };
   settings = { sfx: true, music: true };
   shop: { offers: CardOffer[]; resetAt: number } = { offers: [], resetAt: 0 };
   /** Diferencia entre la hora del servidor y la de este equipo (los temporizadores usan la del servidor). */
@@ -63,7 +68,7 @@ class ProfileStore {
   /** Guarda lo que devuelve el servidor. */
   apply(a: AccountView): void {
     this.d = a.state;
-    this.account = { id: a.id, guest: a.guest, wallets: a.wallets };
+    this.account = { id: a.id, guest: a.guest, wallets: a.wallets, admin: !!a.admin };
     this.offset = a.serverNow - Date.now();
     this.shop = { offers: a.shop.offers, resetAt: Date.now() + a.shop.msToReset };
     this.emit();
@@ -118,6 +123,9 @@ class ProfileStore {
   }
   get accountId(): string {
     return this.account.id;
+  }
+  get admin(): boolean {
+    return this.account.admin;
   }
   get wallet(): string | null {
     return this.account.wallets[0] ?? null;

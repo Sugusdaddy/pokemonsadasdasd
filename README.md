@@ -64,7 +64,7 @@ El diseño se elige solo según la forma de la ventana, o se fuerza en **Perfil 
 | `T`                 | Emotes (y luego `1`-`4`)                                        |
 | Esc (sin carta)     | Rendirse                                                        |
 | Espacio / `F`       | En repeticiones: pausa / velocidad x1-x2-x4                     |
-| `1`-`6`, Intro, Esc | En el menú: pestañas, batalla y cerrar ventanas                 |
+| `1`-`7`, Intro, Esc | En el menú: pestañas, batalla y cerrar ventanas                 |
 
 ## Idiomas
 
@@ -203,6 +203,39 @@ La pestaña **Social** tiene tres secciones: **Rankings**, **Amigos** y **Clan**
 | `POST /api/clan/request`, `/api/clan/donate`              | Pedir cartas / donar una                                              |
 | `POST /api/social/report`                                 | Denunciar un mensaje del chat                                         |
 | Sala `clan` (`joinOrCreate('clan', {token, clanId})`)     | Chat: `say` para escribir; llegan `history`, `msg`, `update`…         |
+
+## Buzón de ideas y admin (Fase 2B)
+
+**Ideas** (Social → Ideas)
+
+- Cualquiera las lee. Para **proponer** hay que haber jugado 3 batallas (frena el spam con cuentas nuevas) y como
+  mucho 3 al día: título (6-60 caracteres, sin palabrotas), descripción (hasta 500, se censura) y categoría (cartas,
+  equilibrio, modos, interfaz u otros).
+- **Votar**: un voto por cuenta e idea, se puede quitar; no a las tuyas ni a las cerradas. Orden por más votadas o
+  nuevas; filtros abiertas / previstas / hechas / descartadas / mías.
+- Tus ideas abiertas las puedes borrar tocándolas.
+
+**Admin** (pestaña que solo ven las cuentas con una wallet de `ADMIN_WALLETS`)
+
+- Se activa poniendo la dirección pública de la wallet en `ADMIN_WALLETS` (en `server/.env` o en las variables de
+  Railway; varias separadas por comas) y entrando en el juego con esa wallet. El servidor lo comprueba en **cada
+  petición**: quitar una wallet de la lista le quita el acceso al momento. Los invitados nunca son admin.
+- **Resumen**: jugadores, con wallet, activos y batallas en 24 h, clanes, ideas abiertas, denuncias y silenciados.
+- **Denuncias** del chat agrupadas por mensaje: _Descartar_ (el mensaje vuelve a verse) o _Ocultar + silenciar_
+  1 o 7 días. Las denuncias resueltas salen de la lista pero cuentan en el historial del jugador.
+- **Jugadores**: buscar por nombre, código de amigo o wallet; silenciar (1 h, 1 d, 7 d, 30 d), quitar el silencio
+  o poner el nombre por defecto.
+- **Ideas**: cambiar el estado, responder (sale como "Respuesta del equipo"), ocultar o borrar.
+- **Registro**: todo lo que hace un admin queda guardado (quién, qué y sobre quién) en la tabla `AdminLog`.
+
+| Ruta                                                       | Qué hace                                          |
+| ---------------------------------------------------------- | ------------------------------------------------- |
+| `GET /api/ideas?sort=top\|new&status=…&mine=1&offset=`     | Lista de ideas (con tus votos si mandas sesión)   |
+| `POST /api/ideas`, `/api/ideas/:id/vote`, `/:id/delete`    | Proponer, votar / quitar el voto, borrar la tuya  |
+| `GET /api/admin/{stats,reports,players?q=,log}`            | Solo admins                                       |
+| `POST /api/admin/reports/resolve`                          | `{messageId, action: dismiss\|punish, muteHours}` |
+| `POST /api/admin/players/{mute,rename}`                    | Silenciar (`hours`, 0 = quitar) / quitar nombre   |
+| `POST /api/admin/ideas/:id`, `/api/admin/ideas/:id/delete` | `{status?, reply?, hidden?}` / borrar             |
 
 ## Online (Fase 1)
 

@@ -3,6 +3,9 @@ import type {
   ClanRole,
   ClanType,
   DonationState,
+  IdeaCategory,
+  IdeaSort,
+  IdeaStatus,
   MatchMode,
   PlayerInfo,
   ProfileState,
@@ -190,16 +193,118 @@ export interface SocialStore {
     fn: (req: DonationState, donor: ProfileState, receiver: ProfileState) => T,
   ): Promise<{ result: T; message: ClanMessageRow; donor: ProfileState }>;
 
-  /** Guarda una denuncia y devuelve cuántas tiene ese mensaje (err.report.dupe si ya lo denunciaste). */
+  /** Guarda una denuncia y devuelve cuántas sin resolver tiene ese mensaje (err.report.dupe si ya lo denunciaste). */
   report(r: Omit<ReportRow, 'id' | 'createdAt'>): Promise<number>;
   hideMessage(id: string): Promise<void>;
+}
+
+// ───────────────────────── Ideas y admin ─────────────────────────
+
+export interface IdeaRow {
+  id: string;
+  accountId: string;
+  name: string;
+  title: string;
+  body: string;
+  category: IdeaCategory;
+  status: IdeaStatus;
+  reply: string;
+  votes: number;
+  hidden: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IdeaQuery {
+  sort: IdeaSort;
+  /** null: todas. */
+  status: IdeaStatus | null;
+  /** Solo los admins ven las ocultas. */
+  includeHidden: boolean;
+  /** Solo las de esta cuenta. */
+  accountId?: string;
+  limit: number;
+  offset: number;
+}
+
+/** Denuncias agrupadas por mensaje (lo que ve el admin). */
+export interface ReportGroup {
+  messageId: string;
+  clanId: string | null;
+  targetId: string;
+  targetName: string;
+  text: string;
+  hidden: boolean;
+  count: number;
+  reasons: Record<string, number>;
+  lastAt: Date;
+}
+
+export interface AdminPlayerRow {
+  accountId: string;
+  name: string;
+  trophies: number;
+  kingLevel: number;
+  wallets: string[];
+  code: string | null;
+  mutedUntil: Date | null;
+  createdAt: Date;
+  lastSeenAt: Date;
+  clan: string | null;
+  /** Denuncias recibidas. */
+  reports: number;
+}
+
+export interface AdminStats {
+  accounts: number;
+  withWallet: number;
+  active24h: number;
+  matches24h: number;
+  clans: number;
+  ideasOpen: number;
+  reports24h: number;
+  muted: number;
+}
+
+export interface AdminLogRow {
+  id: string;
+  adminId: string;
+  adminName: string;
+  action: string;
+  target: string;
+  details: Record<string, unknown>;
+  createdAt: Date;
+}
+
+/** Buzón de ideas y herramientas de admin. */
+export interface AdminStore {
+  createIdea(i: Pick<IdeaRow, 'accountId' | 'name' | 'title' | 'body' | 'category'>): Promise<IdeaRow>;
+  countIdeasSince(accountId: string, since: Date): Promise<number>;
+  listIdeas(q: IdeaQuery): Promise<{ rows: IdeaRow[]; total: number }>;
+  /** De estas ideas, cuáles ha votado la cuenta. */
+  votedIdeas(accountId: string, ids: string[]): Promise<string[]>;
+  getIdea(id: string): Promise<IdeaRow | null>;
+  /** Vota o quita el voto (atómico). err.idea.notFound si no existe o está oculta. */
+  toggleVote(ideaId: string, accountId: string): Promise<{ voted: boolean; votes: number }>;
+  updateIdea(id: string, patch: Partial<Pick<IdeaRow, 'status' | 'reply' | 'hidden'>>): Promise<IdeaRow | null>;
+  deleteIdea(id: string): Promise<void>;
+
+  adminStats(since: Date): Promise<AdminStats>;
+  listReports(limit: number): Promise<ReportGroup[]>;
+  /** Marca como resueltas las denuncias de un mensaje (siguen contando en el historial del jugador). */
+  resolveReports(messageId: string): Promise<void>;
+  unhideMessage(id: string): Promise<void>;
+  /** Busca por id, código de amigo, wallet o parte del nombre. */
+  searchAccounts(q: string, limit: number): Promise<AdminPlayerRow[]>;
+  logAdmin(e: Omit<AdminLogRow, 'id' | 'createdAt'>): Promise<void>;
+  listAdminLog(limit: number): Promise<AdminLogRow[]>;
 }
 
 /**
  * Acceso a datos. Hay dos implementaciones con el mismo comportamiento:
  * PrismaStore (PostgreSQL) y MemoryStore (tests y arranque sin base de datos).
  */
-export interface Store extends SocialStore {
+export interface Store extends SocialStore, AdminStore {
   readonly kind: 'postgres' | 'memory';
 
   createAccount(state: ProfileState, isGuest: boolean, wallet?: string): Promise<AccountRow>;

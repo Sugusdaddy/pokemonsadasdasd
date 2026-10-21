@@ -15,3 +15,4 @@ export * from './meta/economy';
 export * from './meta/season';
 export * from './meta/clan';
 export * from './social/filter';
+export * from './meta/ideas';

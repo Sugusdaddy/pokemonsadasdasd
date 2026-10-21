@@ -18,6 +18,9 @@ import { accountRoutes } from './routes/account';
 import { leaderboardRoutes } from './routes/leaderboard';
 import { socialRoutes } from './routes/social';
 import { startSeasonJob } from './seasons';
+import { isSolanaAddress } from './auth';
+import { ideaRoutes } from './routes/ideas';
+import { adminRoutes } from './routes/admin';
 import { MemoryStore } from './store/memory';
 import { PrismaStore } from './store/prisma';
 import type { Store } from './store/types';
@@ -33,6 +36,8 @@ export interface StartOptions extends Partial<ServerSettings> {
   rateLimits?: boolean;
   /** Cierre automático de temporadas (los tests lo lanzan a mano). */
   seasonJob?: boolean;
+  /** Wallets de admin (si no: ADMIN_WALLETS, separadas por comas). */
+  adminWallets?: string[];
 }
 
 export interface RunningServer {
@@ -63,6 +68,10 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   if (store.kind === 'memory' && !opts.store)
     console.warn('[arena] sin DATABASE_URL: las cuentas se guardan en memoria');
   ctx.store = store;
+  const admins = opts.adminWallets ?? (process.env.ADMIN_WALLETS ?? '').split(',');
+  ctx.adminWallets = new Set(admins.map((w) => w.trim()).filter(Boolean));
+  for (const w of ctx.adminWallets)
+    if (!isSolanaAddress(w)) console.warn(`[admin] ADMIN_WALLETS: "${w}" no es una wallet válida`);
 
   const app = express();
   app.set('trust proxy', 1);
@@ -86,6 +95,8 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   );
   app.use('/api', leaderboardRoutes(store));
   app.use('/api', socialRoutes(store));
+  app.use('/api', ideaRoutes(store));
+  app.use('/api', adminRoutes(store));
   app.get('/api/replays', async (req, res) => {
     const list = await store.listMatches(Math.max(1, Math.min(100, Number(req.query.limit) || 20)));
     res.json(list.map((m) => ({ ...m, endedAt: m.endedAt.toISOString() })));

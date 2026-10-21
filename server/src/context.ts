@@ -18,6 +18,8 @@ export const ctx = {
   settings: null as ServerSettings | null,
   /** Código amistoso → id de sala. */
   friendly: new Map<string, string>(),
+  /** Wallets con acceso a la pestaña de admin (ADMIN_WALLETS). */
+  adminWallets: new Set<string>(),
 };
 
 export function store(): Store {

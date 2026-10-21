@@ -16,6 +16,10 @@ describe.skipIf(!url)('PostgreSQL (PrismaStore)', () => {
     return row;
   };
   afterAll(async () => {
+    await store.db.idea.deleteMany({ where: { accountId: { in: created } } });
+    await store.db.ideaVote.deleteMany({ where: { accountId: { in: created } } });
+    await store.db.adminLog.deleteMany({ where: { adminId: { in: created } } });
+    await store.db.report.deleteMany({ where: { reporterId: { in: created } } });
     await store.db.clanMember.deleteMany({ where: { accountId: { in: created } } });
     await store.db.clan.deleteMany({ where: { members: { none: {} } } });
     await store.db.friendship.deleteMany({ where: { OR: [{ a: { in: created } }, { b: { in: created } }] } });
@@ -154,5 +158,56 @@ describe.skipIf(!url)('PostgreSQL (PrismaStore)', () => {
     expect((await store.getAccount(donor.id))!.state.cards[card].count).toBe(6);
     expect((await store.getAccount(lead.id))!.state.cards[card].count).toBe(4);
     expect((await store.getMessage(req.id))!.got).toBe(4);
+  });
+
+  it('ideas: votos simultáneos de la misma cuenta no descuadran el contador', async () => {
+    const author = await store.createAccount(freshProfile(Date.now()), true);
+    const voter = await store.createAccount(freshProfile(Date.now()), true);
+    const idea = await store.createIdea({
+      accountId: author.id,
+      name: 'A',
+      title: 'Idea de prueba',
+      body: '',
+      category: 'other',
+    });
+    const res = await Promise.all(Array.from({ length: 7 }, () => store.toggleVote(idea.id, voter.id)));
+    const final = (await store.getIdea(idea.id))!;
+    const voted = (await store.votedIdeas(voter.id, [idea.id])).length;
+    expect(final.votes).toBe(voted); // 7 cambios: termina votada (1) y el contador cuadra
+    expect(voted).toBe(1);
+    expect(res.filter((r) => r.voted).length).toBe(4);
+    const { rows } = await store.listIdeas({
+      sort: 'top',
+      status: 'open',
+      includeHidden: false,
+      accountId: author.id,
+      limit: 5,
+      offset: 0,
+    });
+    expect(rows.map((r) => r.id)).toEqual([idea.id]);
+  });
+
+  it('admin: denuncias agrupadas por mensaje, resolver las saca de la lista y buscar jugadores', async () => {
+    const lead = await store.createAccount(
+      { ...freshProfile(Date.now()), gold: CLAN.createCost, name: `Busca${Date.now()}` },
+      true,
+    );
+    const clan = await store.createClan(
+      lead.id,
+      { name: `R${Date.now()}`, description: '', badge: 0, type: 'open', minTrophies: 0 },
+      (s) => void (s.gold -= CLAN.createCost),
+    );
+    const a = await store.createAccount(freshProfile(Date.now()), true);
+    await store.joinClan(a.id, clan.id, 0, 50);
+    const msg = await store.addMessage({ clanId: clan.id, accountId: lead.id, name: 'L', kind: 'text', body: 'hola' });
+    expect(
+      await store.report({ reporterId: a.id, targetId: lead.id, messageId: msg.id, reason: 'spam', text: 'hola' }),
+    ).toBe(1);
+    const g = (await store.listReports(500)).find((x) => x.messageId === msg.id);
+    expect(g).toMatchObject({ count: 1, reasons: { spam: 1 }, targetName: lead.state.name, clanId: clan.id });
+    await store.resolveReports(msg.id);
+    expect((await store.listReports(500)).some((x) => x.messageId === msg.id)).toBe(false);
+    const found = await store.searchAccounts(lead.state.name.toLowerCase(), 5);
+    expect(found).toEqual([expect.objectContaining({ accountId: lead.id, clan: clan.name, reports: 1 })]);
   });
 });

@@ -99,7 +99,7 @@ export function contentArea(): Area {
   return { x: SIDEBAR_W + Math.round((avail - w) / 2), y, w, h: L.h - y - 24 };
 }
 
-export type TabKey = 'shop' | 'cards' | 'battle' | 'road' | 'social' | 'profile';
+export type TabKey = 'shop' | 'cards' | 'battle' | 'road' | 'social' | 'profile' | 'admin';
 
 /** Lo que las pestañas necesitan de la escena del menú. */
 export interface MenuScene extends BaseScene {

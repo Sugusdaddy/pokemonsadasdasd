@@ -39,6 +39,7 @@ import {
   verifySignature,
 } from '../auth';
 import type { Store } from '../store/types';
+import { isAdminWallet } from './util';
 
 /** Lo que ve el cliente de su cuenta. */
 export interface AccountView {
@@ -49,6 +50,8 @@ export interface AccountView {
   /** Hora del servidor (para que los temporizadores del cliente no dependan de su reloj). */
   serverNow: number;
   shop: { offers: ReturnType<typeof dailyOffers>; msToReset: number };
+  /** Tiene una wallet de ADMIN_WALLETS (ve la pestaña de admin). */
+  admin: boolean;
 }
 
 type Authed = Request & { accountId?: string; guest?: boolean };
@@ -62,6 +65,7 @@ export const view = (id: string, guest: boolean, wallets: string[], state: Profi
     state,
     serverNow: now,
     shop: { offers: dailyOffers(state.shop.day, arenaOf(state)), msToReset: msToNextShopDay(now) },
+    admin: isAdminWallet(wallets),
   };
 };
 

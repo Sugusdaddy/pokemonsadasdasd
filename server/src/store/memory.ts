@@ -2,6 +2,12 @@ import crypto from 'node:crypto';
 import { ROLE_RANK, type ClanInput, type ClanRole, type DonationState, type ProfileState } from '@arena/shared';
 import type {
   AccountRow,
+  AdminLogRow,
+  AdminPlayerRow,
+  AdminStats,
+  IdeaQuery,
+  IdeaRow,
+  ReportGroup,
   ClanMessageRow,
   ClanRow,
   FriendLink,
@@ -36,7 +42,10 @@ export class MemoryStore implements Store {
   private clans = new Map<string, Omit<ClanRow, 'members' | 'trophies'>>();
   private members = new Map<string, MemberRow>();
   private msgs: ClanMessageRow[] = [];
-  private reports: ReportRow[] = [];
+  private reports: Array<ReportRow & { resolved?: boolean }> = [];
+  private ideas: IdeaRow[] = [];
+  private ideaVotes = new Set<string>(); // idea|cuenta
+  private adminLog: AdminLogRow[] = [];
 
   private ranked(range: RankRange): AccountRow[] {
     return [...this.accounts.values()]
@@ -400,12 +409,171 @@ export class MemoryStore implements Store {
     if (this.reports.some((x) => x.reporterId === r.reporterId && x.messageId === r.messageId))
       throw new Error('err.report.dupe');
     this.reports.push({ ...r, id: crypto.randomUUID(), createdAt: new Date() });
-    return this.reports.filter((x) => x.messageId === r.messageId).length;
+    return this.reports.filter((x) => x.messageId === r.messageId && !x.resolved).length;
   }
 
   async hideMessage(id: string): Promise<void> {
     const m = this.msgs.find((x) => x.id === id);
     if (m) m.hidden = true;
+  }
+
+  // ───────────────────────── Ideas y admin ─────────────────────────
+
+  async createIdea(i: Pick<IdeaRow, 'accountId' | 'name' | 'title' | 'body' | 'category'>): Promise<IdeaRow> {
+    const now = new Date();
+    const row: IdeaRow = {
+      ...i,
+      id: crypto.randomUUID(),
+      status: 'open',
+      reply: '',
+      votes: 0,
+      hidden: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.ideas.push(row);
+    return clone(row);
+  }
+
+  async countIdeasSince(accountId: string, since: Date): Promise<number> {
+    return this.ideas.filter((i) => i.accountId === accountId && i.createdAt >= since).length;
+  }
+
+  async listIdeas(q: IdeaQuery): Promise<{ rows: IdeaRow[]; total: number }> {
+    const all = this.ideas
+      .filter(
+        (i) =>
+          (q.includeHidden || !i.hidden) &&
+          (!q.status || i.status === q.status) &&
+          (!q.accountId || i.accountId === q.accountId),
+      )
+      .sort((a, b) =>
+        q.sort === 'top' ? b.votes - a.votes || +b.createdAt - +a.createdAt : +b.createdAt - +a.createdAt,
+      );
+    return { rows: clone(all.slice(q.offset, q.offset + q.limit)), total: all.length };
+  }
+
+  async votedIdeas(accountId: string, ids: string[]): Promise<string[]> {
+    return ids.filter((id) => this.ideaVotes.has(`${id}|${accountId}`));
+  }
+
+  async getIdea(id: string): Promise<IdeaRow | null> {
+    const i = this.ideas.find((x) => x.id === id);
+    return i ? clone(i) : null;
+  }
+
+  async toggleVote(ideaId: string, accountId: string): Promise<{ voted: boolean; votes: number }> {
+    const idea = this.ideas.find((x) => x.id === ideaId);
+    if (!idea || idea.hidden) throw new Error('err.idea.notFound');
+    const k = `${ideaId}|${accountId}`;
+    const voted = !this.ideaVotes.has(k);
+    if (voted) this.ideaVotes.add(k);
+    else this.ideaVotes.delete(k);
+    idea.votes += voted ? 1 : -1;
+    return { voted, votes: idea.votes };
+  }
+
+  async updateIdea(id: string, patch: Partial<Pick<IdeaRow, 'status' | 'reply' | 'hidden'>>): Promise<IdeaRow | null> {
+    const i = this.ideas.find((x) => x.id === id);
+    if (!i) return null;
+    Object.assign(i, patch, { updatedAt: new Date() });
+    return clone(i);
+  }
+
+  async deleteIdea(id: string): Promise<void> {
+    this.ideas = this.ideas.filter((i) => i.id !== id);
+    for (const k of [...this.ideaVotes]) if (k.startsWith(`${id}|`)) this.ideaVotes.delete(k);
+  }
+
+  async adminStats(since: Date): Promise<AdminStats> {
+    const accs = [...this.accounts.values()];
+    const now = new Date();
+    return {
+      accounts: accs.length,
+      withWallet: accs.filter((a) => a.wallets.length).length,
+      active24h: accs.filter((a) => (this.seen.get(a.id) ?? a.createdAt) >= since).length,
+      matches24h: this.matches.filter((m) => m.endedAt >= since).length,
+      clans: this.clans.size,
+      ideasOpen: this.ideas.filter((i) => i.status === 'open' && !i.hidden).length,
+      reports24h: this.reports.filter((r) => r.createdAt >= since).length,
+      muted: [...this.muted.values()].filter((d) => d > now).length,
+    };
+  }
+
+  async listReports(limit: number): Promise<ReportGroup[]> {
+    const groups = new Map<string, ReportGroup>();
+    for (const r of [...this.reports].reverse()) {
+      if (!r.messageId || r.resolved) continue;
+      let g = groups.get(r.messageId);
+      if (!g) {
+        const msg = this.msgs.find((m) => m.id === r.messageId);
+        g = {
+          messageId: r.messageId,
+          clanId: msg?.clanId ?? null,
+          targetId: r.targetId,
+          targetName: this.accounts.get(r.targetId)?.state.name ?? '?',
+          text: r.text,
+          hidden: msg?.hidden ?? false,
+          count: 0,
+          reasons: {},
+          lastAt: r.createdAt,
+        };
+        groups.set(r.messageId, g);
+      }
+      g.count += 1;
+      g.reasons[r.reason] = (g.reasons[r.reason] ?? 0) + 1;
+    }
+    return clone([...groups.values()].slice(0, limit));
+  }
+
+  async resolveReports(messageId: string): Promise<void> {
+    for (const r of this.reports) if (r.messageId === messageId) r.resolved = true;
+  }
+
+  async unhideMessage(id: string): Promise<void> {
+    const m = this.msgs.find((x) => x.id === id);
+    if (m) m.hidden = false;
+  }
+
+  async searchAccounts(q: string, limit: number): Promise<AdminPlayerRow[]> {
+    const needle = q.trim();
+    if (!needle) return [];
+    const code = needle.replace(/[#\s-]/g, '').toUpperCase();
+    const lower = needle.toLowerCase();
+    const codeOf = (id: string) => [...this.codes].find(([, a]) => a === id)?.[0] ?? null;
+    return [...this.accounts.values()]
+      .filter(
+        (a) =>
+          a.id === needle ||
+          codeOf(a.id) === code ||
+          a.wallets.some((w) => w.startsWith(needle)) ||
+          a.state.name.toLowerCase().includes(lower),
+      )
+      .slice(0, limit)
+      .map((a) => {
+        const m = this.members.get(a.id);
+        return {
+          accountId: a.id,
+          name: a.state.name,
+          trophies: a.state.trophies,
+          kingLevel: a.state.kingLevel,
+          wallets: [...a.wallets],
+          code: codeOf(a.id),
+          mutedUntil: this.muted.get(a.id) ?? null,
+          createdAt: a.createdAt,
+          lastSeenAt: this.seen.get(a.id) ?? a.createdAt,
+          clan: m ? (this.clans.get(m.clanId)?.name ?? null) : null,
+          reports: this.reports.filter((r) => r.targetId === a.id).length,
+        };
+      });
+  }
+
+  async logAdmin(e: Omit<AdminLogRow, 'id' | 'createdAt'>): Promise<void> {
+    this.adminLog.unshift({ ...clone(e), id: crypto.randomUUID(), createdAt: new Date() });
+  }
+
+  async listAdminLog(limit: number): Promise<AdminLogRow[]> {
+    return clone(this.adminLog.slice(0, limit));
   }
 
   async close(): Promise<void> {}
