@@ -12,6 +12,8 @@ import { Tab, playerName, sectionHeader, runAction } from './Tab';
 import { ApiError, walletSignIn } from '../../net/session';
 import { availableWallets, shortAddress, type WalletOption } from '../../net/wallet';
 import type { ScrollPanel } from '../ScrollPanel';
+import { SHAKE_LEVELS, type ShakeLevel } from '../../battle/juice';
+import { shake } from '../../systems/Shake';
 
 export class ProfileTab extends Tab {
   override build(): void {
@@ -68,7 +70,7 @@ export class ProfileTab extends Tab {
     for (const o of sectionHeader(s, rx + 30, y + 10, W - 60, t('profile.settings'))) P.add(o);
     y += 50;
     const settings = Profile.settings;
-    const toggles: Array<[string, keyof typeof settings]> = [
+    const toggles: Array<[string, 'sfx' | 'music']> = [
       [t('profile.sfx'), 'sfx'],
       [t('profile.music'), 'music'],
     ];
@@ -99,6 +101,25 @@ export class ProfileTab extends Tab {
       });
       y += 94;
     });
+
+    // ── Vibración de pantalla (golpes fuertes, hechizos, torres) ──
+    y = this.segmented(
+      P,
+      rx,
+      W,
+      y,
+      t('profile.shake'),
+      settings.shake ?? 'normal',
+      SHAKE_LEVELS.map((l) => [l, t(`profile.shake.${l}`)] as [string, string]),
+      (v) => {
+        settings.shake = v as ShakeLevel;
+        Profile.saveSettings();
+        Sfx.play('click');
+        // una muestra de cómo se nota
+        shake(s, 220, 0.01);
+        this.rebuild();
+      },
+    );
 
     // ── Pantalla e idioma ──
     y = this.segmented(

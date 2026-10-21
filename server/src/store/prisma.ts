@@ -253,13 +253,9 @@ export class PrismaStore implements Store {
   }
 
   async beginSeasonClose(id: string): Promise<boolean> {
-    try {
-      await this.db.season.create({ data: { id } });
-      return true;
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return false;
-      throw e;
-    }
+    // ON CONFLICT DO NOTHING: si otro proceso ya la creó, 0 filas (y sin error en el log de PostgreSQL)
+    const r = await this.db.season.createMany({ data: [{ id }], skipDuplicates: true });
+    return r.count === 1;
   }
 
   async finishSeasonClose(id: string, top: SeasonResultRow[]): Promise<void> {

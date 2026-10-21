@@ -22,6 +22,7 @@ import {
 } from '@arena/shared';
 import { t } from '../i18n';
 import { ensureSession, request, signOut, type AccountView } from '../net/session';
+import type { ShakeLevel } from '../battle/juice';
 
 export type { BallSlot, BattleResult, ProfileState };
 export type ProfileData = ProfileState;
@@ -46,7 +47,7 @@ class ProfileStore {
     wallets: [],
     admin: false,
   };
-  settings = { sfx: true, music: true };
+  settings: { sfx: boolean; music: boolean; shake: ShakeLevel } = { sfx: true, music: true, shake: 'normal' };
   shop: { offers: CardOffer[]; resetAt: number } = { offers: [], resetAt: 0 };
   /** Diferencia entre la hora del servidor y la de este equipo (los temporizadores usan la del servidor). */
   private offset = 0;

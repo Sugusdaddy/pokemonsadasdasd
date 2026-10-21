@@ -12,7 +12,7 @@ const CASTING = new Set<AnimName>(['Attack', 'Shoot', 'Charge']);
  */
 export class UnitView {
   readonly sprite: Phaser.GameObjects.Sprite;
-  private shadow: Phaser.GameObjects.Ellipse;
+  private shadow: Phaser.GameObjects.Image;
   private ring: Phaser.GameObjects.Ellipse;
   private hpBar: Phaser.GameObjects.Graphics;
   private dir: number;
@@ -35,7 +35,11 @@ export class UnitView {
     this.x = u.x;
     this.y = view.y(u.y);
     this.dir = view.dy(u.faceY) < 0 ? 4 : 0;
-    this.shadow = s.ellipse(u.x, this.y, r * 2.4, r * 1.1, 0x000000, u.flying ? 0.18 : 0.3);
+    // sombra suave (más clara si vuela)
+    this.shadow = s
+      .image(u.x, this.y, 'fx_shadow')
+      .setDisplaySize(r * 2.7, r * 1.25)
+      .setAlpha(u.flying ? 0.3 : 0.55);
     this.ring = s.ellipse(u.x, this.y, r * 2.6, r * 1.2).setStrokeStyle(3, mine ? COLORS.player : COLORS.enemy, 0.85);
     this.sprite = s.sprite(u.x, this.y, pkAtlas(u.card.pokemon), 'Idle_0_0').setScale(u.card.scale);
     this.hpBar = s.graphics();

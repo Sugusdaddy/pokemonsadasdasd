@@ -9,6 +9,7 @@ import { t, cardName, rarityLabel, ballLabel } from '../i18n';
 import { L } from '../layout';
 import type { TabKey } from '../ui/tabs/Tab';
 import { BaseScene } from './BaseScene';
+import { shake as shakeCam } from '../systems/Shake';
 
 const RAR_SFX: Record<string, string> = { common: 'card', rare: 'rare', epic: 'epic', legendary: 'legendary' };
 
@@ -167,7 +168,7 @@ export class BallOpenScene extends BaseScene {
     Sfx.play('open');
     this.cameras.main.zoomTo(1, 250);
     this.cameras.main.flash(300, 255, 255, 255);
-    this.cameras.main.shake(200, 0.01);
+    shakeCam(this, 200, 0.01);
     this.tweens.add({ targets: this.ballTop, angle: -115, duration: 350, ease: 'Back.easeOut' });
     this.tweens.add({ targets: [this.ball, this.ballShadow], alpha: 0, y: '+=120', delay: 450, duration: 300 });
     this.tweens.add({ targets: this.rays, alpha: 1, duration: 300 });
@@ -270,7 +271,7 @@ export class BallOpenScene extends BaseScene {
       Sfx.play(RAR_SFX[it.rarity] || 'card');
       if (it.rarity !== 'common') this.burst(L.w / 2, sy(610), col, it.rarity === 'legendary' ? 60 : 28);
       if (it.rarity === 'legendary') {
-        this.cameras.main.shake(500, 0.012);
+        shakeCam(this, 500, 0.012);
         this.cameras.main.flash(400, 120, 255, 240);
         const ban = kit.text(this, 0, -360, t('ball.legendary'), 'hero', '#8ff7ec', { size: 58 });
         c.add(ban);

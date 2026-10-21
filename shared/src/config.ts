@@ -102,6 +102,8 @@ export interface ArenaTheme {
   edge: number;
   deco: 'tree' | 'rock' | 'grave' | 'ice' | 'lava' | 'pillar';
   star: number;
+  /** Qué corre por el río (solo cambia cómo se dibuja). */
+  liquid: 'water' | 'lava';
 }
 export const ARENAS: ArenaTheme[] = [
   {
@@ -112,6 +114,7 @@ export const ARENAS: ArenaTheme[] = [
     riverLight: 0x8ccaff,
     edge: 0x2c5e2a,
     deco: 'tree',
+    liquid: 'water',
     star: 25,
   },
   {
@@ -122,6 +125,7 @@ export const ARENAS: ArenaTheme[] = [
     riverLight: 0x9cc4ff,
     edge: 0x3d342c,
     deco: 'rock',
+    liquid: 'water',
     star: 35,
   },
   {
@@ -132,6 +136,7 @@ export const ARENAS: ArenaTheme[] = [
     riverLight: 0xb59cff,
     edge: 0x2a2440,
     deco: 'grave',
+    liquid: 'water',
     star: 94,
   },
   {
@@ -142,6 +147,7 @@ export const ARENAS: ArenaTheme[] = [
     riverLight: 0xbff3ff,
     edge: 0x7fa6bf,
     deco: 'ice',
+    liquid: 'water',
     star: 131,
   },
   {
@@ -152,6 +158,7 @@ export const ARENAS: ArenaTheme[] = [
     riverLight: 0xffd36a,
     edge: 0x2a1610,
     deco: 'lava',
+    liquid: 'lava',
     star: 146,
   },
   {
@@ -162,6 +169,7 @@ export const ARENAS: ArenaTheme[] = [
     riverLight: 0xffd84a,
     edge: 0x1b2a6b,
     deco: 'pillar',
+    liquid: 'water',
     star: 150,
   },
 ];

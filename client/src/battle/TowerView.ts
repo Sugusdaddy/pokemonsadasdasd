@@ -3,12 +3,14 @@ import { COLORS, RULES, TOWER_GUARDIANS, type AnimName, type SimTower } from '@a
 import { animKey, animInfo, dirFromVector, palette, pkAtlas } from '../systems/Assets';
 import type { View } from './View';
 import { Sfx } from '../systems/Sfx';
+import { shake } from '../systems/Shake';
 import { txt } from '../ui/style';
 import type { FxPools } from './Pools';
 
 /** Dibujo de una torre y de su guardián. Los datos (vida, activa) vienen de la simulación. */
 export class TowerView {
   private base: Phaser.GameObjects.Image;
+  private shadow: Phaser.GameObjects.Image;
   private sprite: Phaser.GameObjects.Sprite;
   private hpBar: Phaser.GameObjects.Graphics;
   private hpText: Phaser.GameObjects.Text;
@@ -37,6 +39,11 @@ export class TowerView {
     // el jugador local siempre ve sus guardianes "azules"
     this.guardian = TOWER_GUARDIANS[mine ? 'blue' : 'red'][t.kind].pokemon;
     this.dir = mine ? 4 : 0;
+    this.shadow = scene.add
+      .image(t.x, ty + 12, 'fx_shadow')
+      .setDisplaySize(t.kind === 'king' ? 170 : 130, t.kind === 'king' ? 60 : 48)
+      .setAlpha(0.45)
+      .setDepth(ty - 1);
     this.base = scene.add
       .image(t.x, ty + 10, `tower_${t.kind}_${side}`)
       .setOrigin(0.5, 0.82)
@@ -106,7 +113,7 @@ export class TowerView {
     }
     this.play('Faint', true);
     this.scene.tweens.add({ targets: this.sprite, alpha: 0, delay: 600, duration: 400 });
-    this.scene.cameras.main.shake(350, 0.012);
+    shake(this.scene, 350, 0.012);
     Sfx.play('tower');
     const col = this.mine ? COLORS.player : COLORS.enemy;
     for (let i = 0; i < 18; i++) fx.debris(this.t.x, this.sy - 30, i % 3 ? 0x8f91a0 : col);
@@ -115,7 +122,7 @@ export class TowerView {
   }
 
   destroy(): void {
-    for (const o of [this.base, this.sprite, this.hpBar, this.hpText, this.lvT]) o.destroy();
+    for (const o of [this.shadow, this.base, this.sprite, this.hpBar, this.hpText, this.lvT]) o.destroy();
     this.sleepZ?.destroy();
   }
 

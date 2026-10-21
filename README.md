@@ -91,6 +91,25 @@ Toda la interfaz sale de `client/src/ui/kit/`:
 `ui/style.ts` mantiene las funciones de siempre (`txt`, `button`, `panel`) dibujadas con el kit. Los sprites de Pokémon
 se escalan como pixel art nítido; la interfaz y los textos se suavizan.
 
+## Efectos de batalla (Fase 3A)
+
+Todo es solo visual: la simulación no cambia (los tests de repeticiones lo comprueban).
+
+- **Partículas** (`client/src/battle/Particles.ts`): polvo al desplegar, chispas en cada impacto, explosión de
+  hechizo (destello, chispas, ascuas, humo y quemadura en el suelo), torre caída (gran destello, columna de humo,
+  ascuas, cascotes y quemadura que se queda) y una nube al morir una unidad. Pocos emisores fijos con tope de
+  partículas vivas, para que el rendimiento no dependa de lo movida que esté la partida.
+- **Ambiente por arena**: hojas, polvo, almas, nieve, ascuas o destellos flotando sobre el campo.
+- **Río con shader** (WebGL, `client/src/battle/riverShader.ts`): agua con reflejos y espuma en las orillas, y
+  **lava** en Monte Ascuas con costra que se mueve y brillo en las orillas. Pixelado a bloques de 4 px. Sin WebGL
+  se dibuja el río de siempre.
+- **Luz y sombras**: sombras suaves bajo unidades y torres, viñeta en los bordes de la arena y destellos de luz en
+  hechizos y torres.
+- **Hit-stop** (`client/src/battle/juice.ts`): pausa de 45-110 ms en golpes fuertes (un cuarto de la vida o más),
+  hechizos y torres. La simulación espera y luego recupera el tiempo, así que las partidas online no se retrasan.
+- **Vibración de pantalla** ajustable en Perfil → _Vibración de pantalla_ (No / Suave / Normal). También se aplica a
+  la apertura de Pokéballs.
+
 ## Cuentas y economía (Fase 2A)
 
 **El progreso vive en el servidor** (PostgreSQL + Prisma). El navegador solo guarda una copia para pintar.

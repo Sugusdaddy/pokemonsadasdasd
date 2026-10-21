@@ -31,6 +31,10 @@ import { openModal } from '../ui/Modal';
 import { onMatchEnd } from '../net/rewards';
 import type { OnlineSession } from '../net/OnlineSession';
 import { FxPools } from '../battle/Pools';
+import { BattleParticles, FX_DEPTH } from '../battle/Particles';
+import { riverShader } from '../battle/riverShader';
+import { HIT_STOP, HitStop, heavyHit } from '../battle/juice';
+import { shake } from '../systems/Shake';
 import { UnitView } from '../battle/UnitView';
 import { TowerView } from '../battle/TowerView';
 import { ProjectileView } from '../battle/ProjectileView';
@@ -70,6 +74,11 @@ export class BattleScene extends BaseScene {
   private needIds: number[] = [];
 
   private fx!: FxPools;
+  private particles!: BattleParticles;
+  /** Pausa breve en golpes fuertes (solo visual: el tiempo se recupera al salir). */
+  private hitStop = new HitStop();
+  /** Río animado (WebGL); sin él se dibujan las olas de siempre. */
+  private river: Phaser.GameObjects.Shader | null = null;
   private units = new Map<number, UnitView>();
   private towers = new Map<number, TowerView>();
   private projectiles = new Map<number, ProjectileView>();
@@ -169,9 +178,19 @@ export class BattleScene extends BaseScene {
     this.hand = null;
 
     this.fx = new FxPools(this);
+    this.particles = new BattleParticles(this);
+    this.hitStop = new HitStop();
+    this.setTimeScale(1);
+    this.events.once('shutdown', () => this.setTimeScale(1));
     // PC: la arena (720 de ancho) queda centrada en la pantalla de 1920
     this.cameras.main.setScroll(-L.arenaX, 0);
     this.drawArena();
+    this.particles.ambient(this.theme, 0, ARENA.top, W, ARENA.bottom - ARENA.top);
+    // viñeta: oscurece un poco los bordes de la arena (no el HUD)
+    this.add
+      .image(W / 2, (ARENA.top + ARENA.bottom) / 2, 'fx_vignette')
+      .setDisplaySize(W * 1.08, (ARENA.bottom - ARENA.top) * 1.08)
+      .setDepth(FX_DEPTH.vignette);
     for (const t of this.match.towers) this.towers.set(t.id, new TowerView(this, t, t.team === this.me, this.view));
     this.overlay = this.add.graphics().setDepth(5).setVisible(false);
     this.createHud();
@@ -336,6 +355,19 @@ export class BattleScene extends BaseScene {
     );
     g.fillStyle(th.river).fillRect(0, RIVER_TOP, W, ARENA.riverHalf * 2);
     this.waves = this.add.graphics().setDepth(1);
+    this.river = riverShader(this, th, 0, RIVER_TOP, W, ARENA.riverHalf * 2);
+    this.river?.setDepth(1);
+    if (th.liquid === 'lava') {
+      // la lava ilumina las orillas
+      const glow = this.add
+        .image(W / 2, ARENA.riverY, 'fx_soft')
+        .setDisplaySize(W * 1.4, ARENA.riverHalf * 9)
+        .setTint(th.river)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setAlpha(0.32)
+        .setDepth(1.5);
+      this.tweens.add({ targets: glow, alpha: 0.18, yoyo: true, repeat: -1, duration: 1400, ease: 'Sine.easeInOut' });
+    }
     // puentes
     const b = this.add.graphics().setDepth(2);
     for (const bx of ARENA.bridges) {
@@ -808,6 +840,7 @@ export class BattleScene extends BaseScene {
           if (ev.team === this.me) this.clearPending(ev.card);
           this.time.delayedCall(200, () => {
             this.fx.ring(ev.x, v.y(ev.y), 0.9 * T, this.teamColor(ev.team));
+            this.particles.dust(ev.x, v.y(ev.y), 12, this.dustTint);
             if (ev.team === this.me) Sfx.play('deploy');
           });
           break;
@@ -834,9 +867,12 @@ export class BattleScene extends BaseScene {
         }
         case 'impact':
           this.fx.impact(ev.x, v.y(ev.y) - ev.h, ev.palette, ev.scale);
+          this.particles.sparks(ev.x, v.y(ev.y) - ev.h, ev.scale >= 3 ? 7 : 4, palette(ev.palette)[3]);
           if (ev.scale >= 3) Sfx.play('hit');
           break;
         case 'damage': {
+          const body = m.body(ev.id);
+          if (!ev.silent && body && heavyHit(ev.amount, body.maxHp)) this.freeze(HIT_STOP.heavy);
           const uv = this.units.get(ev.id);
           if (uv) {
             uv.onDamage(ev.silent);
@@ -851,6 +887,8 @@ export class BattleScene extends BaseScene {
         }
         case 'splash':
           this.fx.ring(ev.x, v.y(ev.y), ev.r, palette(ev.palette)[2]);
+          this.particles.dust(ev.x, v.y(ev.y), 6, this.dustTint);
+          this.particles.sparks(ev.x, v.y(ev.y), 6, palette(ev.palette)[3]);
           break;
         case 'spellCast':
           this.spellFx(ev.team, ev.card, ev.x, v.y(ev.y));
@@ -858,19 +896,28 @@ export class BattleScene extends BaseScene {
           break;
         case 'spellImpact':
           Sfx.play('boom');
-          this.cameras.main.shake(180, 0.007);
+          shake(this, 180, 0.007);
+          this.spellBlast(ev.team, ev.card, ev.x, v.y(ev.y));
+          this.freeze(HIT_STOP.spell);
           break;
-        case 'death':
-          this.units.get(ev.id)?.onDeath();
+        case 'death': {
+          const uv = this.units.get(ev.id);
+          if (uv) this.particles.smoke(uv.x, uv.y - 8, 3, 0xe9e6f2, 18);
+          uv?.onDeath();
           this.units.delete(ev.id);
           break;
+        }
         case 'kingAwake':
           this.towers.get(m.towersBy[ev.team].king.id)?.onAwake();
           this.toast(ev.team === this.me ? t('battle.toast.myKing') : t('battle.toast.foeKing'), 0xffd84a);
           break;
-        case 'towerDestroyed':
-          this.towers.get(ev.id)?.onDestroyed(this.fx);
+        case 'towerDestroyed': {
+          const tv = this.towers.get(ev.id);
+          tv?.onDestroyed(this.fx);
+          if (tv) this.towerBlast(tv.t.x, tv.sy, tv.mine);
+          this.freeze(HIT_STOP.tower);
           break;
+        }
         case 'crown':
           if (ev.team === this.me) Sfx.play('crown');
           if (ev.crowns < 3) {
@@ -903,6 +950,44 @@ export class BattleScene extends BaseScene {
           break;
       }
     }
+  }
+
+  /** Color del polvo: el del suelo de la arena, más claro. */
+  private get dustTint(): number {
+    return Phaser.Display.Color.ValueToColor(this.theme.grass[0]).lighten(22).color;
+  }
+
+  /** Explosión al caer un hechizo: destello, chispas, ascuas, humo y quemadura en el suelo. */
+  private spellBlast(team: Team, key: string, x: number, y: number): void {
+    const card = this.match.cardFor(team, key);
+    const pal = palette(card.palette);
+    const r = card.radiusSpell;
+    this.particles.flash(x, y, pal[3], r * 3.2, 320);
+    this.particles.sparks(x, y, 22, pal[3]);
+    this.particles.embers(x, y, 10, pal[2], r);
+    this.particles.smoke(x, y, 6, 0x7a7d8e, r * 0.8);
+    this.particles.dust(x, y, 10, this.dustTint);
+    this.particles.scorch(x, y, r * 0.9);
+  }
+
+  /** Caída de una torre: gran destello, columna de humo, ascuas, cascotes y quemadura que se queda. */
+  private towerBlast(x: number, y: number, mine: boolean): void {
+    this.particles.flash(x, y - 30, 0xffd36a, 320, 420);
+    this.particles.smoke(x, y - 20, 18, 0x6b6e80, 70);
+    this.particles.embers(x, y - 30, 22, 0xff9a3c, 90);
+    this.particles.chunks(x, y - 30, 14, mine ? 0x8f91a0 : 0x9a8f88);
+    this.particles.dust(x, y + 10, 16, this.dustTint);
+    this.particles.scorch(x, y + 6, 70, true);
+  }
+
+  /** Hit-stop: congela animaciones y simulación un instante (luego recupera el tiempo). */
+  private freeze(ms: number): void {
+    if (this.hitStop.trigger(this.time.now, ms)) this.setTimeScale(0.06);
+  }
+
+  private setTimeScale(k: number): void {
+    this.tweens.timeScale = k;
+    this.anims.globalTimeScale = k;
   }
 
   /** Lluvia del sprite del ataque sobre la zona del hechizo (dura lo mismo que el retardo de la simulación). */
@@ -1131,12 +1216,16 @@ export class BattleScene extends BaseScene {
   // ───────────────────────── Bucle ─────────────────────────
 
   override update(_time: number, delta: number): void {
-    const dtFrame = delta / 1000;
-    this.elapsed += dtFrame;
-    this.drawWaves();
+    const realDt = delta / 1000;
+    this.elapsed += realDt;
+    if (!this.river) this.drawWaves();
+    // durante el hit-stop todo va a cámara muy lenta y la simulación espera
+    const frozen = this.hitStop.active(this.time.now);
+    if (!frozen && this.tweens.timeScale !== 1) this.setTimeScale(1);
+    const dtFrame = frozen ? realDt * 0.06 : realDt;
 
     if (this.started) {
-      const events = this.source.advance(dtFrame);
+      const events = this.source.advance(this.hitStop.step(this.time.now, realDt));
       if (this.source.takeReset()) this.rebuildViews();
       else this.handle(events);
       // una carta enviada que no llega a aplicarse (se perdió el mensaje) deja de marcarse

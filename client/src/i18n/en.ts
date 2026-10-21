@@ -683,4 +683,8 @@ export const EN: Record<string, string> = {
   'err.idea.notFound': 'Idea not found',
   'err.idea.own': "You can't vote for your own idea",
   'err.idea.title': 'The title needs at least 6 characters',
+  'profile.shake': 'Screen shake',
+  'profile.shake.off': 'Off',
+  'profile.shake.low': 'Low',
+  'profile.shake.normal': 'Normal',
 };
