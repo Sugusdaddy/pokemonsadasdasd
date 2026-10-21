@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
 import { createTowerArt } from './towers';
 import { createSceneryArt } from './scenery';
+import { createBuildingArt } from './buildings';
 
 export { BRIDGE_OF, DECO_VARIANTS, DETAIL_VARIANTS } from './scenery';
 
@@ -9,4 +10,5 @@ export function createArtTextures(scene: Phaser.Scene): void {
   if (scene.textures.exists('bridge_wood')) return;
   createTowerArt(scene);
   createSceneryArt(scene);
+  createBuildingArt(scene);
 }

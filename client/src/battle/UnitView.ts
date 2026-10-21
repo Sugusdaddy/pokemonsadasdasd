@@ -15,6 +15,9 @@ export class UnitView {
   private shadow: Phaser.GameObjects.Image;
   private ring: Phaser.GameObjects.Ellipse;
   private hpBar: Phaser.GameObjects.Graphics;
+  /** Peana de piedra (solo edificios). */
+  private base: Phaser.GameObjects.Image | null = null;
+  private frozen = false;
   private dir: number;
   private curAnim: AnimName | null = null;
   private bob = Math.random() * Math.PI * 2;
@@ -41,6 +44,13 @@ export class UnitView {
       .setDisplaySize(r * 2.7, r * 1.25)
       .setAlpha(u.flying ? 0.3 : 0.55);
     this.ring = s.ellipse(u.x, this.y, r * 2.6, r * 1.2).setStrokeStyle(3, mine ? COLORS.player : COLORS.enemy, 0.85);
+    if (u.building) {
+      this.base = s
+        .image(u.x, this.y, mine ? 'bld_base_player' : 'bld_base_enemy')
+        .setDisplaySize(r * 3.6, r * 1.8)
+        .setAlpha(0.6);
+      this.ring.setVisible(false);
+    }
     this.sprite = s.sprite(u.x, this.y, pkAtlas(u.card.pokemon), 'Idle_0_0').setScale(u.card.scale);
     this.hpBar = s.graphics();
     this.play('Idle');
@@ -92,6 +102,9 @@ export class UnitView {
     Sfx.play('faint');
     this.hpBar.destroy();
     this.ring.destroy();
+    if (this.frozen) this.sprite.anims.resume();
+    this.sprite.clearTint();
+    if (this.base) this.scene.tweens.add({ targets: this.base, alpha: 0, duration: 500 });
     this.play('Faint', true);
     const dur = Math.max(0.3, animInfo(this.u.card.pokemon, 'Faint').total_duration_sec || 0.4) * 1000;
     this.scene.tweens.add({
@@ -114,8 +127,21 @@ export class UnitView {
     this.y = this.view.y(u.py + (u.y - u.py) * alpha);
     this.bob += dt * 4;
 
-    if (u.state === 'deploy') {
+    // congelado: quieto (animación parada) y azulado
+    const frozen = u.frozenT > 0;
+    if (frozen !== this.frozen) {
+      this.frozen = frozen;
+      if (frozen) this.sprite.anims.pause();
+      else this.sprite.anims.resume();
+    }
+    if (frozen) {
+      // nada
+    } else if (u.state === 'deploy') {
       this.sprite.setAlpha(0.55 + 0.35 * Math.abs(Math.sin(u.deployLeft * 8)));
+    } else if (u.building) {
+      this.sprite.setAlpha(1);
+      if (u.state === 'attack') this.face(u.faceX, this.view.dy(u.faceY));
+      if (!this.isCasting() && this.curAnim !== 'Idle') this.play('Idle');
     } else {
       this.sprite.setAlpha(1);
       this.face(u.faceX, this.view.dy(u.faceY));
@@ -131,6 +157,10 @@ export class UnitView {
     this.sprite.setPosition(this.x, this.y - lift);
     this.shadow.setPosition(this.x, this.y);
     this.ring.setPosition(this.x, this.y);
+    this.base
+      ?.setPosition(this.x, this.y)
+      .setDepth(this.y - 3)
+      .setAlpha(u.state === 'deploy' ? 0.6 : 1);
     const depth = this.y + (u.flying ? 2000 : 0);
     this.sprite.setDepth(depth);
     this.shadow.setDepth(depth - 2);
@@ -138,7 +168,9 @@ export class UnitView {
     if (this.flash > 0) {
       this.flash -= dt;
       this.sprite.setTintFill(0xffffff);
-    } else if (u.burnT > 0) this.sprite.setTint(0xffb080);
+    } else if (frozen) this.sprite.setTint(0x8fd0ff);
+    else if (u.burnT > 0) this.sprite.setTint(0xffb080);
+    else if (u.rageT > 0) this.sprite.setTint(0xff9a7a);
     else if (u.slowT > 0) this.sprite.setTint(0x9fd8ff);
     else this.sprite.clearTint();
 
@@ -159,6 +191,7 @@ export class UnitView {
   destroy(): void {
     this.dead = true;
     for (const o of [this.sprite, this.shadow, this.ring, this.hpBar]) o.destroy();
+    this.base?.destroy();
   }
 
   /** Altura del cuerpo para colocar números de daño. */

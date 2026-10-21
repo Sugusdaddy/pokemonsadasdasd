@@ -17,6 +17,7 @@ export class TowerView {
   private lvT: Phaser.GameObjects.Text;
   private sleepZ?: Phaser.GameObjects.Text;
   private guardian: number;
+  private frozen = false;
   private dir: number;
   private lastFlash = 0;
   private lastHp = -1;
@@ -130,6 +131,21 @@ export class TowerView {
   }
 
   update(): void {
+    // congelada: el guardián se queda quieto y azulado
+    const frozen = this.t.alive && this.t.frozenT > 0;
+    if (frozen !== this.frozen) {
+      this.frozen = frozen;
+      if (frozen) {
+        this.sprite.anims.pause();
+        this.sprite.setTint(0x8fd0ff);
+        this.base.setTint(0xbfe6ff);
+      } else {
+        this.sprite.anims.resume();
+        if (this.t.active) this.sprite.clearTint();
+        else this.sprite.setTint(0x9a9ab0);
+        this.base.clearTint();
+      }
+    }
     if (this.t.hp !== this.lastHp) {
       this.drawHp();
       // por debajo de media vida se ve agrietada (con almenas rotas y estandarte roto)

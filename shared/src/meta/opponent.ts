@@ -55,15 +55,20 @@ export function makeOpponent(p: OpponentInput, rand: RandFn = defaultRand): Oppo
   );
   const tanks = shuffle(
     rand,
-    pool.filter((k) => C(k).type !== 'spell' && (C(k).targets === 'buildings' || C(k).hp >= 1400)),
+    pool.filter((k) => C(k).type === 'unit' && (C(k).targets === 'buildings' || C(k).hp >= 1400)),
   );
   const air = shuffle(
     rand,
-    pool.filter((k) => C(k).type !== 'spell' && C(k).targets === 'any' && !tanks.includes(k)),
+    pool.filter((k) => C(k).type === 'unit' && C(k).targets === 'any' && !tanks.includes(k)),
   );
   const rest = shuffle(
     rand,
-    pool.filter((k) => C(k).type !== 'spell'),
+    pool.filter((k) => C(k).type === 'unit'),
+  );
+  // como mucho un edificio por mazo (y no siempre)
+  const buildings = shuffle(
+    rand,
+    pool.filter((k) => C(k).type === 'building'),
   );
   const deck: string[] = [];
   const add = (k: string | undefined) => {
@@ -74,6 +79,7 @@ export function makeOpponent(p: OpponentInput, rand: RandFn = defaultRand): Oppo
   add(air[0]);
   add(air[1]);
   add(air[2]);
+  if (buildings.length && rand() < 0.6) add(buildings[0]);
   for (const k of rest) add(k);
   for (const k of spells.slice(1)) add(k);
 

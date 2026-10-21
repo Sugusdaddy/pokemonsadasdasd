@@ -21,15 +21,30 @@ import { PACK, type Pack } from './pack';
 //    move      id de ataque de animations_metadata.json → sprite, tipo y efectos
 //    scale     escala del sprite (por defecto según su tamaño)
 //    desc      texto de la carta
-//  Hechizos: radius, dmg, towerDmg (multiplicador contra torres), move
+//  Hechizos: radius, dmg, towerDmg (multiplicador contra torres), move, y si no son de daño
+//            directo: effect ('freeze' | 'poison' | 'heal' | 'rage') y duration.
+//            En veneno y curación, dmg es el TOTAL que reparte en toda su duración.
+//  Edificios (type 'building'): no se mueven y su vida baja sola en `lifetime` segundos.
+//            Defensivos: dmg, hitSpeed, range, targets. Generadores: spawn, spawnCount,
+//            spawnEvery (carta que sacan). De elixir: elixirEvery.
 //
 //  Si solo pones { pokemon, cost } el resto se calcula a partir del pack.
 //  Si usas un Pokémon nuevo, vuelve a ejecutar `npm run assets`.
 // ─────────────────────────────────────────────────────────────
 
-import { CARDS, DEFS, STARTER_DECK, DEFAULT_MOVE, type CardDef, type CardKey, type Targets } from './cardDefs';
+import {
+  CARDS,
+  DEFS,
+  STARTER_DECK,
+  DEFAULT_MOVE,
+  type CardDef,
+  type CardKey,
+  type SpellEffect,
+  type Targets,
+} from './cardDefs';
 
-export { CARDS, STARTER_DECK, type CardDef, type CardKey, type Targets };
+export { CARDS, STARTER_DECK, type CardDef, type CardKey, type SpellEffect, type Targets };
+export type CardType = 'unit' | 'spell' | 'building';
 
 const MELEE_KINDS = new Set(['melee', 'dash', 'aura', 'trail', 'buff', 'orbit']);
 const RARITY_FROM_META = (s: { legendary?: boolean; rarity?: number }): Rarity =>
@@ -44,7 +59,7 @@ const RARITY_FROM_META = (s: { legendary?: boolean; rarity?: number }): Rarity =
 /** Carta completa (al nivel inicial de su rareza salvo que venga de cardAtLevel). */
 export interface Card {
   key: string;
-  type: 'unit' | 'spell';
+  type: CardType;
   name: string;
   pokemon: number;
   types: string[];
@@ -74,6 +89,15 @@ export interface Card {
   /** Duración de la animación de ataque (decide el retardo del golpe). */
   attackAnimDur: number;
   level: number;
+  /** Edificios (0 = no es edificio). */
+  lifetime: number;
+  spawn: string | null;
+  spawnCount: number;
+  spawnEvery: number;
+  elixirEvery: number;
+  /** Hechizos. */
+  effect: SpellEffect;
+  duration: number;
 }
 
 /** Completa una carta con valores por defecto usando los datos del pack. */
@@ -92,8 +116,17 @@ export function resolveCard(key: string, pack: Pack = PACK): Card {
   const idleH = pk.idleH || 40;
   const rarity = def.rarity || RARITY_FROM_META(pk.stats);
 
+  const building = def.type === 'building';
   const range = def.range ?? (melee ? 0.8 * T : 5 * T);
-  const speedName = typeof def.speed === 'string' ? def.speed : spd >= 115 ? 'fast' : spd <= 90 ? 'slow' : 'medium';
+  const speedName = building
+    ? 'none'
+    : typeof def.speed === 'string'
+      ? def.speed
+      : spd >= 115
+        ? 'fast'
+        : spd <= 90
+          ? 'slow'
+          : 'medium';
   let targets: Targets = def.targets || 'ground';
   if (def.targets == null && range > 1.2 * T) targets = 'any';
   const castAnim = range <= 1.2 * T ? 'Attack' : pack.castAnim[mv.kind] || 'Shoot';
@@ -114,7 +147,8 @@ export function resolveCard(key: string, pack: Pack = PACK): Card {
     moveKind: mv.kind,
     moveStats: mv.base_stats || {},
     palette: mv.palette || types[0],
-    flying: def.flying ?? !!pk.hovers,
+    // los edificios están en el suelo aunque el Pokémon flote
+    flying: building ? false : (def.flying ?? !!pk.hovers),
     targets,
     hp: def.hp ?? Math.round(def.cost * (melee ? 260 : 150) * f),
     dmg: def.dmg ?? Math.round(def.cost * (melee ? 28 : 24) * atk),
@@ -122,13 +156,21 @@ export function resolveCard(key: string, pack: Pack = PACK): Card {
     range,
     splash: def.splash ?? (mv.kind === 'nova' || mv.kind === 'cone' ? 1.2 * T : 0),
     speedName,
-    speed: typeof def.speed === 'number' ? def.speed : SPEEDS[speedName as SpeedName],
+    speed: building ? 0 : typeof def.speed === 'number' ? def.speed : SPEEDS[speedName as SpeedName],
     scale: def.scale ?? (idleH >= 88 ? 1 : idleH >= 64 ? 1.5 : RULES.unitScale),
-    radius: [9, 12, 18][pk.shadow_size ?? 1] ?? 12,
+    // los edificios ocupan más sitio (las tropas los rodean)
+    radius: Math.max(building ? 18 : 0, [9, 12, 18][pk.shadow_size ?? 1] ?? 12),
     radiusSpell: def.radius ?? 2 * T,
     towerDmg: def.towerDmg ?? 0.35,
     attackAnimDur: pk.animDur[castAnim] ?? 0.4,
     level: RARITIES[rarity].start,
+    lifetime: building ? (def.lifetime ?? 30) : 0,
+    spawn: def.spawn ?? null,
+    spawnCount: def.spawnCount ?? 1,
+    spawnEvery: def.spawnEvery ?? 0,
+    elixirEvery: def.elixirEvery ?? 0,
+    effect: def.effect ?? 'damage',
+    duration: def.duration ?? 0,
   };
 }
 

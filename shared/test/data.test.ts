@@ -16,10 +16,10 @@ describe('datos', () => {
     for (const m of cardMoves()) expect(PACK.attacks[m], `ataque ${m}`).toBeDefined();
   });
 
-  it('las 41 cartas se resuelven con valores válidos', () => {
+  it('las 50 cartas se resuelven con valores válidos', () => {
     const keys = allCardKeys();
     expect(keys.length).toBe(Object.keys(CARDS).length);
-    expect(keys.length).toBe(41);
+    expect(keys.length).toBe(50);
     for (const k of keys) {
       const c = getCard(k);
       expect(c.cost).toBeGreaterThan(0);
@@ -28,8 +28,19 @@ describe('datos', () => {
         expect(c.hp).toBeGreaterThan(0);
         expect(c.speed).toBeGreaterThan(0);
         expect(c.count).toBeLessThanOrEqual(6);
+        expect(c.dmg).toBeGreaterThan(0);
+      } else if (c.type === 'building') {
+        // quieto, en el suelo, con una vida que se gasta y al menos una función
+        expect(c.hp).toBeGreaterThan(0);
+        expect(c.speed).toBe(0);
+        expect(c.flying).toBe(false);
+        expect(c.lifetime).toBeGreaterThan(0);
+        expect(c.dmg > 0 || !!c.spawn || c.elixirEvery > 0).toBe(true);
+        if (c.spawn) expect(getCard(c.spawn).type).toBe('unit');
+      } else {
+        expect(c.dmg > 0 || c.effect === 'rage').toBe(true);
+        if (c.effect !== 'damage') expect(c.duration).toBeGreaterThan(0);
       }
-      expect(c.dmg).toBeGreaterThan(0);
     }
     expect(STARTER_DECK).toHaveLength(8);
   });

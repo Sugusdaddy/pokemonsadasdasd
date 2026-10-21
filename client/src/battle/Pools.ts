@@ -68,6 +68,19 @@ export class FxPools {
     this.scene.tweens.add({ targets: t, y: y - 32, alpha: 0, duration: 650, onComplete: () => this.texts.release(t) });
   }
 
+  /** Texto que sube y se desvanece (curación en verde, elixir en morado…). */
+  floatText(x: number, y: number, text: string, color: string, size = 20): void {
+    const t = this.texts.get();
+    t.setText(text)
+      .setFontSize(size)
+      .setColor(color)
+      .setPosition(x + Phaser.Math.Between(-6, 6), y)
+      .setAlpha(1)
+      .setVisible(true)
+      .setActive(true);
+    this.scene.tweens.add({ targets: t, y: y - 36, alpha: 0, duration: 800, onComplete: () => this.texts.release(t) });
+  }
+
   impact(x: number, y: number, pal = 'normal', scale = 3): void {
     if (!this.scene.anims.exists('fx_impact')) return;
     const s = this.impacts.get();

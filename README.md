@@ -294,7 +294,7 @@ La pestaña **Social** tiene tres secciones: **Rankings**, **Amigos** y **Clan**
 ```
 shared/   TypeScript puro, sin Phaser. Lo usan el cliente, el servidor y los tests.
   src/config.ts        Todo el balance: arenas, rarezas, mejoras, Pokéballs, economía, IA, torres, arte
-  src/data/cardDefs.ts Las 41 cartas y el mazo inicial
+  src/data/cardDefs.ts Las 50 cartas y el mazo inicial
   src/data/cards.ts    Resolución de cartas (valores por defecto a partir del pack) y niveles
   src/data/pack.json   Datos del pack que necesita el juego (generado por `npm run assets`, va en git)
   src/sim/             La simulación de batalla (determinista, 20 Hz)
@@ -374,7 +374,22 @@ lapras: {
 },
 ```
 
-Si la carta usa un Pokémon nuevo, ejecuta `npm run assets` (y `npm test` para comprobar los datos).
+Edificios y hechizos con efecto (Fase 4B):
+
+```ts
+// edificio defensivo: no se mueve y su vida baja sola en `lifetime` segundos
+forretress: { type: 'building', pokemon: 205, cost: 3, hp: 740, dmg: 85, hitSpeed: 0.9, range: 5.5 * T,
+              targets: 'ground', lifetime: 30, move: 'spikes' },
+// generador (spawn = carta que saca) y de elixir
+vespiquen:  { type: 'building', pokemon: 416, cost: 4, hp: 700, dmg: 0, lifetime: 35, spawn: 'combee', spawnEvery: 5 },
+chansey:    { type: 'building', pokemon: 113, cost: 5, hp: 900, dmg: 0, lifetime: 60, elixirEvery: 8.5 },
+// hechizo que dura: effect 'poison' | 'heal' | 'rage' (dmg = total en toda la duración) o 'freeze'
+poison:     { type: 'spell', pokemon: 110, cost: 4, effect: 'poison', dmg: 400, duration: 8, radius: 3 * T, move: 'toxic' },
+```
+
+Si la carta usa un Pokémon nuevo, ejecuta `npm run assets` (y `npm test` para comprobar los datos). Para ver si
+una carta está muy fuerte o muy floja antes de ajustarla, `npx tsx tools/balance-probe.ts 160 <cartas>` enfrenta
+mazos de bots que solo se diferencian en esa carta y cuenta victorias.
 
 ## Arte propio en pixel art (Fase 3B)
 
@@ -462,6 +477,36 @@ cuando y destellos en las legendarias.
   `POST /api/me/tutorial/complete`.
 - En el menú, la fila de premios de la pestaña Batalla tiene ahora tres recuadros: ball gratis, ball de coronas y
   **Misiones** (se pone verde y la pestaña lleva aviso cuando hay algo por cobrar).
+
+## Edificios y hechizos nuevos (Fase 4B)
+
+Nueve cartas más (50 en total), repartidas entre las arenas 1 a 4:
+
+| Carta        | Tipo                | Qué hace                                                            |
+| ------------ | ------------------- | ------------------------------------------------------------------- |
+| Forretress   | Edificio defensivo  | Dispara púas a las tropas de tierra (3 de elixir, 30 s)             |
+| Magneton     | Edificio defensivo  | Torreta contra tierra y aire (4, 35 s)                              |
+| Vespiquen    | Generador           | Saca un Combee volando cada 5 s (4, 35 s)                           |
+| Chansey      | Generador de elixir | +1 de elixir cada 8,5 s mientras aguante (5, 60 s)                  |
+| Combee       | Tropa               | Tres abejas voladoras baratas (2); también las saca Vespiquen       |
+| Tóxico       | Hechizo que dura    | Nube venenosa: 400 de daño repartido en 8 s (a las torres, el 35 %) |
+| Congelación  | Hechizo             | Un poco de daño y deja quietos tropas, edificios y torres 4 s       |
+| Aromaterapia | Hechizo que dura    | Cura 450 a tus tropas dentro del área en 3 s                        |
+| Furia        | Hechizo que dura    | Tus tropas dentro van y atacan un 35 % más rápido (6 s)             |
+
+- **Edificios en la simulación**: son tropas que no se mueven (`building`), con una peana de piedra propia en
+  pixel art. Su vida baja sola hasta acabar su `lifetime`; las tropas no los pueden empujar y no se pueden poner
+  uno encima de otro. Los defensivos solo disparan a lo que tienen a tiro (y no a otros edificios). Las tropas que
+  van a por torres (Onix, Golem, Snorlax) se desvían a por los edificios cercanos: para eso se ponen en el centro.
+  Los generadores sacan su tropa delante con el nivel equivalente al suyo.
+- **Hechizos que duran**: zonas en el suelo que actúan cada medio segundo (veneno y curación) o mientras estás
+  dentro (furia). La congelación para también las torres.
+- **Bot**: defiende con edificios en el centro (sobre todo contra los que van a por torres), planta generadores
+  detrás del rey cuando está tranquilo y usa curación y furia sobre su propio ataque. Los mazos de los bots llevan
+  como mucho un edificio.
+- Las cartas de antes funcionan exactamente igual (los 27 tests de la simulación siguen pasando y las
+  repeticiones antiguas se reproducen igual). El protocolo sube a la versión 2: un cliente antiguo no puede jugar
+  contra uno nuevo.
 
 ## Arte y modo "solo fans"
 

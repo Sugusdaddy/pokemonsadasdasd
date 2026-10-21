@@ -76,6 +76,15 @@ export interface SimUnit extends Body {
   /** Hacia dónde mira (vector sin normalizar). */
   faceX: number;
   faceY: number;
+  /** Edificio: no se mueve y pierde `decay` de vida por segundo. */
+  building: boolean;
+  decay: number;
+  /** Cuenta atrás para sacar la siguiente tropa / el siguiente elixir (edificios). */
+  spawnT: number;
+  elixirT: number;
+  /** Congelado (no se mueve ni ataca) y con furia (más rápido) durante esos segundos. */
+  frozenT: number;
+  rageT: number;
 }
 
 export interface SimTower extends Body {
@@ -94,6 +103,22 @@ export interface SimTower extends Body {
   palette: string;
   /** Altura (relativa a y) desde la que dispara el guardián. */
   shotY: number;
+  /** Congelada (no dispara) durante esos segundos. */
+  frozenT: number;
+}
+
+/** Hechizo que dura: nube de veneno, curación o furia sobre un área. */
+export interface SimArea {
+  id: number;
+  team: Team;
+  card: Card;
+  kind: 'poison' | 'heal' | 'rage';
+  x: number;
+  y: number;
+  r: number;
+  /** Ticks de inicio y fin. */
+  start: number;
+  until: number;
 }
 
 /** Copia de los datos de daño del atacante: el proyectil golpea aunque el atacante muera. */
@@ -150,6 +175,21 @@ export type SimEvent =
   | { e: 'splash'; x: number; y: number; r: number; palette: string }
   | { e: 'spellCast'; team: Team; card: string; x: number; y: number }
   | { e: 'spellImpact'; team: Team; card: string; x: number; y: number }
+  /** Empieza un hechizo que dura (veneno, curación, furia): dur en segundos. */
+  | {
+      e: 'area';
+      id: number;
+      team: Team;
+      card: string;
+      kind: SimArea['kind'];
+      x: number;
+      y: number;
+      r: number;
+      dur: number;
+    }
+  | { e: 'heal'; id: number; amount: number }
+  /** Un edificio de elixir ha dado +1. */
+  | { e: 'elixirGain'; id: number; team: Team; amount: number }
   | { e: 'death'; id: number }
   | { e: 'kingAwake'; team: Team }
   | { e: 'towerDestroyed'; id: number; team: Team; kind: TowerKind }

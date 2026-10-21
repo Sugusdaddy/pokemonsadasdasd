@@ -19,10 +19,12 @@ const LINES = {
  * Bot de la partida. Solo lee el estado de la simulación y genera inputs,
  * igual que un jugador humano, así que sirve en local y en el servidor.
  *
- *  1. Hechizos contra grupos o para rematar torres.
- *  2. Defiende lo que cruza el río con la carta que mejor contrarresta.
+ *  1. Hechizos contra grupos o para rematar torres; curación y furia sobre su propio ataque.
+ *  2. Defiende lo que cruza el río con la carta que mejor contrarresta (o un edificio
+ *     defensivo en el centro, que atrae a los que van a por torres).
  *  3. Apoya a sus tanques con tropas a distancia detrás.
- *  4. Ataca por la línea más débil cuando acumula elixir (sin desperdiciarlo).
+ *  4. Con elixir de sobra y sin amenazas, planta sus generadores detrás del rey.
+ *  5. Ataca por la línea más débil cuando acumula elixir (sin desperdiciarlo).
  *
  * Internamente piensa como si su lado fuera el de arriba; si juega abajo, se refleja la Y.
  */
@@ -90,8 +92,8 @@ export class Bot {
     const foes = m.units.filter((u) => u.alive && u.team === foe);
     const threats = foes.filter((u) => this.my(u.y) < RIVER_BOT + 3 * T).sort((a, c) => this.my(a.y) - this.my(c.y));
 
-    // 1) Hechizos
-    const spell = hand.find((h) => h.c.type === 'spell');
+    // 1) Hechizos de daño (y congelación) contra grupos o para rematar torres
+    const spell = hand.find((h) => h.c.type === 'spell' && h.c.effect !== 'heal' && h.c.effect !== 'rage');
     if (spell) {
       const sc: Card = m.cardFor(me, spell.k);
       for (const u of foes) {
@@ -105,8 +107,25 @@ export class Bot {
         }
       }
       for (const t of m.towers) {
-        if (t.team === foe && t.alive && t.hp <= sc.dmg * sc.towerDmg) {
+        if (sc.effect !== 'freeze' && t.team === foe && t.alive && t.hp <= sc.dmg * sc.towerDmg) {
           const p = tryPlay(spell.k, t.x, this.my(t.y));
+          if (p) return p;
+        }
+      }
+    }
+
+    // 1b) Curación o furia sobre sus tropas que ya están atacando en campo rival
+    const boost = hand.find((h) => h.c.effect === 'heal' || h.c.effect === 'rage');
+    if (boost) {
+      const sc: Card = m.cardFor(me, boost.k);
+      const mine = m.units.filter((u) => u.alive && u.team === me && !u.building && this.my(u.y) > RIVER_BOT);
+      for (const u of mine) {
+        const near = mine.filter((o) => dist(o.x, o.y, u.x, u.y) < sc.radiusSpell);
+        const hurt = near.reduce((s, o) => s + (o.maxHp - o.hp), 0);
+        if (near.length >= 2 && (sc.effect === 'rage' || hurt > sc.dmg * 0.6)) {
+          const cx = near.reduce((s, o) => s + o.x, 0) / near.length;
+          const cy = near.reduce((s, o) => s + this.my(o.y), 0) / near.length;
+          const p = tryPlay(boost.k, cx, cy + 20);
           if (p) return p;
         }
       }
@@ -117,7 +136,10 @@ export class Bot {
       const th = threats[0];
       const thY = this.my(th.y);
       const options = hand.filter(
-        (h) => h.c.type !== 'spell' && h.c.targets !== 'buildings' && (!th.flying || h.c.targets === 'any'),
+        (h) =>
+          (h.c.type === 'unit' || (h.c.type === 'building' && h.c.dmg > 0)) &&
+          h.c.targets !== 'buildings' &&
+          (!th.flying || h.c.targets === 'any'),
       );
       if (options.length) {
         const swarm = threats.filter((o) => dist(o.x, o.y, th.x, th.y) < 2 * T).length >= 3;
@@ -125,11 +147,20 @@ export class Bot {
         const scores = new Map(
           options.map((h) => [
             h.k,
-            (swarm && h.c.splash ? 3 : 0) + (tanky ? h.c.dmg / h.c.hitSpeed / 60 : 0) - h.c.cost * 0.4 + rng.next(),
+            (swarm && h.c.splash ? 3 : 0) +
+              (tanky ? h.c.dmg / h.c.hitSpeed / 60 : 0) +
+              (h.c.type === 'building' ? (th.card.targets === 'buildings' ? 3 : 1) : 0) -
+              h.c.cost * 0.4 +
+              rng.next(),
           ]),
         );
         options.sort((a, c) => scores.get(c.k)! - scores.get(a.k)!);
         const pick = options[0];
+        if (pick.c.type === 'building') {
+          // en el centro de su campo: atrae a lo que viene por cualquiera de las dos líneas
+          const p = tryPlay(pick.k, W / 2 + (th.x < W / 2 ? -40 : 40), RIVER_TOP - 3 * T);
+          if (p) return p;
+        }
         const ranged = pick.c.range > 2 * T;
         const y = clamp(thY - (ranged ? 3.5 * T : 1.5 * T), ARENA.top + 60, RIVER_TOP - 10);
         const x = clamp(th.x + rng.range(-20, 20) + (ranged ? (th.x < W / 2 ? 50 : -50) : 0), 30, W - 30);
@@ -147,7 +178,7 @@ export class Bot {
         this.my(u.y) > RIVER_TOP - 5 * T,
     );
     if (tank && elixir >= 4) {
-      const sup = hand.filter((h) => h.c.type !== 'spell' && h.c.range > 2 * T);
+      const sup = hand.filter((h) => h.c.type === 'unit' && h.c.range > 2 * T);
       if (sup.length) {
         const pick = rng.pick(sup);
         const p = tryPlay(
@@ -159,10 +190,17 @@ export class Bot {
       }
     }
 
-    // 4) Ataque
+    // 4) Generadores (tropas o elixir) detrás del rey cuando está tranquilo
     const leaking = elixir >= 9.6;
+    const gen = hand.find((h) => h.c.type === 'building' && h.c.dmg <= 0);
+    if (gen && !threats.length && (elixir >= 7 || leaking)) {
+      const p = tryPlay(gen.k, W / 2 + (rng.next() < 0.5 ? -100 : 100), ARENA.top + 50);
+      if (p) return p;
+    }
+
+    // 5) Ataque
     if (elixir >= this.cfg.attackElixir || leaking) {
-      const units = hand.filter((h) => h.c.type !== 'spell');
+      const units = hand.filter((h) => h.c.type === 'unit');
       if (!units.length) return null;
       const order = new Map(units.map((h) => [h.k, rng.next()]));
       units.sort(

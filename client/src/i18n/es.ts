@@ -672,4 +672,13 @@ export const ES: Record<string, string> = {
   'tut.exit': 'Salir',
   'tut.offline': 'Sin conexión: termínalo con conexión para llevarte el premio.',
   'profile.tutorial': 'Jugar el tutorial',
+  'stat.lifetime': 'Duración',
+  'stat.spawns': 'Saca',
+  'stat.spawnEvery': '{name} x{n} cada {s} s',
+  'stat.elixirGen': 'Elixir',
+  'stat.elixirEvery': '+1 cada {s} s',
+  'stat.heal': 'Curación',
+  'stat.boost': 'Más velocidad',
+  'stat.duration': 'Duración',
+  'stat.freezeTime': 'Congela',
 };

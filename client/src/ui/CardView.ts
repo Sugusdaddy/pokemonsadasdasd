@@ -462,7 +462,7 @@ export function makeCardView(
             h / 2 - b - ribbonH / 2,
             label,
             'label',
-            card.type === 'spell' ? '#ffe38a' : '#ffffff',
+            card.type === 'spell' ? '#ffe38a' : card.type === 'building' ? '#a8e6ff' : '#ffffff',
             {
               size: fs,
             },

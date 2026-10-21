@@ -12,7 +12,7 @@ import {
   TOWER_GUARDIANS,
   type TowerKind,
 } from '../config';
-import { cardAtLevel, getCard, isCardKey, levelMult, type Card } from '../data/cards';
+import { cardAtLevel, getCard, isCardKey, levelMult, startLevel, type Card } from '../data/cards';
 import { PACK } from '../data/pack';
 import { typeMultiplier } from '../data/typeChart';
 import { Rng } from './rng';
@@ -26,6 +26,7 @@ import {
   type MatchSetup,
   type Pending,
   type PlayCheck,
+  type SimArea,
   type SimEvent,
   type SimProjectile,
   type SimTower,
@@ -90,6 +91,8 @@ export class Match {
   towersBy: Record<Team, Record<TowerSide, SimTower>>;
   projectiles: SimProjectile[] = [];
   pending: Pending[] = [];
+  /** Hechizos que duran (veneno, curación, furia). */
+  areas: SimArea[] = [];
   /** Inputs aplicados (para guardar la repetición). */
   readonly log: TimedInput[] = [];
 
@@ -173,6 +176,7 @@ export class Match {
     for (const team of TEAMS) this.elixir[team] = Math.min(RULES.elixirMax, this.elixir[team] + regen);
 
     this.runPending();
+    this.updateAreas();
     for (const u of this.units) this.updateUnit(u, DT);
     for (const t of this.towers) this.updateTower(t, DT);
     for (const p of this.projectiles) this.updateProjectile(p, DT);
@@ -216,6 +220,10 @@ export class Match {
       mix(p.id);
       mix(p.x);
       mix(p.y);
+    }
+    for (const a of this.areas) {
+      mix(a.id);
+      mix(a.until);
     }
     return h >>> 0;
   }
@@ -282,6 +290,7 @@ export class Match {
         moveType: mv?.type ?? 'normal',
         palette: mv?.palette ?? 'normal',
         shotY: kind === 'king' ? -75 : -59,
+        frozenT: 0,
       };
       this.towers.push(t);
       this.towersBy[team][side] = t;
@@ -301,7 +310,12 @@ export class Match {
   }
 
   private updateTower(t: SimTower, dt: number): void {
-    if (!t.alive || !t.active) return;
+    if (!t.alive) return;
+    if (t.frozenT > 0) {
+      t.frozenT -= dt;
+      return;
+    }
+    if (!t.active) return;
     t.cooldown -= dt;
     const cur = t.target;
     if (!cur || !cur.alive || this.towerDist(t, cur) > t.range) t.target = this.findTowerTarget(t);
@@ -373,6 +387,10 @@ export class Match {
     if (x < 14 || x > W - 14 || y < ARENA.top + 14 || y > ARENA.bottom - 10) return false;
     if (card.type === 'spell') return true;
     for (const t of this.towers) if (t.alive && dist(t.x, t.y, x, y) < t.radius + 12) return false;
+    // un edificio no se puede poner encima de otro
+    if (card.type === 'building')
+      for (const u of this.units)
+        if (u.alive && u.building && dist(u.x, u.y, x, y) < u.radius + card.radius) return false;
     if (team === 'blue' ? y >= RIVER_BOT + 8 : y <= RIVER_TOP - 8) return true;
     return this.inPocket(team, x, y);
   }
@@ -387,40 +405,54 @@ export class Match {
     }
     for (const [dx, fy] of formation(card.count, 0.55 * T)) {
       const dy = team === 'blue' ? fy : -fy; // la formación mira hacia el rival
-      const u: SimUnit = {
-        id: this.nextId++,
-        team,
-        card,
-        isTower: false,
-        x: x + dx,
-        y: y + dy,
-        px: x + dx,
-        py: y + dy,
-        hp: card.hp,
-        maxHp: card.hp,
-        types: card.types,
-        flying: card.flying,
-        radius: card.radius,
-        mass: card.hp,
-        alive: true,
-        state: 'deploy',
-        deployLeft: RULES.deployTime,
-        cooldown: 0,
-        retarget: 0,
-        target: null,
-        slowT: 0,
-        slowAmt: 0,
-        burnT: 0,
-        burnDps: 0,
-        faceX: 0,
-        faceY: team === 'blue' ? -1 : 1,
-      };
-      if (!u.flying) this.keepOnGround(u);
-      u.px = u.x;
-      u.py = u.y;
-      this.units.push(u);
-      this.emit({ e: 'spawn', id: u.id });
+      this.spawnUnit(team, card, x + dx, y + dy, RULES.deployTime);
     }
+  }
+
+  /** Crea una tropa o un edificio (desplegado por un jugador o sacado por un generador). */
+  private spawnUnit(team: Team, card: Card, x: number, y: number, deployLeft: number): SimUnit {
+    const building = card.type === 'building';
+    const u: SimUnit = {
+      id: this.nextId++,
+      team,
+      card,
+      isTower: false,
+      x,
+      y,
+      px: x,
+      py: y,
+      hp: card.hp,
+      maxHp: card.hp,
+      types: card.types,
+      flying: card.flying,
+      radius: card.radius,
+      mass: card.hp,
+      alive: true,
+      state: 'deploy',
+      deployLeft,
+      cooldown: 0,
+      retarget: 0,
+      target: null,
+      slowT: 0,
+      slowAmt: 0,
+      burnT: 0,
+      burnDps: 0,
+      faceX: 0,
+      faceY: team === 'blue' ? -1 : 1,
+      building,
+      decay: building ? card.hp / card.lifetime : 0,
+      // el primer Combee sale enseguida; luego, cada spawnEvery
+      spawnT: card.spawnEvery * 0.4,
+      elixirT: card.elixirEvery,
+      frozenT: 0,
+      rageT: 0,
+    };
+    if (!u.flying) this.keepOnGround(u);
+    u.px = u.x;
+    u.py = u.y;
+    this.units.push(u);
+    this.emit({ e: 'spawn', id: u.id });
+    return u;
   }
 
   // ───────────────────────── Tropas ─────────────────────────
@@ -440,6 +472,16 @@ export class Match {
       for (const e of this.units) {
         if (e.team === u.team || !e.alive) continue;
         if (u.card.targets === 'ground' && e.flying) continue;
+        const d = this.edgeDist(u, e);
+        if (d < SIGHT && d < bd) {
+          bd = d;
+          best = e;
+        }
+      }
+    } else {
+      // los que solo van a por torres también se desvían a por los edificios (para eso se ponen)
+      for (const e of this.units) {
+        if (e.team === u.team || !e.alive || !e.building) continue;
         const d = this.edgeDist(u, e);
         if (d < SIGHT && d < bd) {
           bd = d;
@@ -491,10 +533,21 @@ export class Match {
       this.damageUnit(u, u.burnDps * dt, 1, true);
       if (!u.alive) return;
     }
+    if (u.rageT > 0) u.rageT -= dt;
+    if (u.frozenT > 0) {
+      // congelado: ni se mueve ni ataca (un edificio sigue gastándose)
+      u.frozenT -= dt;
+      if (u.building && u.state !== 'deploy') this.decayBuilding(u, dt);
+      return;
+    }
 
     if (u.state === 'deploy') {
       u.deployLeft -= dt;
       if (u.deployLeft <= 0) u.state = 'move';
+      return;
+    }
+    if (u.building) {
+      this.updateBuilding(u, dt);
       return;
     }
 
@@ -519,7 +572,7 @@ export class Match {
       u.faceY = tg.y - u.y;
       if (u.cooldown <= 0) {
         this.attack(u, tg);
-        u.cooldown = u.card.hitSpeed * (u.slowT > 0 ? 1 + u.slowAmt : 1);
+        u.cooldown = (u.card.hitSpeed * (u.slowT > 0 ? 1 + u.slowAmt : 1)) / this.rage(u);
       }
     } else {
       u.state = 'move';
@@ -528,7 +581,7 @@ export class Match {
         dy = wy - u.y;
       const d = Math.sqrt(dx * dx + dy * dy);
       if (d > 0.5) {
-        const speed = u.card.speed * (u.slowT > 0 ? 1 - u.slowAmt : 1);
+        const speed = u.card.speed * (u.slowT > 0 ? 1 - u.slowAmt : 1) * this.rage(u);
         const stepLen = Math.min(d, speed * dt);
         u.x += (dx / d) * stepLen;
         u.y += (dy / d) * stepLen;
@@ -536,6 +589,90 @@ export class Match {
         u.faceY = dy;
       }
     }
+  }
+
+  private rage(u: SimUnit): number {
+    return u.rageT > 0 ? 1 + RULES.rageBoost : 1;
+  }
+
+  // ───────────────────────── Edificios ─────────────────────────
+
+  /** La vida de un edificio baja sola: dura `lifetime` segundos si nadie lo ataca. */
+  private decayBuilding(u: SimUnit, dt: number): void {
+    u.hp -= u.decay * dt;
+    if (u.hp <= 0) {
+      u.hp = 0;
+      u.alive = false;
+      this.emit({ e: 'death', id: u.id });
+    }
+  }
+
+  private updateBuilding(u: SimUnit, dt: number): void {
+    this.decayBuilding(u, dt);
+    if (!u.alive) return;
+    const c = u.card;
+    if (c.spawn && c.spawnEvery > 0) {
+      u.spawnT -= dt;
+      if (u.spawnT <= 0) {
+        u.spawnT += c.spawnEvery;
+        this.spawnFrom(u);
+      }
+    }
+    if (c.elixirEvery > 0) {
+      u.elixirT -= dt;
+      if (u.elixirT <= 0) {
+        u.elixirT += c.elixirEvery;
+        this.elixir[u.team] = Math.min(RULES.elixirMax, this.elixir[u.team] + 1);
+        this.emit({ e: 'elixirGain', id: u.id, team: u.team, amount: 1 });
+      }
+    }
+    if (c.dmg <= 0) return;
+    // defensivo: dispara a lo que tenga a tiro, sin moverse
+    u.cooldown -= dt;
+    if (!this.validTarget(u, u.target) || this.edgeDist(u, u.target!) > c.range) u.target = this.findInRange(u);
+    const tg = u.target;
+    if (!tg) {
+      u.state = 'move';
+      return;
+    }
+    if (u.state !== 'attack') {
+      u.state = 'attack';
+      u.cooldown = Math.max(u.cooldown, c.hitSpeed * 0.35);
+    }
+    u.faceX = tg.x - u.x;
+    u.faceY = tg.y - u.y;
+    if (u.cooldown <= 0) {
+      this.attack(u, tg);
+      u.cooldown = c.hitSpeed / this.rage(u);
+    }
+  }
+
+  /** La tropa enemiga más cercana a tiro (los edificios defensivos no disparan a otros edificios). */
+  private findInRange(u: SimUnit): SimUnit | null {
+    let best: SimUnit | null = null,
+      bd = Infinity;
+    for (const e of this.units) {
+      if (e.team === u.team || !e.alive || e.building) continue;
+      if (u.card.targets === 'ground' && e.flying) continue;
+      const d = this.edgeDist(u, e);
+      if (d <= u.card.range && d < bd) {
+        bd = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  /** Un generador saca su tropa delante (hacia el rival), con el nivel equivalente al suyo. */
+  private spawnFrom(b: SimUnit): void {
+    const key = b.card.spawn!;
+    const level = startLevel(getCard(key)) + (b.card.level - startLevel(getCard(b.card.key)));
+    const ck = `${key}@${level}`;
+    const card = (this.cardCache[b.team][ck] ??= cardAtLevel(key, level));
+    const fwd = b.team === 'blue' ? -1 : 1;
+    const y0 = b.y + fwd * (b.radius + card.radius + 6);
+    for (const [dx, fy] of formation(b.card.spawnCount, 0.55 * T))
+      this.spawnUnit(b.team, card, b.x + dx, y0 + fwd * fy, RULES.spawnDeploy);
   }
 
   private attack(u: SimUnit, tg: Body): void {
@@ -698,6 +835,8 @@ export class Match {
 
   private castSpell(team: Team, card: Card, x: number, y: number): void {
     this.emit({ e: 'spellImpact', team, card: card.key, x, y });
+    if (card.effect === 'freeze') return this.castFreeze(team, card, x, y);
+    if (card.effect !== 'damage') return this.startArea(team, card, x, y);
     this.emit({ e: 'splash', x, y, r: card.radiusSpell, palette: card.palette });
     const ms = card.moveStats || {};
     for (const u of this.units) {
@@ -720,6 +859,78 @@ export class Match {
         this.damageTower(t, card.dmg * card.towerDmg, 1);
       }
     }
+  }
+
+  /** Congelación: un poco de daño y deja quietos tropas, edificios y torres un rato. */
+  private castFreeze(team: Team, card: Card, x: number, y: number): void {
+    this.emit({ e: 'splash', x, y, r: card.radiusSpell, palette: card.palette });
+    for (const u of this.units) {
+      if (u.team === team || !u.alive || dist(u.x, u.y, x, y) > card.radiusSpell + u.radius) continue;
+      const m = typeMultiplier(card.moveType, u.types);
+      this.damageUnit(u, card.dmg * m, m);
+      if (u.alive) u.frozenT = Math.max(u.frozenT, card.duration);
+    }
+    for (const t of this.towers) {
+      if (t.team === team || !t.alive || dist(t.x, t.y, x, y) > card.radiusSpell + t.radius) continue;
+      this.damageTower(t, card.dmg * card.towerDmg, 1);
+      t.frozenT = Math.max(t.frozenT, card.duration);
+    }
+  }
+
+  /** Veneno, curación o furia: se queda en el suelo `duration` segundos. */
+  private startArea(team: Team, card: Card, x: number, y: number): void {
+    const kind = card.effect as SimArea['kind'];
+    const a: SimArea = {
+      id: this.nextId++,
+      team,
+      card,
+      kind,
+      x,
+      y,
+      r: card.radiusSpell,
+      start: this.tick,
+      until: this.tick + ticks(card.duration, TICK_RATE),
+    };
+    this.areas.push(a);
+    this.emit({ e: 'area', id: a.id, team, card: card.key, kind, x, y, r: a.r, dur: card.duration });
+  }
+
+  /**
+   * Cada tick: la furia acelera a los tuyos mientras estén dentro (y un poco después).
+   * Cada medio segundo: el veneno daña a los rivales (y a sus torres, menos) y la curación
+   * cura a tus tropas. `dmg` es el total repartido en toda la duración.
+   */
+  private updateAreas(): void {
+    if (!this.areas.length) return;
+    const pulse = ticks(RULES.areaPulse, TICK_RATE);
+    for (const a of this.areas) {
+      if (this.tick >= a.until) continue;
+      const inside = (b: Body) => dist(b.x, b.y, a.x, a.y) <= a.r + b.radius;
+      if (a.kind === 'rage') {
+        for (const u of this.units)
+          if (u.team === a.team && u.alive && inside(u)) u.rageT = Math.max(u.rageT, RULES.areaPulse + DT);
+        continue;
+      }
+      if ((this.tick - a.start) % pulse !== 0) continue;
+      const amount = a.card.dmg / Math.max(1, Math.round((a.until - a.start) / pulse));
+      if (a.kind === 'heal') {
+        for (const u of this.units) {
+          if (u.team !== a.team || !u.alive || u.building || u.hp >= u.maxHp || !inside(u)) continue;
+          const h = Math.min(amount, u.maxHp - u.hp);
+          u.hp += h;
+          this.emit({ e: 'heal', id: u.id, amount: h });
+        }
+        continue;
+      }
+      for (const u of this.units) {
+        if (u.team === a.team || !u.alive || !inside(u)) continue;
+        const m = typeMultiplier(a.card.moveType, u.types);
+        this.damageUnit(u, amount * m, m);
+      }
+      for (const t of this.towers)
+        if (t.team !== a.team && t.alive && inside(t)) this.damageTower(t, amount * a.card.towerDmg, 1);
+    }
+    this.areas = this.areas.filter((a) => this.tick < a.until);
   }
 
   // ───────────────────────── Física ─────────────────────────
@@ -752,9 +963,11 @@ export class Match {
         const min = (a.radius + b.radius) * 0.85;
         const d2 = dx * dx + dy * dy;
         if (d2 >= min * min) continue;
+        // los edificios no se mueven: empujan, pero no los empujan
+        if (a.building && b.building) continue;
         const d = Math.sqrt(d2) || 0.01;
         const push = min - d;
-        const wa = b.mass / (a.mass + b.mass),
+        const wa = a.building ? 0 : b.building ? 1 : b.mass / (a.mass + b.mass),
           wb = 1 - wa;
         const nx = d2 ? dx / d : this.rng.next() - 0.5,
           ny = d2 ? dy / d : this.rng.next() - 0.5;

@@ -527,6 +527,34 @@
    "origin": "official",
    "placeholder": false
   },
+  "57": {
+   "id": 57,
+   "name": "Primeape",
+   "types": [
+    "fighting"
+   ],
+   "stats": {
+    "bst": 455,
+    "atk": 1.28,
+    "spd": 118,
+    "rarity": 3,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 56,
+   "animDur": {
+    "Walk": 0.4667,
+    "Attack": 0.45,
+    "Idle": 1.2,
+    "Shoot": 0.3333,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
   "58": {
    "id": 58,
    "name": "Growlithe",
@@ -697,6 +725,35 @@
    "origin": "mixed",
    "placeholder": false
   },
+  "82": {
+   "id": 82,
+   "name": "Magneton",
+   "types": [
+    "electric",
+    "steel"
+   ],
+   "stats": {
+    "bst": 465,
+    "atk": 1.36,
+    "spd": 107,
+    "rarity": 3,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 1.0667,
+    "Attack": 0.3167,
+    "Idle": 0.8,
+    "Shoot": 0.3167,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
   "92": {
    "id": 92,
    "name": "Gastly",
@@ -862,6 +919,62 @@
     "Attack": 0.3333,
     "Idle": 1.1333,
     "Shoot": 0.3167,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "110": {
+   "id": 110,
+   "name": "Weezing",
+   "types": [
+    "poison"
+   ],
+   "stats": {
+    "bst": 490,
+    "atk": 1.2,
+    "spd": 103,
+    "rarity": 3,
+    "legendary": false
+   },
+   "shadow_size": 2,
+   "hovers": false,
+   "idleH": 64,
+   "animDur": {
+    "Walk": 0.8,
+    "Attack": 0.35,
+    "Idle": 2.2,
+    "Shoot": 0.5,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "113": {
+   "id": 113,
+   "name": "Chansey",
+   "types": [
+    "normal"
+   ],
+   "stats": {
+    "bst": 450,
+    "atk": 0.89,
+    "spd": 99,
+    "rarity": 3,
+    "legendary": false
+   },
+   "shadow_size": 2,
+   "hovers": false,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.3167,
+    "Idle": 0.9,
+    "Shoot": 0.5,
     "Charge": 0.3333,
     "Hurt": 0.1667,
     "Faint": 0.1667
@@ -1269,6 +1382,63 @@
    "origin": "mixed",
    "placeholder": false
   },
+  "182": {
+   "id": 182,
+   "name": "Bellossom",
+   "types": [
+    "grass"
+   ],
+   "stats": {
+    "bst": 490,
+    "atk": 1.2,
+    "spd": 99,
+    "rarity": 3,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 32,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.3167,
+    "Idle": 0.8333,
+    "Shoot": 0.3333,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "205": {
+   "id": 205,
+   "name": "Forretress",
+   "types": [
+    "bug",
+    "steel"
+   ],
+   "stats": {
+    "bst": 465,
+    "atk": 1.2,
+    "spd": 95,
+    "rarity": 3,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": true,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.8,
+    "Attack": 0.45,
+    "Idle": 1.2667,
+    "Shoot": 0.4833,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
   "225": {
    "id": 225,
    "name": "Delibird",
@@ -1296,6 +1466,92 @@
     "Faint": 0.5667
    },
    "origin": "mixed",
+   "placeholder": false
+  },
+  "362": {
+   "id": 362,
+   "name": "Glalie",
+   "types": [
+    "ice"
+   ],
+   "stats": {
+    "bst": 480,
+    "atk": 1.14,
+    "spd": 112,
+    "rarity": 3,
+    "legendary": false
+   },
+   "shadow_size": 2,
+   "hovers": true,
+   "idleH": 64,
+   "animDur": {
+    "Walk": 0.8,
+    "Attack": 0.35,
+    "Idle": 0.8,
+    "Shoot": 0.4333,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "415": {
+   "id": 415,
+   "name": "Combee",
+   "types": [
+    "bug",
+    "flying"
+   ],
+   "stats": {
+    "bst": 244,
+    "atk": 0.86,
+    "spd": 107,
+    "rarity": 1,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": true,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.4,
+    "Attack": 0.4833,
+    "Idle": 0.8,
+    "Shoot": 0.45,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "416": {
+   "id": 416,
+   "name": "Vespiquen",
+   "types": [
+    "bug",
+    "flying"
+   ],
+   "stats": {
+    "bst": 474,
+    "atk": 1.14,
+    "spd": 95,
+    "rarity": 3,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": true,
+   "idleH": 64,
+   "animDur": {
+    "Walk": 0.5333,
+    "Attack": 0.4167,
+    "Idle": 1.1,
+    "Shoot": 0.45,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
    "placeholder": false
   },
   "448": {

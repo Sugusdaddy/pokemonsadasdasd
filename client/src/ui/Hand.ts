@@ -228,7 +228,7 @@ export class Hand {
       return;
     }
     const a = animInfo(card.pokemon, 'Idle');
-    if (card.range > 1.5 * T) {
+    if (card.range > 1.5 * T && card.dmg > 0) {
       const r = this.b.add.graphics();
       r.lineStyle(2, 0xffffff, 0.35).strokeCircle(0, 0, card.range + card.radius);
       this.ghost.add(r);

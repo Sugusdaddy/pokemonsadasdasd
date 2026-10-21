@@ -1,4 +1,4 @@
-import { T, MAX_LEVEL, getCard, cardAtLevel, type Card } from '@arena/shared';
+import { T, MAX_LEVEL, RULES, getCard, cardAtLevel, type Card } from '@arena/shared';
 import { Profile } from '../meta/Profile';
 import type { BaseScene } from '../scenes/BaseScene';
 import { Sfx } from '../systems/Sfx';
@@ -16,6 +16,43 @@ type StatRow = [string, string | number, string];
 function statRows(c: Card, next: Card | null): StatRow[] {
   const plus = (a: number, b: number | undefined) => (next && b != null && b > a ? `+${Math.round(b - a)}` : '');
   const tiles = (n: number) => t('stat.tiles', { n: (n / T).toFixed(1) });
+  const secs = (n: number) => t('stat.seconds', { n: Math.round(n * 10) / 10 });
+  if (c.type === 'spell' && c.effect !== 'damage') {
+    const rows: StatRow[] = [];
+    if (c.effect === 'heal') rows.push([t('stat.heal'), c.dmg, plus(c.dmg, next?.dmg)]);
+    else if (c.effect === 'rage') rows.push([t('stat.boost'), `+${Math.round(RULES.rageBoost * 100)} %`, '']);
+    else rows.push([t('stat.damage'), c.dmg, plus(c.dmg, next?.dmg)]);
+    if (c.effect === 'poison' || c.effect === 'freeze')
+      rows.push([
+        t('stat.towerDamage'),
+        Math.round(c.dmg * c.towerDmg),
+        plus(c.dmg * c.towerDmg, next ? next.dmg * next.towerDmg : 0),
+      ]);
+    rows.push([c.effect === 'freeze' ? t('stat.freezeTime') : t('stat.duration'), secs(c.duration), '']);
+    rows.push([t('stat.radius'), tiles(c.radiusSpell), '']);
+    return rows;
+  }
+  if (c.type === 'building') {
+    const rows: StatRow[] = [
+      [t('stat.hp'), c.hp, plus(c.hp, next?.hp)],
+      [t('stat.lifetime'), secs(c.lifetime), ''],
+    ];
+    if (c.dmg > 0)
+      rows.push(
+        [t('stat.damage'), c.dmg, plus(c.dmg, next?.dmg)],
+        [t('stat.dps'), Math.round(c.dmg / c.hitSpeed), plus(c.dmg / c.hitSpeed, next ? next.dmg / next.hitSpeed : 0)],
+        [t('stat.range'), tiles(c.range), ''],
+        [t('stat.targets'), t(`target.${c.targets}`), ''],
+      );
+    if (c.spawn)
+      rows.push([
+        t('stat.spawns'),
+        t('stat.spawnEvery', { name: cardName(getCard(c.spawn)), n: c.spawnCount, s: c.spawnEvery }),
+        '',
+      ]);
+    if (c.elixirEvery) rows.push([t('stat.elixirGen'), t('stat.elixirEvery', { s: c.elixirEvery }), '']);
+    return rows;
+  }
   if (c.type === 'spell') {
     return [
       [t('stat.damage'), c.dmg, plus(c.dmg, next?.dmg)],

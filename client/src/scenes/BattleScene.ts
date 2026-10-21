@@ -43,6 +43,7 @@ import { ProjectileView } from '../battle/ProjectileView';
 import { View } from '../battle/View';
 import { LocalSource, OnlineSource, ReplaySource, type BattleSource } from '../battle/sources';
 import { TutorialCoach, tutorialMatch } from '../battle/Tutorial';
+import { AreaView, AREA_COLOR } from '../battle/AreaView';
 import { L } from '../layout';
 import { t, arenaName, ballLabel, emoteText } from '../i18n';
 import * as kit from '../ui/kit';
@@ -89,6 +90,8 @@ export class BattleScene extends BaseScene {
   /** Río animado (WebGL); sin él se dibujan las olas de siempre. */
   private river: Phaser.GameObjects.Shader | null = null;
   private units = new Map<number, UnitView>();
+  /** Hechizos que duran (veneno, curación, furia) dibujados en el suelo. */
+  private areas: AreaView[] = [];
   private towers = new Map<number, TowerView>();
   private projectiles = new Map<number, ProjectileView>();
   private hand: Hand | null = null;
@@ -179,6 +182,7 @@ export class BattleScene extends BaseScene {
     this.units.clear();
     this.towers.clear();
     this.projectiles.clear();
+    this.areas = [];
     this.toasts.clear();
     this.pendingPlays.clear();
     this.bubbles = {};
@@ -893,6 +897,8 @@ export class BattleScene extends BaseScene {
     for (const uv of this.units.values()) uv.destroy();
     for (const tv of this.towers.values()) tv.destroy();
     for (const pv of this.projectiles.values()) pv.destroy();
+    for (const av of this.areas) av.destroy();
+    this.areas = [];
     this.units.clear();
     this.towers.clear();
     this.projectiles.clear();
@@ -971,12 +977,35 @@ export class BattleScene extends BaseScene {
           this.spellFx(ev.team, ev.card, ev.x, v.y(ev.y));
           if (ev.team === this.me) this.clearPending(ev.card);
           break;
-        case 'spellImpact':
+        case 'spellImpact': {
+          const effect = getCard(ev.card).effect;
+          if (effect === 'heal' || effect === 'rage') {
+            // apoyo: sin explosión, un destello del color del hechizo
+            Sfx.play('select');
+            this.particles.flash(ev.x, v.y(ev.y), AREA_COLOR[effect], getCard(ev.card).radiusSpell * 2.4, 260);
+            break;
+          }
           Sfx.play('boom');
           shake(this, 180, 0.007);
           this.spellBlast(ev.team, ev.card, ev.x, v.y(ev.y));
+          if (effect === 'freeze') this.iceBurst(ev.x, v.y(ev.y), getCard(ev.card).radiusSpell);
           this.freeze(HIT_STOP.spell);
           break;
+        }
+        case 'area':
+          this.areas.push(new AreaView(this, ev, v, this.particles));
+          break;
+        case 'heal': {
+          const uv = this.units.get(ev.id);
+          if (uv && ev.amount >= 1) this.fx.floatText(uv.x, uv.y - 44, `+${Math.round(ev.amount)}`, '#7dff8a');
+          break;
+        }
+        case 'elixirGain': {
+          const uv = this.units.get(ev.id);
+          if (uv) this.fx.floatText(uv.x, uv.y - 56, `+${ev.amount}`, '#ff8af0', 26);
+          if (ev.team === this.me) Sfx.play('coin');
+          break;
+        }
         case 'death': {
           const uv = this.units.get(ev.id);
           if (uv) this.particles.smoke(uv.x, uv.y - 8, 3, 0xe9e6f2, 18);
@@ -1048,6 +1077,13 @@ export class BattleScene extends BaseScene {
     this.particles.smoke(x, y, 6, 0x7a7d8e, r * 0.8);
     this.particles.dust(x, y, 10, this.dustTint);
     this.particles.scorch(x, y, r * 0.9);
+  }
+
+  /** Congelación: escarcha que sale del centro y un anillo de hielo. */
+  private iceBurst(x: number, y: number, r: number): void {
+    this.particles.flash(x, y, 0xcfeeff, r * 2.8, 420);
+    this.particles.sparks(x, y, 26, 0xbfe6ff);
+    this.fx.ring(x, y, r, 0x9fd8ff);
   }
 
   /** Caída de una torre: gran destello, columna de humo, ascuas, cascotes y quemadura que se queda. */

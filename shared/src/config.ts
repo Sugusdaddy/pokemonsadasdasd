@@ -77,6 +77,12 @@ export const RULES = {
   unitScale: 2,
   projectileSpeed: 520,
   spellDelay: 0.55,
+  /** Furia: +35 % de velocidad de movimiento y de ataque. */
+  rageBoost: 0.35,
+  /** Los hechizos que duran (veneno, curación) actúan cada medio segundo. */
+  areaPulse: 0.5,
+  /** Lo que tarda en poder actuar una tropa que sale de un edificio generador. */
+  spawnDeploy: 0.4,
   typeMult: { super: 1.5, weak: 0.75, immune: 0.5 },
 };
 
