@@ -9,13 +9,12 @@ import {
   queueManifest,
   queuePortraits,
   createPortraitAnims,
-  createTowerTextures,
   createBallTextures,
   createIconTextures,
-  createDecoTextures,
   type Manifest,
 } from '../systems/Assets';
 import { OnlineSession } from '../net/OnlineSession';
+import { createArtTextures } from '../art';
 import * as kit from '../ui/kit';
 import { t } from '../i18n';
 import { BaseScene } from './BaseScene';
@@ -90,10 +89,9 @@ export class BootScene extends BaseScene {
     queuePortraits(this);
     this.load.once('complete', async () => {
       createPortraitAnims(this, portraitIds);
-      createTowerTextures(this);
+      createArtTextures(this);
       createBallTextures(this);
       createIconTextures(this);
-      createDecoTextures(this);
       this.label.setText(t('boot.connecting'));
       if (await session) return this.offline();
       this.enterGame();

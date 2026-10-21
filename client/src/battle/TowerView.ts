@@ -21,6 +21,8 @@ export class TowerView {
   private lastFlash = 0;
   private lastHp = -1;
   private awake: boolean;
+  private damaged = false;
+  private readonly side: 'player' | 'enemy';
   /** Punto desde el que sale el disparo (encima de la torre). */
   readonly gy: number;
   /** Y de pantalla de la base. */
@@ -36,6 +38,7 @@ export class TowerView {
     const ty = view.y(t.y);
     this.sy = ty;
     const side = mine ? 'player' : 'enemy';
+    this.side = side;
     // el jugador local siempre ve sus guardianes "azules"
     this.guardian = TOWER_GUARDIANS[mine ? 'blue' : 'red'][t.kind].pokemon;
     this.dir = mine ? 4 : 0;
@@ -127,7 +130,14 @@ export class TowerView {
   }
 
   update(): void {
-    if (this.t.hp !== this.lastHp) this.drawHp();
+    if (this.t.hp !== this.lastHp) {
+      this.drawHp();
+      // por debajo de media vida se ve agrietada (con almenas rotas y estandarte roto)
+      if (!this.damaged && this.t.alive && this.t.hp < this.t.maxHp * 0.5) {
+        this.damaged = true;
+        this.base.setTexture(`tower_${this.t.kind}_${this.side}_dmg`);
+      }
+    }
   }
 
   private drawHp(): void {

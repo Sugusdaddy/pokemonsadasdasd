@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BALLS, COLORS, PACK, TOWER_GUARDIANS, type AnimName, type BallConfig } from '@arena/shared';
+import { BALLS, PACK, TOWER_GUARDIANS, type AnimName, type BallConfig } from '@arena/shared';
 
 // Los sprites vienen de los atlas que genera `npm run assets` en public/gen/.
 export const GEN = 'gen/';
@@ -158,73 +158,6 @@ export function portraitSprite(scene: Phaser.Scene, x: number, y: number, id: nu
 const gfx = (scene: Phaser.Scene) => scene.make.graphics({ x: 0, y: 0 }, false);
 type G = Phaser.GameObjects.Graphics;
 type Pt = { x: number; y: number };
-
-export function createTowerTextures(scene: Phaser.Scene): void {
-  if (scene.textures.exists('tower_rubble')) return;
-  const make = (key: string, w: number, h: number, col: number, king: boolean) => {
-    const g = gfx(scene);
-    const stone = 0xa3a5b4,
-      dark = 0x4b4d5e,
-      light = 0xc9cbd8;
-    const bodyTop = king ? 22 : 18;
-    g.fillStyle(0x000000, 0.25).fillEllipse(w / 2, h - 10, w * 0.95, 18);
-    g.fillStyle(dark).fillRoundedRect(4, bodyTop, w - 8, h - bodyTop - 8, 10);
-    g.fillStyle(stone).fillRoundedRect(8, bodyTop + 2, w - 16, h - bodyTop - 16, 8);
-    g.lineStyle(2, dark, 0.45);
-    for (let y = bodyTop + 16; y < h - 16; y += 14) {
-      g.lineBetween(10, y, w - 10, y);
-      const off = ((y / 14) | 0) % 2 ? 0 : 12;
-      for (let x = 14 + off; x < w - 12; x += 24) g.lineBetween(x, y, x, y + 14);
-    }
-    g.fillStyle(dark);
-    const n = king ? 5 : 4;
-    const cw = (w - 16) / (n * 2 - 1);
-    for (let i = 0; i < n; i++) g.fillRect(8 + i * 2 * cw, bodyTop - 12, cw, 14);
-    g.fillStyle(light);
-    for (let i = 0; i < n; i++) g.fillRect(10 + i * 2 * cw, bodyTop - 10, cw - 4, 10);
-    g.fillStyle(col).fillRect(8, bodyTop + 4, w - 16, 10);
-    g.fillStyle(0xffffff, 0.35).fillRect(8, bodyTop + 4, w - 16, 3);
-    if (king) {
-      g.fillStyle(0xffc21a);
-      g.fillPoints(
-        [
-          { x: w / 2 - 14, y: h - 52 },
-          { x: w / 2 - 14, y: h - 64 },
-          { x: w / 2 - 7, y: h - 57 },
-          { x: w / 2, y: h - 68 },
-          { x: w / 2 + 7, y: h - 57 },
-          { x: w / 2 + 14, y: h - 64 },
-          { x: w / 2 + 14, y: h - 52 },
-        ],
-        true,
-      );
-    }
-    g.fillStyle(0x2a2233).fillRoundedRect(w / 2 - 10, h - 40, 20, 24, { tl: 10, tr: 10, bl: 0, br: 0 });
-    g.generateTexture(key, w, h);
-    g.destroy();
-  };
-  for (const [team, col] of [
-    ['player', COLORS.player],
-    ['enemy', COLORS.enemy],
-  ] as const) {
-    make(`tower_king_${team}`, 112, 104, col, true);
-    make(`tower_princess_${team}`, 84, 84, col, false);
-  }
-  const g = gfx(scene);
-  g.fillStyle(0x000000, 0.25).fillEllipse(44, 60, 84, 18);
-  for (const [x, y, r] of [
-    [20, 50, 14],
-    [42, 46, 18],
-    [64, 52, 13],
-    [32, 58, 11],
-    [56, 60, 12],
-  ]) {
-    g.fillStyle(0x4b4d5e).fillCircle(x, y, r);
-    g.fillStyle(0x8f91a0).fillCircle(x - 2, y - 3, r - 4);
-  }
-  g.generateTexture('tower_rubble', 88, 72);
-  g.destroy();
-}
 
 /** Pokéballs: textura completa + mitad superior e inferior (para la animación de apertura). */
 export function createBallTextures(scene: Phaser.Scene): void {
@@ -600,88 +533,4 @@ export function createIconTextures(scene: Phaser.Scene): void {
     8,
     8,
   );
-}
-
-/** Decoraciones de arena dibujadas por código. */
-export function createDecoTextures(scene: Phaser.Scene): void {
-  if (scene.textures.exists('deco_tree')) return;
-  const make = (key: string, draw: (g: G) => void, w = 64, h = 72) => {
-    const g = gfx(scene);
-    draw(g);
-    g.generateTexture(key, w, h);
-    g.destroy();
-  };
-  const shadow = (g: G, w: number, h: number) => g.fillStyle(0x000000, 0.22).fillEllipse(w / 2, h - 8, w * 0.8, 14);
-  make('deco_tree', (g) => {
-    shadow(g, 64, 72);
-    g.fillStyle(0x6e4c1e).fillRect(28, 44, 9, 22);
-    g.fillStyle(0x1f5a1c).fillCircle(32, 30, 24);
-    g.fillStyle(0x2f8a2a).fillCircle(28, 26, 19);
-    g.fillStyle(0x58b84a).fillCircle(24, 20, 9);
-  });
-  make('deco_rock', (g) => {
-    shadow(g, 64, 72);
-    g.fillStyle(0x4b4d5e).fillEllipse(32, 48, 52, 34);
-    g.fillStyle(0x8f91a0).fillEllipse(28, 44, 40, 24);
-    g.fillStyle(0xc6c8d4).fillEllipse(22, 38, 14, 8);
-  });
-  make('deco_grave', (g) => {
-    shadow(g, 64, 72);
-    g.fillStyle(0x2a2440).fillRoundedRect(16, 18, 32, 46, { tl: 16, tr: 16, bl: 2, br: 2 });
-    g.fillStyle(0x9a93b8).fillRoundedRect(19, 21, 26, 40, { tl: 13, tr: 13, bl: 2, br: 2 });
-    g.fillStyle(0x5c5480).fillRect(30, 28, 4, 18).fillRect(24, 33, 16, 4);
-  });
-  make('deco_ice', (g) => {
-    shadow(g, 64, 72);
-    g.fillStyle(0x2f8aa8).fillPoints(
-      [
-        { x: 14, y: 64 },
-        { x: 22, y: 20 },
-        { x: 34, y: 6 },
-        { x: 44, y: 24 },
-        { x: 52, y: 64 },
-      ],
-      true,
-    );
-    g.fillStyle(0x8fe0f5).fillPoints(
-      [
-        { x: 18, y: 62 },
-        { x: 24, y: 22 },
-        { x: 34, y: 10 },
-        { x: 34, y: 62 },
-      ],
-      true,
-    );
-    g.fillStyle(0xffffff, 0.8).fillRect(27, 20, 3, 30);
-  });
-  make('deco_lava', (g) => {
-    shadow(g, 64, 72);
-    g.fillStyle(0x2a1610).fillPoints(
-      [
-        { x: 6, y: 66 },
-        { x: 22, y: 26 },
-        { x: 42, y: 26 },
-        { x: 58, y: 66 },
-      ],
-      true,
-    );
-    g.fillStyle(0x4a2a1c).fillPoints(
-      [
-        { x: 12, y: 64 },
-        { x: 24, y: 30 },
-        { x: 32, y: 30 },
-        { x: 28, y: 64 },
-      ],
-      true,
-    );
-    g.fillStyle(0xff6a1f).fillEllipse(32, 27, 22, 8);
-    g.fillStyle(0xffd36a).fillCircle(30, 18, 4).fillCircle(37, 10, 3);
-  });
-  make('deco_pillar', (g) => {
-    shadow(g, 64, 72);
-    g.fillStyle(0x1b2a6b).fillRect(18, 10, 28, 56);
-    g.fillStyle(0xe8e2ff).fillRect(21, 14, 22, 50);
-    g.fillStyle(0xffc21a).fillRect(14, 6, 36, 8).fillRect(14, 60, 36, 6);
-    g.fillStyle(0xb8b2e0).fillRect(26, 14, 3, 50).fillRect(35, 14, 3, 50);
-  });
 }

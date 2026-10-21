@@ -373,6 +373,25 @@ lapras: {
 
 Si la carta usa un Pokémon nuevo, ejecuta `npm run assets` (y `npm test` para comprobar los datos).
 
+## Arte propio en pixel art (Fase 3B)
+
+Todo el escenario es pixel art original, dibujado por código en `client/src/art/` (sin imágenes externas):
+
+- `pixel.ts`: rejilla pequeña con utilidades (rectángulos, líneas, polígonos, tramado, motas con semilla fija y
+  contorno automático) que se convierte en textura a 2x con píxeles duros.
+- `towers.ts`: torre del rey (torreones con tejado del color del equipo, corona y puerta) y de las princesas
+  (almenas, estandartes y aspilleras), para los dos equipos, con **versión dañada** que aparece por debajo de media
+  vida (grietas, almenas rotas, estandarte roto) y escombros al caer.
+- `scenery.ts`: puentes de madera, piedra o basalto con lava; **tres decorados por arena** (robles, pinos, rocas,
+  cristales lunares, lápidas, árboles muertos, pinos nevados, muñecos de nieve, volcanes, obsidiana, columnas,
+  braseros…) y detalles pequeños en el suelo colocados siempre igual en cada arena.
+
+Para cambiar un dibujo, edita su función y recarga: las texturas se regeneran al arrancar.
+
+**Marcos de carta**: adornos en las esquinas según la rareza (remaches en las comunes, escuadras doradas en las raras,
+gemas moradas en las épicas y turquesa en las legendarias), un brillo que recorre las épicas y legendarias de vez en
+cuando y destellos en las legendarias.
+
 ## Arte y modo "solo fans"
 
 Ver [ART_PIPELINE.md](ART_PIPELINE.md): cómo se generan los atlas, la opción `ART.spriteSource = 'fan-only'`

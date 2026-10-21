@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { COLORS, ARENAS, BALLS, CROWNS_FOR_CROWN_BALL, type BallType } from '@arena/shared';
+import { ARENAS, BALLS, CROWNS_FOR_CROWN_BALL, type BallType } from '@arena/shared';
 import { L } from '../../layout';
 import { Profile, type BallSlot } from '../../meta/Profile';
 import { animInfo, portraitSprite } from '../../systems/Assets';
@@ -10,6 +10,7 @@ import { t, arenaName, ballLabel } from '../../i18n';
 import { openModal, toast } from '../Modal';
 import { textPrompt } from '../textPrompt';
 import { Tab, runAction } from './Tab';
+import { BRIDGE_OF, DECO_VARIANTS } from '../../art';
 
 type Txt = Phaser.GameObjects.Text;
 
@@ -68,14 +69,13 @@ export class BattleTab extends Tab {
     }
     g.fillStyle(ar.river).fillRect(x0, y0 + h / 2 - 12, w, 24);
     g.fillStyle(ar.riverLight, 0.6).fillRect(x0, y0 + h / 2 - 3, w, 3);
-    g.fillStyle(COLORS.bridge)
-      .fillRect(x0 + 60, y0 + h / 2 - 18, 50, 36)
-      .fillRect(x0 + w - 110, y0 + h / 2 - 18, 50, 36);
     // sombra interior arriba y abajo
     g.fillStyle(0x000000, 0.18)
       .fillRect(x0, y0, w, 10)
       .fillRect(x0, y0 + h - 10, w, 10);
     R.add(g);
+    for (const bx of [x0 + 85, x0 + w - 85])
+      R.add(s.add.image(bx, y0 + h / 2, `bridge_${BRIDGE_OF[ar.deco]}`).setScale(0.55));
     const towers: Array<[number, number, string]> = [
       [x0 + 85, y0 + 70, 'tower_princess_enemy'],
       [x0 + w - 85, y0 + 70, 'tower_princess_enemy'],
@@ -86,7 +86,11 @@ export class BattleTab extends Tab {
     for (let i = 0; i < 4; i++) {
       R.add(
         s.add
-          .image(x0 + 24 + (i % 2) * (w - 48), y0 + 40 + Math.floor(i / 2) * (h - 70), `deco_${ar.deco}`)
+          .image(
+            x0 + 24 + (i % 2) * (w - 48),
+            y0 + 40 + Math.floor(i / 2) * (h - 70),
+            `deco_${ar.deco}_${i % DECO_VARIANTS}`,
+          )
           .setScale(0.8),
       );
     }

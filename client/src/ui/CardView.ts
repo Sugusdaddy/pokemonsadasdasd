@@ -58,8 +58,137 @@ function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
   ctx.closePath();
 }
 
+/** Remache metálico (cartas comunes). */
+function rivet(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, base: string, light: string): void {
+  ctx.fillStyle = '#0b0d1f';
+  ctx.beginPath();
+  ctx.arc(x, y, r + 1.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = base;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = light;
+  ctx.beginPath();
+  ctx.arc(x - r * 0.35, y - r * 0.35, r * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** Gema en rombo con engaste dorado (épicas y legendarias). */
+function gem(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, col: string, light: string): void {
+  const diamond = (rad: number) => {
+    ctx.beginPath();
+    ctx.moveTo(x, y - rad);
+    ctx.lineTo(x + rad, y);
+    ctx.lineTo(x, y + rad);
+    ctx.lineTo(x - rad, y);
+    ctx.closePath();
+    ctx.fill();
+  };
+  ctx.fillStyle = '#0b0d1f';
+  diamond(r + 3.5);
+  ctx.fillStyle = '#ffc93c';
+  diamond(r + 2);
+  ctx.fillStyle = col;
+  diamond(r);
+  ctx.fillStyle = light;
+  ctx.beginPath();
+  ctx.moveTo(x, y - r);
+  ctx.lineTo(x - r * 0.55, y - r * 0.1);
+  ctx.lineTo(x, y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/** Escuadra dorada en una esquina (raras). sx, sy: hacia dónde abre (±1). */
+function bracket(ctx: CanvasRenderingContext2D, x: number, y: number, sx: number, sy: number): void {
+  for (const [col, wdt] of [
+    ['#0b0d1f', 6],
+    ['#ffd75a', 3],
+  ] as const) {
+    ctx.strokeStyle = col;
+    ctx.lineWidth = wdt;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x, y + sy * 13);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x + sx * 13, y);
+    ctx.stroke();
+  }
+}
+
+/** Adornos de las esquinas según la rareza (quedan en las esquinas del nine-slice, sin deformarse). */
+function ornaments(ctx: CanvasRenderingContext2D, key: string): void {
+  const m = 10;
+  const corners: Array<[number, number, number, number]> = [
+    [m, m, 1, 1],
+    [FW - m, m, -1, 1],
+    [m, FH - m, 1, -1],
+    [FW - m, FH - m, -1, -1],
+  ];
+  for (const [x, y, sx, sy] of corners) {
+    if (key === 'common') rivet(ctx, x, y, 3.2, '#c3cbdb', '#ffffff');
+    else if (key === 'rare') {
+      bracket(ctx, x - sx * 3, y - sy * 3, sx, sy);
+      rivet(ctx, x + sx, y + sy, 2.6, '#ffc93c', '#fff1b8');
+    } else if (key === 'epic') gem(ctx, x, y, 4.5, '#b763ff', '#f0c2ff');
+    else if (key === 'legendary') gem(ctx, x, y, 5, '#2fd6c4', '#d8fffa');
+  }
+}
+
+/** Número de fotogramas del brillo que recorre las épicas y legendarias. */
+const SHINE_FRAMES = 16;
+
+/** Hoja de fotogramas: una franja de luz diagonal que cruza la carta (recortada a su forma). */
+function shineTexture(scene: Phaser.Scene): void {
+  const tex = scene.textures.createCanvas('card_shine', FW * SHINE_FRAMES, FH);
+  if (!tex) return;
+  const ctx = tex.getContext();
+  for (let i = 0; i < SHINE_FRAMES; i++) {
+    const ox = i * FW;
+    ctx.save();
+    rr(ctx, ox + 3, 3, FW - 6, FH - 6, FR);
+    ctx.clip();
+    const p = -0.5 + (i / (SHINE_FRAMES - 1)) * 2; // de fuera a fuera
+    const cx = ox + p * FW;
+    const g = ctx.createLinearGradient(cx - 34, 0, cx + 34, 40);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0.75)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(ox, 0, FW, FH);
+    ctx.restore();
+    tex.add(i, 0, ox, 0, FW, FH);
+  }
+  tex.refresh();
+  scene.anims.create({
+    key: 'card_shine',
+    frames: Array.from({ length: SHINE_FRAMES }, (_, i) => ({ key: 'card_shine', frame: i })),
+    frameRate: 30,
+    repeat: -1,
+  });
+}
+
+/** Destello de 4 puntas (legendarias). */
+function starTexture(scene: Phaser.Scene): void {
+  const tex = scene.textures.createCanvas('card_star', 24, 24);
+  if (!tex) return;
+  const ctx = tex.getContext();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(12, 0);
+  ctx.quadraticCurveTo(13.5, 10.5, 24, 12);
+  ctx.quadraticCurveTo(13.5, 13.5, 12, 24);
+  ctx.quadraticCurveTo(10.5, 13.5, 0, 12);
+  ctx.quadraticCurveTo(10.5, 10.5, 12, 0);
+  ctx.fill();
+  tex.refresh();
+}
+
 function ensureTextures(scene: Phaser.Scene): void {
   if (scene.textures.exists('card_art')) return;
+  shineTexture(scene);
+  starTexture(scene);
   for (const [key, stops] of Object.entries(FRAME)) {
     const tex = scene.textures.createCanvas(`card_frame_${key}`, FW, FH);
     if (!tex) continue;
@@ -83,6 +212,7 @@ function ensureTextures(scene: Phaser.Scene): void {
     ctx.fillStyle = 'rgba(11,13,31,0.85)';
     rr(ctx, 9, 9, FW - 18, FH - 18, FR - 6);
     ctx.fill();
+    ornaments(ctx, key);
     tex.refresh();
     tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
   }
@@ -197,6 +327,48 @@ export function makeCardView(
   }
   c.add(sp);
   c.portrait = sp;
+
+  // brillo que recorre las épicas y legendarias de vez en cuando (cada carta a su ritmo)
+  if (!locked && (card.rarity === 'epic' || card.rarity === 'legendary')) {
+    const legendary = card.rarity === 'legendary';
+    const shine = scene.add
+      .sprite(0, 0, 'card_shine', 0)
+      .setDisplaySize(w, h)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setTint(legendary ? 0xffffff : 0xf0d8ff)
+      .setAlpha(legendary ? 0.8 : 0.6);
+    shine.play({
+      key: 'card_shine',
+      delay: Math.random() * 2000,
+      repeatDelay: (legendary ? 1600 : 2800) + Math.random() * 1200,
+    });
+    c.add(shine);
+    if (legendary && !small) {
+      // destellos que aparecen y se apagan en las esquinas
+      for (const [sx, sy, d] of [
+        [-0.36, -0.34, 0],
+        [0.38, 0.12, 900],
+      ]) {
+        const star = scene.add
+          .image(w * sx, h * sy, 'card_star')
+          .setBlendMode(Phaser.BlendModes.ADD)
+          .setTint(0xd8fffa)
+          .setScale(0);
+        scene.tweens.add({
+          targets: star,
+          scale: Math.max(0.5, w / 160),
+          angle: 90,
+          yoyo: true,
+          repeat: -1,
+          duration: 420,
+          delay: d + Math.random() * 600,
+          repeatDelay: 1900,
+          ease: 'Sine.easeInOut',
+        });
+        c.add(star);
+      }
+    }
+  }
 
   // cinta del nombre
   const fs = Math.max(11, Math.round(h * 0.105));

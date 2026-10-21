@@ -11,6 +11,7 @@ import {
   TOWER_GUARDIANS,
   makeOpponent,
   randomSeed,
+  Rng,
   getCard,
   other,
   type ArenaTheme,
@@ -32,6 +33,7 @@ import { onMatchEnd } from '../net/rewards';
 import type { OnlineSession } from '../net/OnlineSession';
 import { FxPools } from '../battle/Pools';
 import { BattleParticles, FX_DEPTH } from '../battle/Particles';
+import { BRIDGE_OF, DECO_VARIANTS, DETAIL_VARIANTS } from '../art';
 import { riverShader } from '../battle/riverShader';
 import { HIT_STOP, HitStop, heavyHit } from '../battle/juice';
 import { shake } from '../systems/Shake';
@@ -368,22 +370,18 @@ export class BattleScene extends BaseScene {
         .setDepth(1.5);
       this.tweens.add({ targets: glow, alpha: 0.18, yoyo: true, repeat: -1, duration: 1400, ease: 'Sine.easeInOut' });
     }
-    // puentes
-    const b = this.add.graphics().setDepth(2);
+    // puentes (pixel art: madera, piedra o basalto según la arena)
     for (const bx of ARENA.bridges) {
-      const x0 = bx - ARENA.bridgeHalf,
-        y0 = RIVER_TOP - 12,
-        h = ARENA.riverHalf * 2 + 24;
-      b.fillStyle(COLORS.panelDark, 0.35).fillRect(x0 + 4, y0 + 6, ARENA.bridgeHalf * 2, h);
-      b.fillStyle(COLORS.bridge).fillRect(x0, y0, ARENA.bridgeHalf * 2, h);
-      b.lineStyle(2, COLORS.bridgeDark, 1);
-      for (let x = x0 + 10; x < bx + ARENA.bridgeHalf; x += 10) b.lineBetween(x, y0, x, y0 + h);
-      b.fillStyle(COLORS.bridgeDark)
-        .fillRect(x0 - 4, y0, ARENA.bridgeHalf * 2 + 8, 6)
-        .fillRect(x0 - 4, y0 + h - 6, ARENA.bridgeHalf * 2 + 8, 6);
+      this.add
+        .image(bx + 4, ARENA.riverY + 6, 'fx_shadow')
+        .setDisplaySize(ARENA.bridgeHalf * 2 + 20, ARENA.riverHalf * 2 + 30)
+        .setAlpha(0.35)
+        .setDepth(1.8);
+      this.add.image(bx, ARENA.riverY, `bridge_${BRIDGE_OF[th.deco]}`).setDepth(2);
     }
-    // decoración
-    for (const [x, y] of [
+    this.groundDetails();
+    // decoración (variantes según la posición)
+    for (const [i, [x, y]] of [
       [26, 190],
       [694, 190],
       [26, 420],
@@ -394,12 +392,31 @@ export class BattleScene extends BaseScene {
       [694, 980],
       [250, 92],
       [470, 92],
-    ]) {
+    ].entries()) {
       this.add
-        .image(x, y, `deco_${th.deco}`)
+        .image(x, y, `deco_${th.deco}_${(i * 7 + this.match.setup.arena) % DECO_VARIANTS}`)
         .setScale(0.75)
         .setOrigin(0.5, 0.9)
         .setDepth(y - 5);
+    }
+  }
+
+  /** Detalles pequeños en el suelo (hierba, piedras, nieve…), siempre iguales en cada arena. */
+  private groundDetails(): void {
+    const th = this.theme;
+    const rng = new Rng(1000 + this.match.setup.arena * 97);
+    const towers = this.match.towers.map((t) => ({ x: t.x, y: this.view.y(t.y) }));
+    let placed = 0;
+    for (let tries = 0; placed < 28 && tries < 300; tries++) {
+      const x = rng.range(20, W - 20),
+        y = rng.range(ARENA.top + 16, ARENA.bottom - 16);
+      if (Math.abs(y - ARENA.riverY) < ARENA.riverHalf + 18) continue;
+      if (towers.some((t) => Math.abs(t.x - x) < 70 && Math.abs(t.y - y) < 80)) continue;
+      this.add
+        .image(Math.round(x), Math.round(y), `detail_${th.deco}_${rng.int(0, DETAIL_VARIANTS - 1)}`)
+        .setDepth(0.5)
+        .setAlpha(0.9);
+      placed++;
     }
   }
 

@@ -1006,6 +1006,12 @@ Resumen del pack: **362** oficiales, **130** mixtos y **474** de fans (de 966).
 | 1019 | Hydrapple | Fans | Soulja, Emmuffin |
 | 1024 | Terapagos | Fans | G〜 |
 
+## Arte propio del juego
+
+Torres (rey y princesas, con versión dañada y escombros), puentes, decorados de las seis arenas y detalles del
+suelo: **pixel art original de este proyecto**, dibujado por código en `client/src/art/` (sin imágenes de terceros).
+Marcos de carta, iconos, botones y efectos de partículas también se generan por código.
+
 ## Motor
 Phaser 3.80.1: MIT License (ver `vendor/PHASER_LICENSE.md`).
 
