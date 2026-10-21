@@ -6,6 +6,7 @@ import { BallOpenScene } from './scenes/BallOpenScene';
 import { BattleScene } from './scenes/BattleScene';
 import { OnlineScene } from './scenes/OnlineScene';
 import { TvScene } from './scenes/TvScene';
+import { Sfx } from './systems/Sfx';
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -27,3 +28,4 @@ watchLayout(game);
 
 // para depurar desde la consola
 (window as unknown as { __game: Phaser.Game }).__game = game;
+(window as unknown as { __sfx: typeof Sfx }).__sfx = Sfx;

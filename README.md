@@ -402,6 +402,23 @@ cuando y destellos en las legendarias.
 - **Legendarias**: la pantalla se oscurece, sube un haz de luz desde la Pokéball con brasas, la cámara se acerca despacio
   y la carta sube por el haz; al darse la vuelta, destello blanco, onda grande y el cartel de _¡Legendaria!_.
 
+## Sonido y música (Fase 3D)
+
+- **Efectos y música CC0** de Kenney y de Juhani Junkala (ver `CREDITS.md`) en `client/public/audio` (OGG y MP3,
+  unos 4 MB). Los golpes, monedas y cartas tienen varias variantes y un poco de variación de tono para no sonar
+  siempre igual. Música: _Stage Select_ en el menú, _Stage 1_ en batalla y _Boss Fight_ en la prórroga, en bucle.
+- **Mezclador** en Perfil: volumen general, de música y de efectos (10 niveles, se guarda en el navegador). La música
+  **baja sola** mientras suena una fanfarria (revelar cartas, mejorar, coronas, ganar o perder) y casi desaparece en la
+  secuencia de las legendarias.
+- Si un archivo no carga (o el navegador no tiene audio), suena el **sintetizador** de antes.
+- Para cambiar un sonido: descarga los paquetes, edita la tabla de `tools/build-audio.ts` y ejecuta
+
+  ```bash
+  npm run audio -- --src <carpeta con los paquetes descomprimidos>
+  ```
+
+  (necesita ffmpeg). Los paquetes originales no van a git: solo los sonidos elegidos.
+
 ## Arte y modo "solo fans"
 
 Ver [ART_PIPELINE.md](ART_PIPELINE.md): cómo se generan los atlas, la opción `ART.spriteSource = 'fan-only'`

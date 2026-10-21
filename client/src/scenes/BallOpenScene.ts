@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { BALLS, getCard, type BallReward, type BallCardStack, type Rarity } from '@arena/shared';
 import { Profile } from '../meta/Profile';
-import { Sfx } from '../systems/Sfx';
+import { Music, Sfx } from '../systems/Sfx';
 import { makeCardView, RARITY_COLOR, RARITY_CSS } from '../ui/CardView';
 import { fmtNum, sy } from '../ui/style';
 import * as kit from '../ui/kit';
@@ -524,6 +524,7 @@ export class BallOpenScene extends BaseScene {
     const count = kit.text(this, 0, 328, `x${it.count}`, 'hero', '#ffffff', { size: 66 }).setAlpha(0);
     c.add([glow, view, back, name, rar, count]);
     c.setScale(0.18);
+    Sfx.play('cardFly');
     // la legendaria sube recta por el haz; el resto, en arco hacia un lado
     const side = legendary ? 0 : (Math.random() < 0.5 ? -1 : 1) * (140 + Math.random() * 80);
     const spins = legendary ? 1 : 2;
@@ -599,6 +600,8 @@ export class BallOpenScene extends BaseScene {
     this.tweens.add({ targets: beam, alpha: 0.95, duration: 500 });
     this.tweens.add({ targets: beam, displayWidth: 210, yoyo: true, repeat: -1, duration: 260, delay: 500 });
     this.cameras.main.zoomTo(1.12, 1500, 'Sine.easeInOut', true);
+    // la música casi desaparece hasta la revelación
+    Music.duckFor(2.6, 0.15);
     shakeCam(this, 1300, 0.002);
     Sfx.play('wobble');
     // brasas que suben por el haz

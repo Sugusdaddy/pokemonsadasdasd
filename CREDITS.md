@@ -1012,6 +1012,17 @@ Torres (rey y princesas, con versión dañada y escombros), puentes, decorados d
 suelo: **pixel art original de este proyecto**, dibujado por código en `client/src/art/` (sin imágenes de terceros).
 Marcos de carta, iconos, botones y efectos de partículas también se generan por código.
 
+## Sonido y música
+
+Todo con licencia **Creative Commons CC0** (dominio público). No exige atribución, pero se agradece:
+
+- Efectos de **Kenney** (kenney.nl): Interface Sounds, Impact Sounds, RPG Audio, Casino Audio, Music Jingles y
+  Sci-fi Sounds.
+- Música: **Chiptune Adventures**, de **Juhani Junkala** (publicada por SubspaceAudio en opengameart.org):
+  "Stage Select" (menú), "Stage 1" (batalla) y "Boss Fight" (prórroga).
+
+`tools/build-audio.ts` indica qué archivo original se usa para cada sonido del juego.
+
 ## Motor
 Phaser 3.80.1: MIT License (ver `vendor/PHASER_LICENSE.md`).
 

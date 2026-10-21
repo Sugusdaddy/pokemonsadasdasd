@@ -953,6 +953,7 @@ export class BattleScene extends BaseScene {
           this.toast(t('battle.toast.double'), 0xff8af0);
           break;
         case 'overtime':
+          Music.play('overtime');
           this.lastCount = 99;
           this.toast(t('battle.toast.overtime'), 0xffd84a);
           break;

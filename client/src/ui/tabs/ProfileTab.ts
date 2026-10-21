@@ -2,7 +2,8 @@ import type Phaser from 'phaser';
 import { VERSION, allCardKeys } from '@arena/shared';
 import { L, layoutPreference, setLayoutPreference, type LayoutMode } from '../../layout';
 import { Profile } from '../../meta/Profile';
-import { Sfx, Music } from '../../systems/Sfx';
+import { Sfx, Music, DEFAULT_VOLUMES, type Volumes } from '../../systems/Sfx';
+import { panelButton } from './social/common';
 import { levelBadge } from '../style';
 import * as kit from '../kit';
 import { t, arenaName, getLang, setLang, LANGS, type Lang } from '../../i18n';
@@ -70,37 +71,13 @@ export class ProfileTab extends Tab {
     for (const o of sectionHeader(s, rx + 30, y + 10, W - 60, t('profile.settings'))) P.add(o);
     y += 50;
     const settings = Profile.settings;
-    const toggles: Array<[string, 'sfx' | 'music']> = [
-      [t('profile.sfx'), 'sfx'],
-      [t('profile.music'), 'music'],
+    // mezclador: general, música y efectos
+    const mixer: Array<[string, keyof Volumes]> = [
+      [t('profile.volMaster'), 'master'],
+      [t('profile.volMusic'), 'music'],
+      [t('profile.volSfx'), 'sfx'],
     ];
-    toggles.forEach(([label, key]) => {
-      const on = settings[key];
-      P.add(kit.panel(s, rx + 20, y, W - 40, 80, 'dark'));
-      P.add(kit.text(s, rx + 44, y + 38, label, 'h3', '#ffffff', { originX: 0, size: 24 }));
-      const g = s.add.graphics();
-      const sx = rx + W - 160;
-      g.fillStyle(kit.C.ink).fillRoundedRect(sx, y + 17, 118, 46, 23);
-      g.fillStyle(on ? kit.C.good : 0x343d86).fillRoundedRect(sx + 3, y + 20, 112, 40, 20);
-      g.fillStyle(0xffffff, 0.25).fillRoundedRect(sx + 8, y + 23, 102, 12, 6);
-      g.fillStyle(kit.C.ink).fillCircle(sx + (on ? 94 : 24), y + 42, 19);
-      g.fillStyle(0xffffff).fillCircle(sx + (on ? 94 : 24), y + 40, 16);
-      P.add(g);
-      P.add(
-        kit.text(s, sx + (on ? 40 : 76), y + 40, on ? t('common.on') : t('common.off'), 'label', '#ffffff', {
-          size: 16,
-        }),
-      );
-      P.addTap(rx + W / 2, y + 40, W - 40, 80, () => {
-        settings[key] = !settings[key];
-        Profile.saveSettings();
-        Sfx.configure(settings);
-        if (key === 'music' && settings.music) Music.play('lobby');
-        Sfx.play('click');
-        this.rebuild();
-      });
-      y += 94;
-    });
+    for (const [label, key] of mixer) y = this.volumeRow(P, rx, W, y, label, key);
 
     // ── Vibración de pantalla (golpes fuertes, hechizos, torres) ──
     y = this.segmented(
@@ -217,6 +194,52 @@ export class ProfileTab extends Tab {
   }
 
   /** Fila de ajuste con opciones excluyentes (pantalla, idioma). */
+  /** Fila de volumen: − [10 tramos que se pueden tocar] +. */
+  volumeRow(P: ScrollPanel, rx: number, W: number, y: number, label: string, key: keyof Volumes): number {
+    const s = this.scene;
+    const v = Profile.settings.vol?.[key] ?? DEFAULT_VOLUMES[key];
+    const level = Math.round(v * 10);
+    const set = (n: number) => {
+      const vol = { ...DEFAULT_VOLUMES, ...Profile.settings.vol, [key]: Math.max(0, Math.min(10, n)) / 10 };
+      Profile.settings.vol = vol;
+      Profile.saveSettings();
+      Sfx.setVolumes(vol);
+      if (key === 'music') Music.play('lobby');
+      else Sfx.play('select');
+      this.rebuild();
+    };
+    P.add(kit.panel(s, rx + 20, y, W - 40, 80, 'dark'));
+    P.add(kit.text(s, rx + 44, y + 28, label, 'h3', '#ffffff', { originX: 0, size: 23 }));
+    P.add(
+      kit.text(s, rx + 44, y + 58, level ? `${level * 10}%` : t('common.off'), 'label', level ? '#aab3e8' : '#ff9a9a', {
+        originX: 0,
+        size: 16,
+      }),
+    );
+    const n = 10,
+      segW = 16,
+      gap = 4;
+    const barW = n * segW + (n - 1) * gap;
+    const plusX = rx + W - 70,
+      barX = plusX - 40 - barW,
+      minusX = barX - 40;
+    panelButton(P, minusX, y + 40, 52, 48, '-', 'neutral', () => set(level - 1), { size: 26, disabled: level <= 0 });
+    panelButton(P, plusX, y + 40, 52, 48, '+', 'neutral', () => set(level + 1), { size: 26, disabled: level >= 10 });
+    const g = s.add.graphics();
+    const col = key === 'music' ? kit.C.info : key === 'sfx' ? kit.C.good : kit.C.gold;
+    for (let i = 0; i < n; i++) {
+      const x = barX + i * (segW + gap);
+      const h = 14 + i * 2; // tramos cada vez más altos, como un ecualizador
+      g.fillStyle(kit.C.ink).fillRoundedRect(x - 1, y + 58 - h - 1, segW + 2, h + 2, 4);
+      g.fillStyle(i < level ? col : 0x2a3170).fillRoundedRect(x, y + 58 - h, segW, h, 3);
+      if (i < level) g.fillStyle(0xffffff, 0.3).fillRect(x + 2, y + 58 - h + 2, segW - 4, 3);
+      // tocar un tramo pone ese nivel (o lo baja uno si ya era ese)
+      P.addTap(x + segW / 2, y + 40, segW + gap, 60, () => set(level === i + 1 ? i : i + 1));
+    }
+    P.add(g);
+    return y + 94;
+  }
+
   segmented(
     P: ScrollPanel,
     rx: number,

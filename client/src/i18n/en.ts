@@ -687,4 +687,7 @@ export const EN: Record<string, string> = {
   'profile.shake.off': 'Off',
   'profile.shake.low': 'Low',
   'profile.shake.normal': 'Normal',
+  'profile.volMaster': 'General volume',
+  'profile.volMusic': 'Music',
+  'profile.volSfx': 'Sound effects',
 };

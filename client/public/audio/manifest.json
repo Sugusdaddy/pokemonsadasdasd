@@ -1,0 +1,33 @@
+{
+  "sfx": {
+    "click": 1,
+    "select": 2,
+    "noElixir": 1,
+    "emote": 1,
+    "countdown": 1,
+    "fight": 1,
+    "deploy": 3,
+    "hit": 3,
+    "shoot": 3,
+    "boom": 3,
+    "tower": 1,
+    "faint": 1,
+    "coin": 4,
+    "wobble": 2,
+    "open": 1,
+    "cardFly": 3,
+    "card": 3,
+    "rare": 1,
+    "epic": 1,
+    "legendary": 1,
+    "upgrade": 1,
+    "win": 1,
+    "lose": 1,
+    "crown": 1
+  },
+  "music": [
+    "lobby",
+    "battle",
+    "overtime"
+  ]
+}

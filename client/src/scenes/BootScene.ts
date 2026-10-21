@@ -90,6 +90,8 @@ export class BootScene extends BaseScene {
     this.load.once('complete', async () => {
       createPortraitAnims(this, portraitIds);
       createArtTextures(this);
+      // los sonidos cargan en segundo plano (mientras, suena el sintetizador)
+      void Sfx.load();
       createBallTextures(this);
       createIconTextures(this);
       this.label.setText(t('boot.connecting'));

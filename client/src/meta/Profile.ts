@@ -23,6 +23,7 @@ import {
 import { t } from '../i18n';
 import { ensureSession, request, signOut, type AccountView } from '../net/session';
 import type { ShakeLevel } from '../battle/juice';
+import type { Volumes } from '../systems/Sfx';
 
 export type { BallSlot, BattleResult, ProfileState };
 export type ProfileData = ProfileState;
@@ -47,7 +48,12 @@ class ProfileStore {
     wallets: [],
     admin: false,
   };
-  settings: { sfx: boolean; music: boolean; shake: ShakeLevel } = { sfx: true, music: true, shake: 'normal' };
+  /** Ajustes de este navegador. `sfx`/`music` (sí/no) son de versiones antiguas: ahora manda `vol`. */
+  settings: { sfx: boolean; music: boolean; shake: ShakeLevel; vol?: Volumes } = {
+    sfx: true,
+    music: true,
+    shake: 'normal',
+  };
   shop: { offers: CardOffer[]; resetAt: number } = { offers: [], resetAt: 0 };
   /** Diferencia entre la hora del servidor y la de este equipo (los temporizadores usan la del servidor). */
   private offset = 0;
