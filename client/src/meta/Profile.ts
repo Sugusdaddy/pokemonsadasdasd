@@ -20,6 +20,7 @@ import {
   type BallType,
   type BallReward,
 } from '@arena/shared';
+import { t } from '../i18n';
 
 // ─────────────────────────────────────────────────────────────
 //  PERFIL DEL JUGADOR (guardado en el navegador con localStorage)
@@ -107,8 +108,16 @@ function fresh(): ProfileData {
   };
 }
 
+/** Nombre con el que se crea el perfil; se muestra traducido mientras no se cambie. */
+export const DEFAULT_NAME = 'Entrenador';
+
 class ProfileStore {
   d: ProfileData = fresh();
+
+  /** Nombre para mostrar (el por defecto, en el idioma actual). */
+  get displayName(): string {
+    return !this.d.name || this.d.name === DEFAULT_NAME ? t('player.defaultName') : this.d.name;
+  }
 
   /** Se llama en BootScene. */
   init(): void {

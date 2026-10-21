@@ -1,22 +1,29 @@
-import { W, COLORS, type PlayerInfo, type Replay, type Team } from '@arena/shared';
+import type Phaser from 'phaser';
+import type { PlayerInfo, Replay, Team } from '@arena/shared';
+import { L } from '../layout';
 import { api, type LiveMatch, type ReplayMeta } from '../net/api';
 import { Sfx } from '../systems/Sfx';
-import { txt, button, panel } from '../ui/style';
+import * as kit from '../ui/kit';
+import { t } from '../i18n';
 import { toast } from '../ui/Modal';
 import { BaseScene } from './BaseScene';
 import { LAST_REPLAY_KEY } from './BattleScene';
+import { errorText } from './OnlineScene';
 
 const ago = (iso: string): string => {
   const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
-  if (s < 60) return `hace ${s} s`;
-  if (s < 3600) return `hace ${Math.round(s / 60)} min`;
-  if (s < 86400) return `hace ${Math.round(s / 3600)} h`;
-  return `hace ${Math.round(s / 86400)} d`;
+  if (s < 60) return t('tv.agoS', { n: s });
+  if (s < 3600) return t('tv.agoM', { n: Math.round(s / 60) });
+  if (s < 86400) return t('tv.agoH', { n: Math.round(s / 3600) });
+  return t('tv.agoD', { n: Math.round(s / 86400) });
 };
+
+type Chip = [string, number];
 
 /** "TV": partidas en directo para mirar como espectador y repeticiones guardadas. */
 export class TvScene extends BaseScene {
   private list!: Phaser.GameObjects.Container;
+  private loading!: Phaser.GameObjects.Container;
 
   constructor() {
     super('Tv');
@@ -24,13 +31,33 @@ export class TvScene extends BaseScene {
 
   create(): void {
     this.modalOpen = 0;
-    this.cameras.main.setBackgroundColor('#1b1f3a');
-    txt(this, W / 2, 70, 'Arena TV', 52, '#ffd84a');
-    button(this, 90, 70, 120, 70, 'Volver', COLORS.red, () => this.scene.start('Lobby', { tab: 'battle' }), 24);
-    button(this, W - 90, 70, 120, 70, 'Recargar', COLORS.blue, () => this.scene.restart(), 22);
+    kit.menuBackground(this, L.w, L.h);
+    kit.fadeIn(this);
+    const W = L.w;
+    // cabecera
+    const g = this.add.graphics();
+    g.fillGradientStyle(0x1f2660, 0x1f2660, 0x111538, 0x111538, 1).fillRect(0, 0, W, 130);
+    g.fillStyle(kit.C.ink).fillRect(0, 128, W, 4);
+    g.fillStyle(kit.C.gold, 0.55).fillRect(0, 125, W, 2);
+    kit.text(this, W / 2, 62, t('tv.title'), 'hero', '#ffd75a', { size: L.pc ? 60 : 50 });
+    kit.button(this, 90, 64, 140, 72, L.pc ? t('tv.backKey') : t('common.back'), 'danger', () => this.leave(), {
+      size: 22,
+    });
+    kit.button(this, W - 90, 64, 140, 72, t('tv.reload'), 'info', () => this.scene.restart(), { size: 22 });
     this.list = this.add.container(0, 0);
-    this.list.add(txt(this, W / 2, 400, 'Cargando…', 30, '#c9c3ff'));
+    // cargando
+    this.loading = this.add.container(W / 2, 420);
+    const ring = this.add.graphics();
+    ring.lineStyle(6, 0xffffff, 0.15).strokeCircle(0, 0, 40);
+    ring.lineStyle(6, kit.C.gold).beginPath().arc(0, 0, 40, 0, 1.4).strokePath();
+    this.loading.add([ring, kit.text(this, 0, 80, t('tv.loading'), 'h3', '#aab3e8', { size: 26 })]);
+    this.tweens.add({ targets: ring, angle: 360, duration: 900, repeat: -1 });
+    this.input.keyboard?.on('keydown-ESC', () => !this.modalOpen && this.leave());
     void this.load_();
+  }
+
+  private leave(): void {
+    kit.goTo(this, 'Lobby', { tab: 'battle' });
   }
 
   private async load_(): Promise<void> {
@@ -43,59 +70,120 @@ export class TvScene extends BaseScene {
       offline = true;
     }
     if (!this.sys.isActive()) return;
+    this.loading.destroy();
     this.list.removeAll(true);
-    let y = 150;
-    const header = (label: string) => {
-      this.list.add(txt(this, 40, y, label, 30, '#ffffff', { originX: 0 }));
-      y += 50;
+    // columnas: una en móvil; en PC, en directo a la izquierda y repeticiones a la derecha
+    const colW = L.pc ? 820 : 720;
+    const cols = L.pc ? [L.w / 2 - colW - 20, L.w / 2 + 20] : [0, 0];
+    const top = L.pc ? 170 : 160;
+    let x = cols[0];
+    let y = top;
+    const column = (i: number) => {
+      if (!L.pc) return;
+      x = cols[i];
+      y = top;
     };
-    const vs = (p: Record<Team, PlayerInfo>) => `${p.blue.name}  vs  ${p.red.name}${p.red.bot ? ' (bot)' : ''}`;
-    const row = (title: string, sub: string, cta: string, color: number, onTap: () => void) => {
-      this.list.add(panel(this, 30, y, W - 60, 92, 0x2a3170, 16));
-      this.list.add(txt(this, 54, y + 30, title, 22, '#ffffff', { originX: 0 }));
-      this.list.add(txt(this, 54, y + 64, sub, 17, '#c9c3ff', { originX: 0 }));
-      this.list.add(button(this, W - 110, y + 46, 140, 64, cta, color, onTap, 24));
-      y += 108;
+    const header = (label: string, count?: number) => {
+      this.list.add(kit.text(this, x + 34, y, label, 'h2', '#ffffff', { originX: 0, size: 32 }));
+      if (count !== undefined)
+        this.list.add(kit.text(this, x + colW - 34, y + 4, String(count), 'h3', '#7480c0', { originX: 1, size: 24 }));
+      const g = this.add.graphics();
+      g.fillStyle(0xffffff, 0.12).fillRect(x + 34, y + 28, colW - 68, 2);
+      g.fillStyle(kit.C.gold, 0.8).fillRect(x + 34, y + 28, 64, 3);
+      this.list.add(g);
+      y += 56;
+    };
+    const vs = (p: Record<Team, PlayerInfo>) =>
+      t('tv.vs', { a: p.blue.name, b: p.red.bot ? t('battle.bot', { name: p.red.name }) : p.red.name });
+    const chip = (cx: number, cy: number, [label, color]: Chip): number => {
+      const tt = kit.text(this, 0, 0, label, 'label', '#0b0d1f', { size: 15, dropShadow: false });
+      tt.setStroke('#000000', 0);
+      const w = tt.width + 20;
+      const g = this.add.graphics();
+      g.fillStyle(kit.C.ink).fillRoundedRect(cx - 1, cy - 14, w + 2, 28, 14);
+      g.fillStyle(color).fillRoundedRect(cx, cy - 13, w, 26, 13);
+      tt.setPosition(cx + w / 2, cy);
+      this.list.add([g, tt]);
+      return w + 8;
+    };
+    const row = (
+      title: string,
+      sub: string,
+      chips: Chip[],
+      cta: string,
+      variant: kit.ButtonVariant,
+      onTap: () => void,
+    ) => {
+      this.list.add(kit.panel(this, x + 30, y, colW - 60, 96, 'card'));
+      let cx = x + 54;
+      for (const c of chips) cx += chip(cx, y + 26, c);
+      const tt = kit.text(this, cx + 4, y + 26, title, 'label', '#ffffff', { originX: 0, size: 21 });
+      const maxW = x + colW - 220 - (cx + 4);
+      if (tt.width > maxW) tt.setScale(Math.max(0.6, maxW / tt.width));
+      this.list.add(tt);
+      this.list.add(kit.text(this, x + 54, y + 64, sub, 'body', '#aab3e8', { originX: 0, size: 17 }));
+      this.list.add(kit.button(this, x + colW - 120, y + 46, 150, 62, cta, variant, onTap, { size: 22 }));
+      y += 112;
+    };
+    const empty = (msg: string) => {
+      this.list.add(kit.panel(this, x + 30, y, colW - 60, 80, 'inset'));
+      this.list.add(kit.text(this, x + colW / 2, y + 38, msg, 'body', '#7480c0', { size: 20 }));
+      y += 100;
     };
 
     // tu última partida (guardada en este navegador)
     const last = this.lastLocal();
     if (last) {
-      header('Tu última partida');
-      row(vs(last.players), 'Repetición guardada en este navegador', 'Ver', COLORS.green, () =>
-        this.scene.start('Battle', { kind: 'replay', replay: last, players: last.players, back: 'Tv' }),
+      header(t('tv.lastMatch'));
+      row(vs(last.players), t('tv.savedHere'), [[t('tv.chipReplay'), kit.C.info]], t('tv.watch'), 'success', () =>
+        kit.goTo(this, 'Battle', { kind: 'replay', replay: last, players: last.players, back: 'Tv' }),
       );
     }
 
     if (offline) {
-      header('Servidor');
-      this.list.add(txt(this, W / 2, y + 30, 'No hay conexión con el servidor.', 24, '#ff9a9a'));
+      header(t('tv.server'));
+      empty(t('tv.offline'));
       return;
     }
 
-    header('En directo');
-    if (!live.length) {
-      this.list.add(txt(this, 54, y + 10, 'Ahora mismo no hay partidas.', 22, '#9aa0c8', { originX: 0 }));
-      y += 60;
-    }
-    for (const l of live.slice(0, 4)) {
+    header(t('tv.live'), live.length);
+    if (!live.length) empty(t('tv.noLive'));
+    for (const l of live.slice(0, L.pc ? 6 : 3)) {
       row(
         vs(l.players),
-        `${l.mode === 'bot' ? 'Contra bot' : 'Igualada'} · ${l.spectators} mirando`,
-        'Mirar',
-        COLORS.orange,
-        () => this.scene.start('Online', { mode: 'spectate', roomId: l.roomId }),
+        t('tv.watching', { n: l.spectators }),
+        [
+          [t('tv.chipLive'), kit.C.bad],
+          l.mode === 'bot' ? [t('tv.chipBot'), 0xaab3e8] : [t('tv.chipRanked'), kit.C.gold],
+        ],
+        t('tv.spectate'),
+        'primary',
+        () => kit.goTo(this, 'Online', { mode: 'spectate', roomId: l.roomId }),
       );
     }
 
-    header('Repeticiones');
-    if (!replays.length) this.list.add(txt(this, 54, y + 10, 'Todavía no hay ninguna.', 22, '#9aa0c8', { originX: 0 }));
-    for (const r of replays.slice(0, 5)) {
+    column(1);
+    header(t('tv.replays'), replays.length);
+    if (!replays.length) empty(t('tv.noReplays'));
+    for (const r of replays.slice(0, L.pc ? 7 : 3)) {
       const res =
         r.winner === 'draw' || !r.winner
-          ? 'Empate'
-          : `Gana ${r.players[r.winner].name} ${r.crowns.blue}-${r.crowns.red}`;
-      row(vs(r.players), `${res} · ${ago(r.endedAt)}`, 'Ver', COLORS.blue, () => void this.watch(r));
+          ? t('result.draw')
+          : t('tv.wonBy', { name: r.players[r.winner].name, b: r.crowns.blue, r: r.crowns.red });
+      row(
+        vs(r.players),
+        `${res} · ${ago(r.endedAt)}`,
+        [
+          r.mode === 'bot'
+            ? [t('tv.chipBot'), 0xaab3e8]
+            : r.mode === 'friendly'
+              ? [t('tv.chipFriendly'), kit.C.info]
+              : [t('tv.chipRanked'), kit.C.gold],
+        ],
+        t('tv.watch'),
+        'info',
+        () => void this.watch(r),
+      );
     }
   }
 
@@ -103,9 +191,9 @@ export class TvScene extends BaseScene {
     try {
       const rep = await api.replay(r.id);
       Sfx.play('select');
-      this.scene.start('Battle', { kind: 'replay', replay: rep, players: rep.meta.players, back: 'Tv' });
+      kit.goTo(this, 'Battle', { kind: 'replay', replay: rep, players: rep.meta.players, back: 'Tv' });
     } catch (err) {
-      toast(this, (err as Error).message, '#ff9a9a');
+      toast(this, errorText(err as Error), '#ff9a9a');
     }
   }
 

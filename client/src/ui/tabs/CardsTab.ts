@@ -1,15 +1,31 @@
-import { W, COLORS, ARENAS, getCard, allCardKeys } from '@arena/shared';
+import { getCard, allCardKeys } from '@arena/shared';
+import { L } from '../../layout';
 import { Profile } from '../../meta/Profile';
 import { Sfx } from '../../systems/Sfx';
 import { makeCardView, type CardView } from '../CardView';
 import { openCardPopup } from '../CardPopup';
-import { txt, panel } from '../style';
+import * as kit from '../kit';
+import { t, cardName, arenaName } from '../../i18n';
 import { toast } from '../Modal';
-import { Tab, CONTENT_TOP } from './Tab';
+import { Tab, sectionHeader } from './Tab';
 
 const COLS = [98, 272, 448, 622];
 const CW = 150,
   CH = 180;
+const STEP_X = 176,
+  STEP_Y = 236;
+
+/** Rejilla de cartas: 4 columnas fijas en móvil; en PC, las que quepan en el ancho. */
+function grid(width: number) {
+  const cols = L.pc ? Math.max(4, Math.floor((width - 40) / STEP_X)) : 4;
+  const x0 = Math.round((width - (cols - 1) * STEP_X) / 2);
+  return {
+    cols,
+    x: (i: number) => (L.pc ? x0 + (i % cols) * STEP_X : COLS[i % 4]),
+    row: (i: number) => Math.floor(i / cols),
+    rows: (n: number) => Math.ceil(n / cols),
+  };
+}
 
 export class CardsTab extends Tab {
   // `declare`: no se reinicia tras el build() del constructor de Tab.
@@ -18,123 +34,167 @@ export class CardsTab extends Tab {
   override build(): void {
     const s = this.scene;
     const P = this.scroll();
+    const W = P.w;
+    const G = grid(W);
     const deck = Profile.deck;
-    let y = 10;
+    let y = 24;
 
     // ── Cabecera de mazo + selector de mazos ──
-    P.add(panel(s, 20, y, W - 40, 86, 0x2a3170, 18));
-    P.add(txt(s, 44, y + 43, 'Mazo de batalla', 30, '#ffffff', { originX: 0 }));
+    const avg = deck.reduce((a, k) => a + getCard(k).cost, 0) / deck.length;
+    for (const o of sectionHeader(s, 30, y + 6, W - 60, t('cards.deck'))) P.add(o);
+    P.add(kit.text(s, W - 260, y + 6, t('cards.deckN'), 'label', '#aab3e8', { originX: 1, size: 20 }));
     for (let i = 0; i < 3; i++) {
-      const bx = 500 + i * 70,
+      const bx = W - 200 + i * 66,
         active = Profile.d.activeDeck === i;
-      const g = s.add.graphics();
-      g.fillStyle(COLORS.panelDark).fillRoundedRect(bx - 28, y + 15, 56, 60, 12);
-      g.fillStyle(active ? COLORS.orange : 0x4a4f80).fillRoundedRect(bx - 25, y + 17, 50, 54, 10);
-      P.add(g);
-      P.add(txt(s, bx, y + 44, String(i + 1), 28));
-      P.addTap(bx, y + 44, 60, 64, () => {
-        Sfx.play('select');
-        Profile.d.activeDeck = i;
-        Profile.save();
-        this.swapKey = null;
-        this.rebuild();
-      });
+      const c = s.add.container(bx, y + 4);
+      c.add(kit.panel(s, -27, -27, 54, 52, active ? 'gold' : 'dark'));
+      c.add(kit.text(s, 0, -2, String(i + 1), 'h3', active ? '#ffffff' : '#aab3e8', { size: 26 }));
+      P.add(c);
+      P.addTap(
+        bx,
+        y + 4,
+        60,
+        60,
+        () => {
+          Sfx.play('select');
+          Profile.d.activeDeck = i;
+          Profile.save();
+          this.swapKey = null;
+          this.rebuild();
+        },
+        c,
+      );
     }
-    y += 110;
+    y += 64;
 
     if (this.swapKey) {
-      P.add(panel(s, 20, y, W - 40, 64, 0x6b4a1f, 16));
+      P.add(kit.panel(s, 20, y, W - 40, 64, 'gold'));
       P.add(
-        txt(s, W / 2, y + 32, `Toca la carta que quieres cambiar por ${getCard(this.swapKey).name}`, 21, '#ffd84a'),
+        kit.text(s, W / 2, y + 30, t('cards.swapHint', { name: cardName(getCard(this.swapKey)) }), 'h3', '#ffffff', {
+          size: 22,
+        }),
       );
       P.addTap(W / 2, y + 32, W - 40, 64, () => {
         this.swapKey = null;
         this.rebuild();
       });
-      y += 80;
+      y += 84;
     }
 
     // ── Mazo (8 cartas) ──
     deck.forEach((k, i) => {
-      const cx = COLS[i % 4],
-        cy = y + CH / 2 + Math.floor(i / 4) * 236;
+      const cx = G.x(i),
+        cy = y + CH / 2 + G.row(i) * STEP_Y;
       const v = this.cardView(k, cx, cy);
       P.add(v);
       if (this.swapKey) s.tweens.add({ targets: v, angle: { from: -2, to: 2 }, yoyo: true, repeat: -1, duration: 160 });
-      P.addTap(cx, cy, CW, CH, () => {
-        if (this.swapKey) {
-          Profile.setDeckCard(i, this.swapKey);
-          Sfx.play('deploy');
-          this.swapKey = null;
-          this.rebuild();
-        } else {
-          Sfx.play('click');
-          openCardPopup(s, k, { onChange: () => this.rebuild() });
-        }
-      });
+      P.addTap(
+        cx,
+        cy,
+        CW,
+        CH,
+        () => {
+          if (this.swapKey) {
+            Profile.setDeckCard(i, this.swapKey);
+            Sfx.play('deploy');
+            this.swapKey = null;
+            this.rebuild();
+          } else {
+            Sfx.play('click');
+            openCardPopup(s, k, { onChange: () => this.rebuild() });
+          }
+        },
+        v,
+      );
     });
-    y += 2 * 236 + 4;
-    const avg = deck.reduce((a, k) => a + getCard(k).cost, 0) / deck.length;
-    P.add(txt(s, W / 2, y, `Coste medio de elixir: ${avg.toFixed(1)}`, 24, '#f2b8ff'));
-    y += 50;
+    y += G.rows(deck.length) * STEP_Y + 4;
+    // coste medio con su gota de elixir
+    const avgT = kit.text(s, W / 2 + 14, y, t('cards.avgElixir', { n: avg.toFixed(1) }), 'label', '#f2b8ff', {
+      size: 24,
+    });
+    P.add(
+      s.add
+        .image(W / 2 - avgT.width / 2 - 10, y, 'ui_glow')
+        .setTint(0xd63cf0)
+        .setDisplaySize(40, 40),
+    );
+    P.add(avgT);
+    y += 56;
 
     // ── Colección ──
     const all = allCardKeys();
     const owned = all.filter((k) => Profile.has(k) && !deck.includes(k));
     const locked = all.filter((k) => !Profile.has(k));
-    P.add(panel(s, 20, y, W - 40, 70, 0x2a3170, 18));
-    P.add(txt(s, 44, y + 35, 'Colección', 28, '#ffffff', { originX: 0 }));
-    P.add(
-      txt(s, W - 44, y + 35, `Encontradas: ${all.length - locked.length}/${all.length}`, 22, '#c9c3ff', { originX: 1 }),
-    );
-    y += 92;
+    for (const o of sectionHeader(
+      s,
+      30,
+      y + 6,
+      W - 60,
+      t('cards.collection'),
+      t('cards.found', { n: all.length - locked.length, total: all.length }),
+    ))
+      P.add(o);
+    y += 52;
     owned.forEach((k, i) => {
-      const cx = COLS[i % 4],
-        cy = y + CH / 2 + Math.floor(i / 4) * 236;
-      P.add(this.cardView(k, cx, cy));
-      P.addTap(cx, cy, CW, CH, () => {
-        Sfx.play('click');
-        openCardPopup(s, k, {
-          onChange: () => this.rebuild(),
-          onUse: (key) => {
-            this.swapKey = key;
-            this.rebuild();
-            this.panels[0].set(0);
-            toast(s, 'Elige la carta del mazo a sustituir', '#ffd84a', CONTENT_TOP + 200);
-          },
-        });
-      });
+      const cx = G.x(i),
+        cy = y + CH / 2 + G.row(i) * STEP_Y;
+      const v = this.cardView(k, cx, cy);
+      P.add(v);
+      P.addTap(
+        cx,
+        cy,
+        CW,
+        CH,
+        () => {
+          Sfx.play('click');
+          openCardPopup(s, k, {
+            onChange: () => this.rebuild(),
+            onUse: (key) => {
+              this.swapKey = key;
+              this.rebuild();
+              this.panels[0].set(0);
+              toast(s, t('cards.pickToSwap'), '#ffd84a', this.area.y + 200);
+            },
+          });
+        },
+        v,
+      );
     });
     if (!owned.length) {
-      P.add(txt(s, W / 2, y + 40, 'Abre Pokéballs para conseguir más cartas', 22, '#9aa0c8'));
-      y += 90;
+      P.add(kit.panel(s, 30, y, W - 60, 80, 'inset'));
+      P.add(kit.text(s, W / 2, y + 40, t('cards.openForMore'), 'body', '#aab3e8', { size: 21 }));
+      y += 110;
     } else {
-      y += Math.ceil(owned.length / 4) * 236;
+      y += G.rows(owned.length) * STEP_Y;
     }
 
     if (locked.length) {
-      P.add(txt(s, W / 2, y + 10, 'Por descubrir', 28, '#9aa0c8'));
-      y += 50;
+      for (const o of sectionHeader(s, 30, y + 10, W - 60, t('cards.undiscovered'))) P.add(o);
+      y += 60;
       locked.forEach((k, i) => {
-        const cx = COLS[i % 4],
-          cy = y + CH / 2 + Math.floor(i / 4) * 236;
-        P.add(makeCardView(s, getCard(k), cx, cy, CW, CH, { locked: true }));
+        const cx = G.x(i),
+          cy = y + CH / 2 + G.row(i) * STEP_Y;
+        const v = makeCardView(s, getCard(k), cx, cy, CW, CH, { locked: true });
+        P.add(v);
+        const reachable = getCard(k).arena <= Profile.arena;
         P.add(
-          txt(
-            s,
-            cx,
-            cy + CH / 2 + 22,
-            ARENAS[getCard(k).arena].name,
-            16,
-            getCard(k).arena <= Profile.arena ? '#ffd84a' : '#6b70a0',
-          ),
+          kit.text(s, cx, cy + CH / 2 + 24, arenaName(getCard(k).arena), 'label', reachable ? '#ffd75a' : '#5a64a8', {
+            size: 16,
+          }),
         );
-        P.addTap(cx, cy, CW, CH, () => {
-          Sfx.play('click');
-          openCardPopup(s, k);
-        });
+        P.addTap(
+          cx,
+          cy,
+          CW,
+          CH,
+          () => {
+            Sfx.play('click');
+            openCardPopup(s, k);
+          },
+          v,
+        );
       });
-      y += Math.ceil(locked.length / 4) * 236;
+      y += G.rows(locked.length) * STEP_Y;
     }
     P.setContentHeight(y + 40);
   }

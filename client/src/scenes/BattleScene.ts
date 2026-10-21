@@ -7,10 +7,8 @@ import {
   RULES,
   COLORS,
   ARENAS,
-  BALLS,
   CROWNS_FOR_CROWN_BALL,
   TOWER_GUARDIANS,
-  EMOTES,
   makeOpponent,
   randomSeed,
   getCard,
@@ -38,6 +36,9 @@ import { TowerView } from '../battle/TowerView';
 import { ProjectileView } from '../battle/ProjectileView';
 import { View } from '../battle/View';
 import { LocalSource, OnlineSource, ReplaySource, type BattleSource } from '../battle/sources';
+import { L } from '../layout';
+import { t, arenaName, ballLabel, emoteText } from '../i18n';
+import * as kit from '../ui/kit';
 import { BaseScene } from './BaseScene';
 
 const FLAG = { x: W - 34, y: 104, r: 24 };
@@ -79,7 +80,7 @@ export class BattleScene extends BaseScene {
   private timerT!: Phaser.GameObjects.Text;
   private timerSub!: Phaser.GameObjects.Text;
   private netBanner: Phaser.GameObjects.Container | null = null;
-  private toasts = new Map<string, Phaser.GameObjects.Text>();
+  private toasts = new Map<string, Phaser.GameObjects.Container>();
   private bubbles: Partial<Record<Team, Phaser.GameObjects.Container>> = {};
   /** Cartas enviadas al servidor que aún no se han aplicado. */
   private pendingPlays = new Map<string, { marker: Phaser.GameObjects.Container; at: number }>();
@@ -120,7 +121,7 @@ export class BattleScene extends BaseScene {
           },
         },
         {
-          blue: { name: Profile.d.name, trophies: Profile.d.trophies, kingLevel: Profile.d.kingLevel, bot: false },
+          blue: { name: Profile.displayName, trophies: Profile.d.trophies, kingLevel: Profile.d.kingLevel, bot: false },
           red: { name: opp.name, trophies: opp.trophies, kingLevel: opp.kingLevel, bot: true },
         },
       );
@@ -133,15 +134,15 @@ export class BattleScene extends BaseScene {
 
   preload(): void {
     this.cameras.main.setBackgroundColor('#0d1024');
-    const t = txt(this, W / 2, H / 2 - 40, 'Preparando la arena…', 30);
+    const label = txt(this, L.w / 2, L.h / 2 - 40, t('battle.loading'), 30);
     const bar = this.add.graphics();
     this.load.on('progress', (v: number) => {
       bar.clear();
-      bar.fillStyle(COLORS.panel).fillRoundedRect(W / 2 - 220, H / 2, 440, 26, 10);
-      bar.fillStyle(COLORS.elixir).fillRoundedRect(W / 2 - 220, H / 2, Math.max(16, 440 * v), 26, 10);
+      bar.fillStyle(COLORS.panel).fillRoundedRect(L.w / 2 - 220, L.h / 2, 440, 26, 10);
+      bar.fillStyle(COLORS.elixir).fillRoundedRect(L.w / 2 - 220, L.h / 2, Math.max(16, 440 * v), 26, 10);
     });
     this.load.once('complete', () => {
-      t.destroy();
+      label.destroy();
       bar.destroy();
     });
     const ids = new Set<number>();
@@ -168,6 +169,8 @@ export class BattleScene extends BaseScene {
     this.hand = null;
 
     this.fx = new FxPools(this);
+    // PC: la arena (720 de ancho) queda centrada en la pantalla de 1920
+    this.cameras.main.setScroll(-L.arenaX, 0);
     this.drawArena();
     for (const t of this.match.towers) this.towers.set(t.id, new TowerView(this, t, t.team === this.me, this.view));
     this.overlay = this.add.graphics().setDepth(5).setVisible(false);
@@ -198,9 +201,9 @@ export class BattleScene extends BaseScene {
     const s = d.session;
     s.onReject = (r) => {
       this.clearPending(r.card);
-      if (r.reason === 'elixir') this.toast('¡Te falta elixir!', 0xff8af0);
-      else if (r.reason === 'rate') this.toast('¡Más despacio!', 0xff9a9a);
-      else this.toast('No se pudo jugar la carta', 0xff9a9a);
+      if (r.reason === 'elixir') this.toast(t('battle.toast.noElixir'), 0xff8af0);
+      else if (r.reason === 'rate') this.toast(t('battle.toast.slowDown'), 0xff9a9a);
+      else this.toast(t('battle.toast.rejected'), 0xff9a9a);
       Sfx.play('noElixir');
     };
     s.onState = (st) => this.showNetState(st);
@@ -230,12 +233,12 @@ export class BattleScene extends BaseScene {
     if (!this.canInteract || this.isPending(key)) return false;
     const check = this.match.canPlay(this.me, key, x, y);
     if (check === 'elixir') {
-      this.toast('¡Te falta elixir!', 0xff8af0);
+      this.toast(t('battle.toast.noElixir'), 0xff8af0);
       this.hand?.flashElixir();
       return false;
     }
     if (check !== 'ok') {
-      this.toast('No puedes desplegar ahí', 0xff9a9a);
+      this.toast(t('battle.toast.badZone'), 0xff9a9a);
       Sfx.play('noElixir');
       return false;
     }
@@ -273,8 +276,9 @@ export class BattleScene extends BaseScene {
     this.pendingPlays.delete(card);
   }
 
-  uiHit(p: Phaser.Input.Pointer): boolean {
-    if (this.isPlayer && Math.hypot(p.x - FLAG.x, p.y - FLAG.y) <= FLAG.r + 6) {
+  /** ¿El toque (coordenadas del mundo) cae en el botón de rendirse del móvil? En PC es un botón normal. */
+  uiHit(x: number, y: number): boolean {
+    if (!L.pc && this.isPlayer && Math.hypot(x - FLAG.x, y - FLAG.y) <= FLAG.r + 6) {
       this.confirmSurrender();
       return true;
     }
@@ -309,7 +313,7 @@ export class BattleScene extends BaseScene {
   private drawArena(): void {
     const th = this.theme;
     const g = this.add.graphics().setDepth(0);
-    g.fillStyle(th.edge).fillRect(0, 0, W, H);
+    g.fillStyle(th.edge).fillRect(-L.arenaX, 0, W + 2 * L.arenaX, Math.max(H, L.h));
     for (let y = ARENA.top; y < ARENA.bottom; y += T) {
       for (let x = 0; x < W; x += T) {
         g.fillStyle(((x / T + (y - ARENA.top) / T) | 0) % 2 ? th.grass[0] : th.grass[1]);
@@ -382,58 +386,179 @@ export class BattleScene extends BaseScene {
     return other(this.me);
   }
 
+  /** Coronas: posición de la primera y separación (rival y mía). */
+  private crownLayout = { foe: { x: 32, y: 52, dx: 34, r: 12 }, me: { x: W - 32, y: 52, dx: -34, r: 12 } };
+
   private createHud(): void {
     const P = this.source.players;
-    const g = this.add.graphics().setDepth(5000);
-    g.fillStyle(COLORS.hud).fillRect(0, 0, W, ARENA.top);
-    g.fillStyle(COLORS.panelDark).fillRect(0, ARENA.top - 4, W, 4);
     this.crownG = this.add.graphics().setDepth(5001);
-    txt(this, 20, 22, P[this.foe].name, 20, '#ff9a9a', { originX: 0 }).setDepth(5001);
-    txt(this, W - 20, 22, P[this.me].name, 20, '#9fd0ff', { originX: 1 }).setDepth(5001);
-    g.fillStyle(COLORS.panelDark).fillRoundedRect(W / 2 - 70, 8, 140, 54, 12);
-    this.timerT = txt(this, W / 2, 30, '3:00', 30).setDepth(5001);
-    this.timerSub = txt(this, W / 2, 54, 'Tiempo', 14, '#c9c3ff').setDepth(5001);
+    if (L.pc) {
+      this.createPcPanels();
+      return;
+    }
+    // barra superior (móvil): degradado oscuro, nombres a los lados y reloj en el centro
+    this.add.image(0, 0, 'ui_bg').setOrigin(0, 0).setDisplaySize(W, ARENA.top).setTint(0x8f98d8).setDepth(5000);
+    const g = this.add.graphics().setDepth(5000);
+    g.fillStyle(kit.C.ink).fillRect(0, ARENA.top - 4, W, 4);
+    this.crownLayout = { foe: { x: 30, y: 50, dx: 32, r: 11 }, me: { x: W - 30, y: 50, dx: -32, r: 11 } };
+    txt(this, 16, 20, P[this.foe].name, 20, '#ffb3b8', { originX: 0 }).setDepth(5001);
+    txt(this, W - 16, 20, P[this.me].name, 20, '#b8dcff', { originX: 1 }).setDepth(5001);
+    kit.panel(this, W / 2 - 78, 4, 156, 56, 'inset').setDepth(5000);
+    this.timerT = kit.text(this, W / 2, 26, '3:00', 'number', '#ffffff', { size: 30 }).setDepth(5001);
+    this.timerSub = kit.text(this, W / 2, 50, t('battle.time'), 'small', '#aab3e8', { size: 13 }).setDepth(5001);
     if (this.isPlayer) {
       // botón de rendirse
       const fg = this.add.graphics().setDepth(5001);
-      fg.fillStyle(COLORS.panelDark, 0.75).fillCircle(FLAG.x, FLAG.y, FLAG.r);
+      fg.fillStyle(kit.C.ink, 0.8).fillCircle(FLAG.x, FLAG.y, FLAG.r + 2);
+      fg.fillStyle(kit.C.surface, 0.95).fillCircle(FLAG.x, FLAG.y, FLAG.r);
       this.add
         .image(FLAG.x + 2, FLAG.y, 'ic_flag')
-        .setDisplaySize(30, 30)
+        .setDisplaySize(28, 28)
         .setDepth(5002);
+    }
+  }
+
+  /**
+   * PC: paneles a los lados de la arena (coordenadas del mundo; la cámara está
+   * desplazada L.arenaX a la izquierda). Izquierda: rival, sus coronas, emotes y
+   * rendirse. Derecha: reloj, mis datos y la mano (la dibuja Hand).
+   */
+  private createPcPanels(): void {
+    const P = this.source.players;
+    const LX = -L.arenaX,
+      RX = W,
+      PW = L.arenaX,
+      PH = L.h;
+    const D = 4980;
+    // fondo de los paneles: degradado, patrón y sombra contra la arena
+    for (const x of [LX, RX]) {
+      this.add.image(x, 0, 'ui_bg').setOrigin(0, 0).setDisplaySize(PW, PH).setTint(0x9aa2dc).setDepth(D);
+      this.add.tileSprite(x, 0, PW, PH, 'ui_stripes').setOrigin(0, 0).setDepth(D);
+    }
+    const edge = this.add.graphics().setDepth(D + 1);
+    edge.fillGradientStyle(kit.C.ink, kit.C.ink, kit.C.ink, kit.C.ink, 0, 0.7, 0, 0.7).fillRect(-40, 0, 40, PH);
+    edge.fillGradientStyle(kit.C.ink, kit.C.ink, kit.C.ink, kit.C.ink, 0.7, 0, 0.7, 0).fillRect(W, 0, 40, PH);
+    edge.fillStyle(kit.C.ink).fillRect(-5, 0, 5, PH).fillRect(W, 0, 5, PH);
+    // franja superior de la arena con su nombre
+    this.add.image(0, 0, 'ui_bg').setOrigin(0, 0).setDisplaySize(W, ARENA.top).setTint(0x8f98d8).setDepth(5000);
+    this.add
+      .graphics()
+      .setDepth(5000)
+      .fillStyle(kit.C.ink)
+      .fillRect(0, ARENA.top - 4, W, 4);
+    kit.text(this, W / 2, ARENA.top / 2 - 2, arenaName(this.match.setup.arena), 'h3', '#ffd75a').setDepth(5001);
+
+    const lcx = LX + PW / 2,
+      rcx = RX + PW / 2;
+    const player = (cx: number, y: number, info: PlayerInfo, variant: 'red' | 'blue', label: string) => {
+      kit.panel(this, cx - 260, y, 520, 200, variant).setDepth(D + 2);
+      kit.panel(this, cx - 120, y - 18, 240, 40, 'dark').setDepth(D + 3);
+      kit.text(this, cx, y + 2, label, 'label', '#ffffff', { size: 20 }).setDepth(D + 4);
+      levelBadge(this, cx - 190, y + 100, info.kingLevel, 36).forEach((o) => o.setDepth(D + 4));
+      kit
+        .text(this, cx - 138, y + 82, info.bot ? t('battle.bot', { name: info.name }) : info.name, 'h2', '#ffffff', {
+          size: 32,
+          originX: 0,
+        })
+        .setDepth(D + 4);
+      kit.pill(this, cx - 140, y + 140, 170, 'ic_trophy', String(info.trophies)).root.setDepth(D + 4);
+    };
+    player(lcx, 50, P[this.foe], 'red', this.isPlayer ? t('battle.opponent') : t('battle.top'));
+    kit.panel(this, lcx - 200, 280, 400, 110, 'inset').setDepth(D + 2);
+
+    // reloj
+    kit.panel(this, rcx - 190, 30, 380, 170, 'dark').setDepth(D + 2);
+    kit.panel(this, rcx - 160, 52, 320, 96, 'inset').setDepth(D + 3);
+    this.timerT = kit.text(this, rcx, 100, '3:00', 'hero', '#ffffff', { size: 66 }).setDepth(D + 4);
+    this.timerSub = kit.text(this, rcx, 172, t('battle.time'), 'label', '#aab3e8', { size: 22 }).setDepth(D + 4);
+    // mis datos y mis coronas
+    kit.panel(this, rcx - 260, 228, 520, 200, 'blue').setDepth(D + 2);
+    kit
+      .text(
+        this,
+        rcx,
+        268,
+        this.isPlayer ? t('battle.you', { name: P[this.me].name }) : P[this.me].name,
+        'h3',
+        '#ffffff',
+        { size: 28 },
+      )
+      .setDepth(D + 4);
+    kit.panel(this, rcx - 200, 306, 400, 100, 'inset').setDepth(D + 3);
+    this.crownLayout = { foe: { x: lcx - 110, y: 336, dx: 110, r: 32 }, me: { x: rcx - 110, y: 358, dx: 110, r: 32 } };
+
+    if (this.isPlayer) {
+      // zona de la mano y zona de emotes/rendirse
+      kit.panel(this, RX + 24, 456, PW - 48, 530, 'dark').setDepth(D + 2);
+      kit.panel(this, LX + 60, 820, PW - 120, 250, 'dark').setDepth(D + 2);
+      button(
+        this,
+        lcx,
+        1010,
+        320,
+        76,
+        t('battle.surrenderKey'),
+        COLORS.red,
+        () => this.confirmSurrender(),
+        24,
+      ).setDepth(5002);
+      kit.text(this, rcx, 1040, t('battle.hints'), 'small', '#aab3e8', { size: 17 }).setDepth(5001);
     }
   }
 
   /** Espectador y repeticiones: etiqueta, velocidad, pausa y salir. */
   private createWatchControls(): void {
-    const bg = this.add.graphics().setDepth(5000);
-    bg.fillStyle(0x23284d).fillRect(0, ARENA.bottom, W, H - ARENA.bottom);
-    bg.fillStyle(COLORS.panelDark).fillRect(0, ARENA.bottom, W, 4);
+    // barra inferior en móvil; columna en el panel derecho en PC
+    const cx = W + L.arenaX / 2;
+    const pos = L.pc
+      ? { label: [cx, 560], exit: [cx, 900], pause: [cx, 680], speed: [cx, 790], bw: 300 }
+      : { label: [W / 2, ARENA.bottom + 40], exit: [110, 1180], pause: [W / 2, 1180], speed: [W - 110, 1180], bw: 170 };
+    if (!L.pc) {
+      const bg = this.add.graphics().setDepth(5000);
+      bg.fillStyle(0x23284d).fillRect(0, ARENA.bottom, W, H - ARENA.bottom);
+      bg.fillStyle(COLORS.panelDark).fillRect(0, ARENA.bottom, W, 4);
+    }
     const src = this.source;
-    const label = src instanceof ReplaySource ? 'REPETICIÓN' : 'EN DIRECTO';
-    txt(this, W / 2, ARENA.bottom + 40, label, 30, src instanceof ReplaySource ? '#ffd84a' : '#ff6a6a').setDepth(5001);
+    const label = src instanceof ReplaySource ? t('battle.watch.replay') : t('battle.watch.live');
+    txt(this, pos.label[0], pos.label[1], label, 30, src instanceof ReplaySource ? '#ffd84a' : '#ff6a6a').setDepth(
+      5001,
+    );
     const back = this.data_.kind === 'replay' && this.data_.back ? this.data_.back : 'Tv';
-    button(this, 110, 1180, 170, 80, 'Salir', COLORS.red, () => this.scene.start(back), 28).setDepth(5002);
+    const exitLabel = L.pc ? t('battle.watch.exitKey') : t('battle.watch.exit');
+    button(
+      this,
+      pos.exit[0],
+      pos.exit[1],
+      pos.bw,
+      80,
+      exitLabel,
+      COLORS.red,
+      () => this.scene.start(back),
+      28,
+    ).setDepth(5002);
+    this.input.keyboard?.on('keydown-ESC', () => {
+      if (!this.modalOpen) this.scene.start(back);
+    });
     if (src instanceof ReplaySource) {
       const pause = button(
         this,
-        W / 2,
-        1180,
-        170,
+        pos.pause[0],
+        pos.pause[1],
+        pos.bw,
         80,
-        'Pausa',
+        t('battle.watch.pause'),
         COLORS.blue,
         () => {
           src.paused = !src.paused;
-          pause.label.setText(src.paused ? 'Seguir' : 'Pausa');
+          pause.label.setText(src.paused ? t('battle.watch.resume') : t('battle.watch.pause'));
         },
         28,
       ).setDepth(5002);
       const speed = button(
         this,
-        W - 110,
-        1180,
-        170,
+        pos.speed[0],
+        pos.speed[1],
+        pos.bw,
         80,
         'x1',
         COLORS.orange,
@@ -443,14 +568,24 @@ export class BattleScene extends BaseScene {
         },
         30,
       ).setDepth(5002);
+      // teclado: espacio pausa, F cambia la velocidad
+      this.input.keyboard?.on('keydown-SPACE', () => {
+        src.paused = !src.paused;
+        pause.label.setText(src.paused ? t('battle.watch.resume') : t('battle.watch.pause'));
+      });
+      this.input.keyboard?.on('keydown-F', () => {
+        src.speed = src.speed >= 4 ? 1 : src.speed * 2;
+        speed.label.setText(`x${src.speed}`);
+      });
+      if (L.pc) txt(this, cx, 960, t('battle.watch.keys'), 18, '#9aa0c8').setDepth(5001);
     }
   }
 
-  private confirmSurrender(): void {
+  confirmSurrender(): void {
     if (this.match.over || this.modalOpen) return;
-    openModal(this, 560, 400, '¿Rendirse?', (box, close) => {
-      box.add(txt(this, 0, -30, 'Perderás la partida y los trofeos.', 26));
-      box.add(button(this, -125, 100, 220, 84, 'Seguir', COLORS.blue, close, 28));
+    openModal(this, 560, 400, t('battle.surrender.title'), (box, close) => {
+      box.add(txt(this, 0, -30, t('battle.surrender.body'), 26));
+      box.add(button(this, -125, 100, 220, 84, t('battle.surrender.keep'), COLORS.blue, close, 28));
       box.add(
         button(
           this,
@@ -458,7 +593,7 @@ export class BattleScene extends BaseScene {
           100,
           220,
           84,
-          'Rendirse',
+          t('battle.surrender'),
           COLORS.red,
           () => {
             close();
@@ -479,12 +614,22 @@ export class BattleScene extends BaseScene {
     g.fillStyle(0x05060f, 0.8).fillRoundedRect(-300, -70, 600, 140, 20);
     c.add(g);
     if (st === 'reconnecting') {
-      c.add(txt(this, 0, -16, 'Conexión perdida', 34, '#ffd84a'));
-      c.add(txt(this, 0, 30, 'Reconectando…', 24));
+      c.add(txt(this, 0, -16, t('battle.net.lost'), 34, '#ffd84a'));
+      c.add(txt(this, 0, 30, t('battle.net.reconnecting'), 24));
     } else {
-      c.add(txt(this, 0, -16, 'No se pudo reconectar', 32, '#ff9a9a'));
+      c.add(txt(this, 0, -16, t('battle.net.failed'), 32, '#ff9a9a'));
       c.add(
-        button(this, 0, 40, 220, 60, 'Volver', COLORS.blue, () => this.scene.start('Lobby', { tab: 'battle' }), 24),
+        button(
+          this,
+          0,
+          40,
+          220,
+          60,
+          t('common.back'),
+          COLORS.blue,
+          () => this.scene.start('Lobby', { tab: 'battle' }),
+          24,
+        ),
       );
     }
     this.netBanner = c;
@@ -492,39 +637,44 @@ export class BattleScene extends BaseScene {
 
   private updateHud(): void {
     const m = this.match;
-    const t = Math.max(0, Math.ceil(m.timeLeft));
-    this.timerT.setText(`${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`);
+    const secs = Math.max(0, Math.ceil(m.timeLeft));
+    this.timerT.setText(`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`);
     const dbl = m.doubleElixir;
-    this.timerSub.setText(m.overtime ? 'Muerte súbita' : dbl ? 'Elixir x2' : 'Tiempo');
+    this.timerSub.setText(m.overtime ? t('battle.suddenDeath') : dbl ? t('battle.double') : t('battle.time'));
     this.timerSub.setColor(dbl ? '#ff8af0' : '#c9c3ff');
-    this.timerT.setColor(t <= 10 ? '#ff6a6a' : '#ffffff');
-    if (t <= 10 && t < this.lastCount && t > 0 && this.started) {
-      this.lastCount = t;
+    this.timerT.setColor(secs <= 10 ? '#ff6a6a' : '#ffffff');
+    if (secs <= 10 && secs < this.lastCount && secs > 0 && this.started) {
+      this.lastCount = secs;
       Sfx.play('countdown');
     }
     const g = this.crownG;
     g.clear();
+    const { foe, me } = this.crownLayout;
     for (let i = 0; i < 3; i++) {
-      drawCrown(g, 32 + i * 34, 52, 12, i < m.crowns[this.foe] ? COLORS.enemy : 0x3b3f63);
-      drawCrown(g, W - 32 - i * 34, 52, 12, i < m.crowns[this.me] ? COLORS.player : 0x3b3f63);
+      drawCrown(g, foe.x + i * foe.dx, foe.y, foe.r, i < m.crowns[this.foe] ? COLORS.enemy : 0x3b3f63);
+      drawCrown(g, me.x + i * me.dx, me.y, me.r, i < m.crowns[this.me] ? COLORS.player : 0x3b3f63);
     }
   }
 
+  /** Rótulo en mitad de la arena (no se repite si ya está en pantalla). */
   private toast(msg: string, color = 0xffffff, y = ARENA.riverY - 90): void {
     if (this.toasts.has(msg)) return;
-    const t = txt(this, W / 2, y, msg, 34, cssColor(color))
-      .setDepth(6000)
-      .setScale(0.5);
-    this.toasts.set(msg, t);
-    this.tweens.add({ targets: t, scale: 1, duration: 200, ease: 'Back.easeOut' });
+    const c = this.add.container(W / 2, y).setDepth(6000);
+    const label = kit.text(this, 0, 0, msg, 'h2', cssColor(color), { size: 32 });
+    const w = Math.min(W - 40, label.width + 70);
+    const bg = kit.panel(this, -w / 2, -34, w, 64, 'dark').setAlpha(0.92);
+    c.add([bg, label]);
+    c.setScale(0.6).setAlpha(0);
+    this.toasts.set(msg, c);
+    this.tweens.add({ targets: c, scale: 1, alpha: 1, duration: 220, ease: 'Back.easeOut' });
     this.tweens.add({
-      targets: t,
-      y: y - 40,
+      targets: c,
+      y: y - 36,
       alpha: 0,
-      delay: 1100,
-      duration: 500,
+      delay: 1250,
+      duration: 450,
       onComplete: () => {
-        t.destroy();
+        c.destroy();
         this.toasts.delete(msg);
       },
     });
@@ -536,15 +686,19 @@ export class BattleScene extends BaseScene {
     const x = mine ? 210 : 510,
       y = mine ? 930 : 200;
     const c = this.add.container(x, y).setDepth(6500);
+    const label = kit.text(this, 0, -2, text, 'body', mine ? '#1f56c4' : '#c8303a', { size: 23, fontStyle: '700' });
+    const w = Math.max(150, label.width + 44);
     const g = this.add.graphics();
-    const w = Math.max(150, text.length * 14 + 40);
-    g.fillStyle(COLORS.panelDark).fillRoundedRect(-w / 2 - 3, -33, w + 6, 66, 18);
-    g.fillStyle(0xffffff).fillRoundedRect(-w / 2, -30, w, 60, 16);
-    g.fillStyle(0xffffff).fillTriangle(mine ? 30 : -30, 26, mine ? 60 : -60, 26, mine ? 70 : -70, 46);
-    c.add(g);
-    c.add(txt(this, 0, 0, text, 22, mine ? '#1f56c4' : '#c8303a', { strokeThickness: 0 }));
+    const tail = mine ? 1 : -1;
+    g.fillStyle(kit.C.ink, 0.35).fillRoundedRect(-w / 2, -28, w, 64, 20);
+    g.fillStyle(kit.C.ink).fillRoundedRect(-w / 2 - 4, -36, w + 8, 68, 22);
+    g.fillTriangle(tail * 26, 26, tail * 62, 26, tail * 74, 50);
+    g.fillStyle(0xffffff).fillRoundedRect(-w / 2, -32, w, 60, 18);
+    g.fillTriangle(tail * 30, 24, tail * 58, 24, tail * 68, 42);
+    g.fillStyle(0xdfe6ff).fillRoundedRect(-w / 2, 8, w, 20, { tl: 0, tr: 0, bl: 18, br: 18 });
+    c.add([g, label]);
     c.setScale(0);
-    this.tweens.add({ targets: c, scale: 1, duration: 200, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: c, scale: 1, duration: 220, ease: 'Back.easeOut' });
     this.tweens.add({ targets: c, alpha: 0, delay: 2200, duration: 300, onComplete: () => c.destroy() });
     this.bubbles[team] = c;
     Sfx.play('emote');
@@ -555,46 +709,60 @@ export class BattleScene extends BaseScene {
   private intro(): void {
     const P = this.source.players;
     const c = this.add.container(0, 0).setDepth(9500);
-    const top = this.add.container(-W, 0),
-      bot = this.add.container(W, 0);
-    const tg = this.add.graphics();
-    tg.fillStyle(0xc8303a).fillRect(0, 280, W, 300);
-    tg.fillStyle(0x000000, 0.2).fillRect(0, 280, W, 12);
-    top.add(tg);
-    const foe = P[this.foe],
-      me = P[this.me];
-    levelBadge(this, 110, 430, foe.kingLevel, 38).forEach((o) => top.add(o));
-    top.add(txt(this, 180, 400, foe.name, 44, '#ffffff', { originX: 0 }));
-    top.add(this.add.image(196, 460, 'ic_trophy').setDisplaySize(40, 40));
-    top.add(txt(this, 226, 460, String(foe.trophies), 28, '#ffd84a', { originX: 0 }));
-    const bg = this.add.graphics();
-    bg.fillStyle(0x1f56c4).fillRect(0, 700, W, 300);
-    bg.fillStyle(0x000000, 0.2).fillRect(0, 700, W, 12);
-    bot.add(bg);
-    levelBadge(this, 110, 850, me.kingLevel, 38).forEach((o) => bot.add(o));
-    bot.add(txt(this, 180, 820, me.name, 44, '#ffffff', { originX: 0 }));
-    bot.add(this.add.image(196, 880, 'ic_trophy').setDisplaySize(40, 40));
-    bot.add(txt(this, 226, 880, String(me.trophies), 28, '#ffd84a', { originX: 0 }));
-    const dim = this.add.rectangle(W / 2, H / 2, W, H, 0x05060f, 0.6);
-    const vs = txt(this, W / 2, 640, 'VS', 120, '#ffd84a').setScale(0);
-    c.add([dim, top, bot, vs]);
-    this.tweens.add({ targets: [top, bot], x: 0, duration: 380, ease: 'Cubic.easeOut' });
+    const dim = this.add.rectangle(W / 2, H / 2, W, H, 0x05060f, L.pc ? 0 : 0.7);
+    // en PC la intro se escala para caber en 1080: las bandas se alargan hasta los bordes
+    const ext = L.pc ? (L.w / (L.h / H) - W) / 2 + 30 : 30;
+    const band = (info: PlayerInfo, y: number, variant: 'red' | 'blue', fromX: number) => {
+      const b = this.add.container(fromX, 0);
+      b.add(kit.panel(this, -ext, y, W + 2 * ext, 230, variant));
+      levelBadge(this, 100, y + 112, info.kingLevel, 42).forEach((o) => b.add(o));
+      b.add(
+        kit.text(this, 168, y + 88, info.bot ? t('battle.bot', { name: info.name }) : info.name, 'h1', '#ffffff', {
+          size: 46,
+          originX: 0,
+        }),
+      );
+      b.add(kit.pill(this, 168, y + 156, 200, 'ic_trophy', String(info.trophies)).root);
+      return b;
+    };
+    const top = band(P[this.foe], 300, 'red', -W - 2 * ext);
+    const bot = band(P[this.me], 760, 'blue', W + 2 * ext);
+    const glow = this.add
+      .image(W / 2, 646, 'ui_glow')
+      .setTint(0xffc93c)
+      .setScale(0)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const vs = kit.text(this, W / 2, 646, 'VS', 'hero', '#ffd75a', { size: 150 }).setScale(0);
+    c.add([dim, top, bot, glow, vs]);
+    this.fitOverlay(c, 0.6);
+    this.tweens.add({ targets: [top, bot], x: 0, duration: 420, ease: 'Cubic.easeOut' });
+    this.tweens.add({
+      targets: glow,
+      scale: 1.6,
+      alpha: { from: 1, to: 0.55 },
+      delay: 320,
+      duration: 420,
+      ease: 'Quad.easeOut',
+    });
     this.tweens.add({
       targets: vs,
       scale: 1,
-      delay: 300,
-      duration: 300,
+      delay: 320,
+      duration: 340,
       ease: 'Back.easeOut',
-      onStart: () => Sfx.play('boom'),
+      onStart: () => {
+        Sfx.play('boom');
+        this.cameras.main.flash(160, 255, 240, 200);
+      },
     });
-    this.time.delayedCall(1900, () => {
-      this.tweens.add({ targets: top, x: -W, duration: 300, ease: 'Cubic.easeIn' });
-      this.tweens.add({ targets: bot, x: W, duration: 300, ease: 'Cubic.easeIn' });
-      this.tweens.add({ targets: [vs, dim], alpha: 0, duration: 300, onComplete: () => c.destroy() });
+    this.time.delayedCall(1950, () => {
+      this.tweens.add({ targets: top, x: -W - 2 * ext, duration: 300, ease: 'Cubic.easeIn' });
+      this.tweens.add({ targets: bot, x: W + 2 * ext, duration: 300, ease: 'Cubic.easeIn' });
+      this.tweens.add({ targets: [vs, dim, glow], alpha: 0, duration: 300, onComplete: () => c.destroy() });
       this.time.delayedCall(250, () => {
         this.go();
         Sfx.play('fight');
-        this.toast('¡A luchar!', 0xffd84a, ARENA.riverY);
+        this.toast(t('battle.fight'), 0xffd84a, ARENA.riverY);
       });
     });
   }
@@ -698,7 +866,7 @@ export class BattleScene extends BaseScene {
           break;
         case 'kingAwake':
           this.towers.get(m.towersBy[ev.team].king.id)?.onAwake();
-          this.toast(ev.team === this.me ? '¡Tu torre del rey despierta!' : '¡El rey rival despierta!', 0xffd84a);
+          this.toast(ev.team === this.me ? t('battle.toast.myKing') : t('battle.toast.foeKing'), 0xffd84a);
           break;
         case 'towerDestroyed':
           this.towers.get(ev.id)?.onDestroyed(this.fx);
@@ -710,22 +878,22 @@ export class BattleScene extends BaseScene {
             this.toast(
               this.isPlayer
                 ? mine
-                  ? '¡Corona para ti!'
-                  : 'El rival gana una corona'
-                : `Corona para ${this.source.players[ev.team].name}`,
+                  ? t('battle.toast.myCrown')
+                  : t('battle.toast.foeCrown')
+                : t('battle.toast.crownFor', { name: this.source.players[ev.team].name }),
               this.teamColor(ev.team),
             );
           }
           break;
         case 'doubleElixir':
-          this.toast('¡Elixir x2!', 0xff8af0);
+          this.toast(t('battle.toast.double'), 0xff8af0);
           break;
         case 'overtime':
           this.lastCount = 99;
-          this.toast('¡Tiempo extra! Muerte súbita', 0xffd84a);
+          this.toast(t('battle.toast.overtime'), 0xffd84a);
           break;
         case 'emote':
-          this.emote(ev.team, EMOTES[ev.id] ?? '…');
+          this.emote(ev.team, emoteText(ev.id));
           break;
         case 'end':
           this.hand?.hideGhost();
@@ -799,96 +967,138 @@ export class BattleScene extends BaseScene {
     });
 
     const c = this.add.container(0, 0).setDepth(9000);
-    const g = this.add.graphics();
-    g.fillStyle(0x05060f, 0.78).fillRect(0, 0, W, H);
-    c.add(g);
-    const title = outcome === 'win' ? '¡VICTORIA!' : outcome === 'loss' ? 'DERROTA' : 'EMPATE';
-    const color = outcome === 'win' ? '#ffd84a' : outcome === 'loss' ? '#ff9a9a' : '#ffffff';
-    const tt = txt(this, W / 2, 200, title, 84, color).setScale(0);
-    c.add(tt);
-    this.tweens.add({ targets: tt, scale: 1, duration: 400, ease: 'Back.easeOut' });
+    // en PC el fondo oscuro lo pone fitOverlay a pantalla completa
+    if (!L.pc) c.add(this.add.rectangle(W / 2, H / 2, W, H, 0x05060f, 0.82));
+    this.fitOverlay(c, 0.82);
+    const tone = outcome === 'win' ? 0xffc93c : outcome === 'loss' ? 0xff5a64 : 0xaab3e8;
+    const title = outcome === 'win' ? t('result.victory') : outcome === 'loss' ? t('result.defeat') : t('result.draw');
+    this.resultHeader(c, title, tone, outcome === 'win');
     this.drawScore(c, P);
 
-    // recompensas
-    let y = 620;
-    const row = (icon: string, label: string, value: string, col: string) => {
-      const rg = this.add.graphics();
-      rg.fillStyle(COLORS.panel).fillRoundedRect(80, y - 40, W - 160, 80, 18);
-      c.add(rg);
-      c.add(this.add.image(140, y, icon).setDisplaySize(54, 54));
-      c.add(txt(this, 190, y, label, 26, '#c9c3ff', { originX: 0 }));
-      const vt = txt(this, W - 110, y, value, 34, col, { originX: 1 });
-      c.add(vt);
+    // recompensas: entran una a una
+    let y = 640;
+    let i = 0;
+    const row = (icon: string, label: string, value: string, col: string, count?: number) => {
+      const r = this.add.container(0, 0).setAlpha(0);
+      r.add(kit.panel(this, 70, y - 42, W - 140, 84, 'card'));
+      r.add(kit.panel(this, 84, y - 34, 68, 64, 'inset'));
+      r.add(this.add.image(118, y - 2, icon).setDisplaySize(50, 50));
+      r.add(kit.text(this, 172, y - 2, label, 'body', '#dfe4ff', { size: 22, originX: 0 }));
+      const vt = kit.text(this, W - 96, y - 2, value, 'number', col, { size: 34, originX: 1 });
+      r.add(vt);
+      c.add(r);
+      r.x = 40;
+      this.tweens.add({ targets: r, x: 0, alpha: 1, delay: 650 + i * 160, duration: 260, ease: 'Cubic.easeOut' });
+      if (count !== undefined) {
+        const o = { v: 0 };
+        this.tweens.add({
+          targets: o,
+          v: count,
+          delay: 750 + i * 160,
+          duration: 600,
+          ease: 'Cubic.easeOut',
+          onUpdate: () => vt.setText(`${count >= 0 ? '+' : ''}${Math.round(o.v)}`),
+        });
+      }
+      i++;
       y += 100;
-      return vt;
     };
-    const tv = row(
+    row(
       'ic_trophy',
-      'Trofeos',
-      `${res.trophies >= 0 ? '+' : ''}${res.trophies}`,
-      res.trophies >= 0 ? '#ffd84a' : '#ff9a9a',
+      t('result.trophies'),
+      `${res.trophies >= 0 ? '+' : ''}0`,
+      res.trophies >= 0 ? '#ffd75a' : '#ff8a92',
+      res.trophies,
     );
-    tv.setScale(0);
-    this.tweens.add({ targets: tv, scale: 1, delay: 500, duration: 300, ease: 'Back.easeOut' });
-    if (res.gold) row('ic_gold', 'Oro', `+${fmtNum(res.gold)}`, '#ffd84a');
-    row('ic_crown', 'Coronas para la Ball corona', `${Profile.d.crowns}/${CROWNS_FOR_CROWN_BALL}`, '#ffffff');
+    if (res.gold) row('ic_gold', t('result.gold'), `+${fmtNum(res.gold)}`, '#ffd75a');
+    row('ic_crown', t('result.crowns'), `${Profile.d.crowns}/${CROWNS_FOR_CROWN_BALL}`, '#ffffff');
     if (outcome === 'win') {
-      if (res.ball) row(`ball_${res.ball}`, '¡Pokéball ganada!', BALLS[res.ball].label, '#7dff8a');
-      else row('ic_lock', 'Huecos de Pokéball llenos', '—', '#9aa0c8');
+      if (res.ball) row(`ball_${res.ball}`, t('result.ball'), ballLabel(res.ball), '#7dff8a');
+      else row('ic_lock', t('result.slotsFull'), '—', '#aab3e8');
     }
-    if (res.arenaUp) {
-      const at = txt(this, W / 2, y + 10, `¡Nueva arena: ${ARENAS[Profile.arena].name}!`, 34, '#7dff8a');
-      c.add(at);
-      this.tweens.add({ targets: at, scale: 1.1, yoyo: true, repeat: -1, duration: 500 });
-      y += 70;
-    }
-    if (res.kingLevelUp) {
-      c.add(txt(this, W / 2, y + 10, `¡Nivel de rey ${Profile.d.kingLevel}!`, 30, '#ffd84a'));
-      y += 60;
-    }
+    const banner = (msg: string) => {
+      const b = this.add.container(W / 2, y + 6);
+      b.add(kit.panel(this, -280, -32, 560, 64, 'gold'));
+      b.add(kit.text(this, 0, -2, msg, 'h3', '#ffffff', { size: 28 }));
+      b.setScale(0);
+      c.add(b);
+      this.tweens.add({ targets: b, scale: 1, delay: 650 + i++ * 160, duration: 320, ease: 'Back.easeOut' });
+      y += 84;
+    };
+    if (res.arenaUp) banner(t('result.newArena', { name: arenaName(Profile.arena) }));
+    if (res.kingLevelUp) banner(t('result.kingLevel', { n: Profile.d.kingLevel }));
+    const go = () => this.scene.start('Lobby', { tab: 'battle' });
     c.add(
-      button(
-        this,
-        W / 2,
-        Math.min(1190, y + 80),
-        320,
-        100,
-        'OK',
-        COLORS.green,
-        () => this.scene.start('Lobby', { tab: 'battle' }),
-        44,
-      ),
+      button(this, W / 2, Math.min(1190, y + 70), 340, 96, t('common.ok'), COLORS.green, go, 42, {
+        hotkey: L.pc ? 'Enter' : undefined,
+      }),
     );
+    this.input.keyboard?.once('keydown-ENTER', go);
+  }
+
+  /** Título del resultado con rayos de luz detrás (y coronas si se gana). */
+  private resultHeader(c: Phaser.GameObjects.Container, title: string, tone: number, rays: boolean): void {
+    if (rays) {
+      const r = this.add
+        .image(W / 2, 190, 'ui_rays')
+        .setTint(tone)
+        .setAlpha(0.35)
+        .setScale(1.6)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      c.add(r);
+      this.tweens.add({ targets: r, angle: 360, duration: 24000, repeat: -1 });
+    }
+    const glow = this.add
+      .image(W / 2, 190, 'ui_glow')
+      .setTint(tone)
+      .setAlpha(0.5)
+      .setScale(2.4)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const tt = kit.text(this, W / 2, 190, title, 'hero', cssColor(tone), { size: 92 }).setScale(0);
+    c.add([glow, tt]);
+    this.tweens.add({ targets: tt, scale: 1, duration: 460, ease: 'Back.easeOut' });
   }
 
   private drawScore(c: Phaser.GameObjects.Container, P: Record<Team, PlayerInfo>): void {
     const m = this.match;
-    const pg = this.add.graphics();
-    pg.fillStyle(0xc8303a, 0.9).fillRoundedRect(40, 290, W - 80, 120, 20);
-    pg.fillStyle(0x1f56c4, 0.9).fillRoundedRect(40, 420, W - 80, 120, 20);
-    c.add(pg);
-    c.add(txt(this, 70, 350, P[this.foe].name, 30, '#ffffff', { originX: 0 }));
-    c.add(txt(this, 70, 480, P[this.me].name, 30, '#ffffff', { originX: 0 }));
-    const cg = this.add.graphics();
-    for (let i = 0; i < 3; i++) {
-      drawCrown(cg, 530 + i * 48, 350, 18, i < m.crowns[this.foe] ? 0xffc21a : 0x3b3f63);
-      drawCrown(cg, 530 + i * 48, 480, 18, i < m.crowns[this.me] ? 0xffc21a : 0x3b3f63);
-    }
-    c.add(cg);
+    const row = (y: number, team: Team, variant: 'red' | 'blue') => {
+      c.add(kit.panel(this, 40, y - 54, W - 80, 108, variant));
+      c.add(kit.text(this, 76, y - 2, P[team].name, 'h3', '#ffffff', { size: 30, originX: 0 }));
+      const cg = this.add.graphics();
+      for (let k = 0; k < 3; k++) drawCrown(cg, 520 + k * 54, y - 2, 20, k < m.crowns[team] ? 0xffc93c : 0x3b416e);
+      c.add(cg);
+    };
+    row(360, this.foe, 'red');
+    row(486, this.me, 'blue');
   }
 
   /** Resultado para espectadores y repeticiones (sin recompensas). */
   private showWatchResult(winner: Winner): void {
     const P = this.source.players;
     const c = this.add.container(0, 0).setDepth(9000);
-    const g = this.add.graphics();
-    g.fillStyle(0x05060f, 0.78).fillRect(0, 0, W, H);
-    c.add(g);
-    const title = winner === 'draw' ? 'EMPATE' : `Gana ${P[winner].name}`;
-    c.add(txt(this, W / 2, 200, title, 56, '#ffd84a'));
+    if (!L.pc) c.add(this.add.rectangle(W / 2, H / 2, W, H, 0x05060f, 0.82));
+    this.fitOverlay(c, 0.82);
+    const title = winner === 'draw' ? t('result.draw') : t('result.wins', { name: P[winner].name });
+    this.resultHeader(c, title, 0xffc93c, winner !== 'draw');
     this.drawScore(c, P);
     const back = this.data_.kind === 'replay' && this.data_.back ? this.data_.back : 'Tv';
-    c.add(button(this, W / 2, 700, 320, 100, 'Volver', COLORS.green, () => this.scene.start(back), 40));
+    c.add(button(this, W / 2, 700, 340, 96, t('common.back'), COLORS.green, () => this.scene.start(back), 40));
+  }
+
+  /**
+   * Las pantallas superpuestas (intro, resultados) se diseñan a 720×1280. En PC se
+   * escalan para caber en 1080 de alto, centradas, con un fondo oscuro que cubre los lados.
+   */
+  private fitOverlay(c: Phaser.GameObjects.Container, dim: number): void {
+    c.setScrollFactor(0);
+    if (!L.pc) return;
+    const s = L.h / H;
+    c.setScale(s).setPosition((L.w - W * s) / 2, 0);
+    const bd = this.add
+      .rectangle(L.w / 2, L.h / 2, L.w, L.h, 0x05060f, dim)
+      .setScrollFactor(0)
+      .setDepth(c.depth - 1);
+    c.once('destroy', () => bd.destroy());
   }
 
   // ───────────────────────── Bucle ─────────────────────────

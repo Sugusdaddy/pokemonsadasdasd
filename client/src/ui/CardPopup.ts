@@ -1,58 +1,43 @@
-import { T, COLORS, RARITIES, ARENAS, MAX_LEVEL, getCard, cardAtLevel, type Card } from '@arena/shared';
+import { T, MAX_LEVEL, getCard, cardAtLevel, type Card } from '@arena/shared';
 import { Profile } from '../meta/Profile';
 import type { BaseScene } from '../scenes/BaseScene';
 import { Sfx } from '../systems/Sfx';
-import { makeCardView } from './CardView';
-import { txt, button } from './style';
+import { makeCardView, RARITY_COLOR, RARITY_CSS } from './CardView';
+import * as kit from './kit';
+import { t, cardName, cardDesc, arenaName, rarityLabel } from '../i18n';
 import { openModal, toast } from './Modal';
 
-const TYPE_ES: Record<string, string> = {
-  normal: 'Normal',
-  fire: 'Fuego',
-  water: 'Agua',
-  grass: 'Planta',
-  electric: 'Eléctrico',
-  psychic: 'Psíquico',
-  ice: 'Hielo',
-  fighting: 'Lucha',
-  poison: 'Veneno',
-  ground: 'Tierra',
-  flying: 'Volador',
-  bug: 'Bicho',
-  rock: 'Roca',
-  ghost: 'Fantasma',
-  dragon: 'Dragón',
-  dark: 'Siniestro',
-  steel: 'Acero',
-  fairy: 'Hada',
-};
-const SPEED_ES: Record<string, string> = { slow: 'Lenta', medium: 'Media', fast: 'Rápida', veryfast: 'Muy rápida' };
-const TARGET_ES: Record<string, string> = { ground: 'Tierra', any: 'Tierra y aire', buildings: 'Torres' };
-export const typeEs = (t: string): string => TYPE_ES[t] || t;
+/** Nombre traducido de un tipo elemental. */
+export const typeName = (type: string): string => t(`type.${type}`);
 
 type StatRow = [string, string | number, string];
 
 function statRows(c: Card, next: Card | null): StatRow[] {
-  const plus = (a: number, b: number | undefined) => (next && b != null && b > a ? `  +${Math.round(b - a)}` : '');
+  const plus = (a: number, b: number | undefined) => (next && b != null && b > a ? `+${Math.round(b - a)}` : '');
+  const tiles = (n: number) => t('stat.tiles', { n: (n / T).toFixed(1) });
   if (c.type === 'spell') {
     return [
-      ['Daño', c.dmg, plus(c.dmg, next?.dmg)],
-      ['Daño a torres', Math.round(c.dmg * c.towerDmg), plus(c.dmg * c.towerDmg, next ? next.dmg * next.towerDmg : 0)],
-      ['Radio', `${(c.radiusSpell / T).toFixed(1)} casillas`, ''],
-      ['Tipo', typeEs(c.moveType), ''],
+      [t('stat.damage'), c.dmg, plus(c.dmg, next?.dmg)],
+      [
+        t('stat.towerDamage'),
+        Math.round(c.dmg * c.towerDmg),
+        plus(c.dmg * c.towerDmg, next ? next.dmg * next.towerDmg : 0),
+      ],
+      [t('stat.radius'), tiles(c.radiusSpell), ''],
+      [t('stat.type'), typeName(c.moveType), ''],
     ];
   }
   return [
-    ['Vida', c.hp, plus(c.hp, next?.hp)],
-    ['Daño', c.dmg, plus(c.dmg, next?.dmg)],
-    ['Daño por segundo', Math.round(c.dmg / c.hitSpeed), plus(c.dmg / c.hitSpeed, next ? next.dmg / next.hitSpeed : 0)],
-    ['Velocidad de ataque', `${c.hitSpeed} s`, ''],
-    ['Alcance', c.range <= 1.2 * T ? 'Cuerpo a cuerpo' : `${(c.range / T).toFixed(1)} casillas`, ''],
-    ['Velocidad', SPEED_ES[c.speedName] || '—', ''],
-    ['Objetivos', TARGET_ES[c.targets], ''],
-    ['Tipo de ataque', `${typeEs(c.moveType)}${c.splash ? ' · área' : ''}`, ''],
-    ...(c.count > 1 ? [['Cantidad', `x${c.count}`, ''] as StatRow] : []),
-    ...(c.flying ? [['Vuela', 'Sí', ''] as StatRow] : []),
+    [t('stat.hp'), c.hp, plus(c.hp, next?.hp)],
+    [t('stat.damage'), c.dmg, plus(c.dmg, next?.dmg)],
+    [t('stat.dps'), Math.round(c.dmg / c.hitSpeed), plus(c.dmg / c.hitSpeed, next ? next.dmg / next.hitSpeed : 0)],
+    [t('stat.hitSpeed'), t('stat.seconds', { n: c.hitSpeed }), ''],
+    [t('stat.range'), c.range <= 1.2 * T ? t('stat.melee') : tiles(c.range), ''],
+    [t('stat.speed'), t(`speed.${c.speedName}`), ''],
+    [t('stat.targets'), t(`target.${c.targets}`), ''],
+    [t('stat.attackType'), `${typeName(c.moveType)}${c.splash ? ` · ${t('stat.area')}` : ''}`, ''],
+    ...(c.count > 1 ? [[t('stat.count'), `x${c.count}`, ''] as StatRow] : []),
+    ...(c.flying ? [[t('stat.flies'), t('common.yes'), ''] as StatRow] : []),
   ];
 }
 
@@ -64,100 +49,133 @@ export function openCardPopup(
 ): void {
   const base = getCard(key);
   const owned = Profile.has(key);
-  const rar = RARITIES[base.rarity];
-  openModal(scene, 660, 1000, base.name, (box, close) => {
+  const level0 = Profile.level(key);
+  const nStats = statRows(cardAtLevel(key, level0), null).length;
+  // alto: zona de la carta (350) + estadísticas + acciones
+  const H = 350 + Math.ceil(nStats / 2) * 78 + 150;
+  const top = -H / 2;
+  openModal(scene, 680, H, owned ? cardName(base) : '???', (box, close) => {
     const level = Profile.level(key);
     const c = cardAtLevel(key, level);
     const canNext = owned && level < MAX_LEVEL;
     const next = canNext ? cardAtLevel(key, level + 1) : null;
     const need = owned ? Profile.cardsNeeded(key) : 0;
     const have = owned ? Profile.d.cards[key].count : 0;
-    const view = makeCardView(scene, base, -170, -300, 200, 240, {
-      level: owned ? level : null,
-      locked: !owned,
-      progress: owned ? { have, need } : null,
-    });
-    box.add(view);
-    box.add(txt(scene, 40, -400, rar.label, 30, rar.css, { originX: 0 }));
+
+    // ── Carta y descripción ──
     box.add(
-      txt(
-        scene,
-        40,
-        -360,
-        `${typeEs(base.types[0])}${base.types[1] ? ' / ' + typeEs(base.types[1]) : ''}`,
-        22,
-        '#c9c3ff',
-        { originX: 0 },
-      ),
+      makeCardView(scene, base, -175, top + 170, 210, 252, {
+        level: owned ? level : null,
+        locked: !owned,
+        progress: owned ? { have, need } : null,
+      }),
     );
-    box.add(txt(scene, 40, -310, base.desc, 20, '#ffffff', { originX: 0, wordWrap: { width: 260 }, align: 'left' }));
+    const rx = -40;
+    // chip de rareza
+    const rt = kit.text(scene, 0, 0, rarityLabel(base.rarity), 'label', '#ffffff', { size: 22 });
+    const chip = scene.add.graphics();
+    const cw = rt.width + 28;
+    chip.fillStyle(kit.C.ink).fillRoundedRect(rx - 2, top + 44, cw + 4, 40, 20);
+    chip.fillStyle(RARITY_COLOR[base.rarity]).fillRoundedRect(rx, top + 46, cw, 36, 18);
+    chip.fillStyle(0xffffff, 0.3).fillRoundedRect(rx + 6, top + 49, cw - 12, 12, 6);
+    rt.setPosition(rx + cw / 2, top + 64)
+      .setColor('#0b0d1f')
+      .setStroke('#000000', 0)
+      .setShadow(0, 0, '#000', 0);
+    box.add([chip, rt]);
+    const types = base.types.map(typeName).join(' / ');
+    box.add(kit.text(scene, rx + cw + 16, top + 64, types, 'label', '#aab3e8', { originX: 0, size: 20 }));
+    box.add(
+      kit.text(scene, rx, top + 112, cardDesc(base), 'body', '#ffffff', {
+        originX: 0,
+        originY: 0,
+        size: 21,
+        wordWrap: { width: 330 },
+        align: 'left',
+        lineSpacing: 4,
+      }),
+    );
     if (!owned) {
       box.add(
-        txt(scene, 40, -220, `Se consigue en\n${ARENAS[base.arena].name}`, 22, '#ffd84a', {
+        kit.text(scene, rx, top + 270, t('popup.foundIn', { arena: arenaName(base.arena) }), 'label', '#ffd75a', {
           originX: 0,
+          size: 21,
+          wordWrap: { width: 330 },
           align: 'left',
+        }),
+      );
+    } else {
+      box.add(
+        kit.text(scene, rx, top + 270, t('card.level', { n: level }), 'h3', RARITY_CSS[base.rarity], {
+          originX: 0,
+          size: 28,
         }),
       );
     }
 
+    // ── Estadísticas en rejilla de 2 columnas ──
     const rows = statRows(c, Profile.canUpgrade(key) ? next : null);
-    let y = -130;
+    const tw = 300,
+      th = 68,
+      gx = 10,
+      gy = 10;
+    const y0 = top + 350;
     rows.forEach(([label, value, extra], i) => {
-      const g = scene.add.graphics();
-      g.fillStyle(i % 2 ? 0x2a2f5c : 0x30366a).fillRoundedRect(-290, y - 22, 580, 44, 8);
-      box.add(g);
-      box.add(txt(scene, -270, y, label, 22, '#c9c3ff', { originX: 0 }));
-      box.add(txt(scene, 270 - (extra ? 90 : 0), y, String(value), 24, '#ffffff', { originX: 1 }));
-      if (extra) box.add(txt(scene, 270, y, extra, 22, '#7dff8a', { originX: 1 }));
-      y += 48;
+      const x = i % 2 ? gx / 2 : -gx / 2 - tw,
+        y = y0 + Math.floor(i / 2) * (th + gy);
+      box.add(kit.panel(scene, x, y, tw, th - 8, 'inset'));
+      box.add(kit.text(scene, x + 16, y + 18, label, 'small', '#aab3e8', { originX: 0, size: 16 }));
+      box.add(kit.text(scene, x + 16, y + 42, String(value), 'label', '#ffffff', { originX: 0, size: 24 }));
+      if (extra) box.add(kit.text(scene, x + tw - 14, y + 42, extra, 'label', '#7dff9a', { originX: 1, size: 22 }));
     });
 
-    const by = 420;
+    // ── Acciones ──
+    const by = H / 2 - 76;
     if (owned && level < MAX_LEVEL) {
       const gold = Profile.goldNeeded(key);
       const can = Profile.canUpgrade(key);
-      const up = button(
-        scene,
-        onUse ? -150 : 0,
-        by,
-        280,
-        96,
-        can ? `Mejorar ${gold}` : `Faltan ${need - have}`,
-        can ? COLORS.green : 0x5a5f8a,
-        () => {
-          const r = Profile.upgrade(key);
-          if (r.ok) {
-            Sfx.play('upgrade');
-            toast(scene, `¡${base.name} sube a nivel ${r.level}!`, '#7dff8a');
-            if (r.kingLevelUp) toast(scene, `¡Nivel de rey ${Profile.d.kingLevel}!`, '#ffd84a', 500);
-            close();
-            onChange?.();
-          } else {
-            toast(scene, r.reason === 'gold' ? 'Te falta oro' : 'Te faltan cartas', '#ff9a9a');
-          }
-        },
-        26,
-        can ? { icon: 'ic_gold' } : {},
+      box.add(
+        kit.button(
+          scene,
+          onUse ? -160 : 0,
+          by,
+          290,
+          96,
+          can ? t('popup.upgrade', { n: gold }) : t('popup.missing', { n: need - have }),
+          can ? 'success' : 'dark',
+          () => {
+            const r = Profile.upgrade(key);
+            if (r.ok) {
+              Sfx.play('upgrade');
+              toast(scene, t('popup.upgraded', { name: cardName(base), n: r.level }), '#7dff8a');
+              if (r.kingLevelUp) toast(scene, t('result.kingLevel', { n: Profile.d.kingLevel }), '#ffd84a', 500);
+              close();
+              onChange?.();
+            } else {
+              toast(scene, r.reason === 'gold' ? t('common.noGold') : t('popup.noCards'), '#ff9a9a');
+            }
+          },
+          { size: 26, icon: can ? 'ic_gold' : undefined },
+        ),
       );
-      box.add(up);
     } else if (owned) {
-      box.add(txt(scene, onUse ? -150 : 0, by, 'Nivel máximo', 28, '#ffd84a'));
+      box.add(kit.text(scene, onUse ? -160 : 0, by, t('popup.maxLevel'), 'h3', '#ffd75a', { size: 28 }));
     }
     if (onUse && owned) {
       box.add(
-        button(
+        kit.button(
           scene,
-          150,
+          160,
           by,
-          260,
+          270,
           96,
-          'Usar',
-          COLORS.blue,
+          t('popup.use'),
+          'info',
           () => {
             close();
             onUse(key);
           },
-          32,
+          { size: 32 },
         ),
       );
     }

@@ -123,20 +123,23 @@ export interface MatchedMsg {
 
 const isInt = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n);
 
-/** Valida lo que manda el cliente al unirse. Devuelve un error o null. */
+/**
+ * Valida lo que manda el cliente al unirse. Devuelve un código de error (el cliente
+ * lo traduce: ver ERRORS) o null.
+ */
 export function validateJoin(o: Partial<JoinOptions> | undefined): string | null {
-  if (!o || typeof o !== 'object') return 'sin datos';
-  if (typeof o.name !== 'string' || !o.name.trim() || o.name.length > 24) return 'nombre inválido';
-  if (!isInt(o.trophies) || o.trophies < 0 || o.trophies > 100000) return 'trofeos inválidos';
-  if (!isInt(o.kingLevel) || o.kingLevel < 1 || o.kingLevel > 13) return 'nivel de rey inválido';
-  if (!Array.isArray(o.deck) || o.deck.length !== 8) return 'el mazo debe tener 8 cartas';
-  if (new Set(o.deck).size !== 8) return 'cartas repetidas en el mazo';
-  for (const k of o.deck) if (typeof k !== 'string' || !isCardKey(k)) return `carta desconocida: ${String(k)}`;
-  if (!o.levels || typeof o.levels !== 'object') return 'niveles inválidos';
+  if (!o || typeof o !== 'object') return 'err.join.empty';
+  if (typeof o.name !== 'string' || !o.name.trim() || o.name.length > 24) return 'err.join.name';
+  if (!isInt(o.trophies) || o.trophies < 0 || o.trophies > 100000) return 'err.join.trophies';
+  if (!isInt(o.kingLevel) || o.kingLevel < 1 || o.kingLevel > 13) return 'err.join.kingLevel';
+  if (!Array.isArray(o.deck) || o.deck.length !== 8) return 'err.join.deckSize';
+  if (new Set(o.deck).size !== 8) return 'err.join.deckDup';
+  for (const k of o.deck) if (typeof k !== 'string' || !isCardKey(k)) return 'err.join.card';
+  if (!o.levels || typeof o.levels !== 'object') return 'err.join.levels';
   for (const k of o.deck) {
     const lv = o.levels[k];
     const start = RARITIES[getCard(k).rarity].start;
-    if (lv !== undefined && (!isInt(lv) || lv < start || lv > MAX_LEVEL)) return `nivel inválido para ${k}`;
+    if (lv !== undefined && (!isInt(lv) || lv < start || lv > MAX_LEVEL)) return 'err.join.levels';
   }
   return null;
 }

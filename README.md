@@ -6,8 +6,9 @@ Fan game para navegador al estilo de Clash Royale, con sprites de Pokémon del p
 > Clash Royale © Supercell. Este proyecto no está autorizado por ninguna de ellas y pueden pedir que se retire.
 > Mira [Licencias y créditos](#licencias-y-créditos).
 
-Versión 3 (en desarrollo, **Fase 0: base técnica**). Phaser 3 + TypeScript estricto + Vite en un monorepo con la
-simulación de batalla separada del dibujo, preparada para el servidor autoritativo de la Fase 1.
+Versión 3 (en desarrollo, **Fase 1: online**). Juego para navegador de **PC** (horizontal, ratón y teclado) que
+también se adapta a **móvil** (vertical, táctil). Phaser 3 + TypeScript estricto + Vite en un monorepo, con la
+simulación de batalla en `/shared` y un servidor autoritativo con Colyseus.
 
 ## Arrancarlo
 
@@ -17,13 +18,19 @@ Necesitas **Node 18.18 o superior** (recomendado Node 22 LTS).
 2. `npm install`
 3. `npm run dev` → abre `http://localhost:5173`
 
-La primera vez, `npm run dev` ejecuta `npm run assets`, que genera los atlas de sprites en `client/public/gen/` (unos 5 s).
+`npm run dev` arranca a la vez el **servidor de juego** (`ws://localhost:2567`) y el **cliente** (Vite, puerto 5173).
+La primera vez genera además los atlas de sprites en `client/public/gen/` (unos 5 s).
+
+Para probar una partida online entre dos jugadores, abre el juego en dos pestañas y pulsa BATALLA en las dos.
+Si el servidor no está en marcha, BATALLA ofrece **jugar sin conexión** contra el bot.
 
 > Para probar rápido: en **Perfil → Modo prueba** tienes +5000 oro, +500 gemas y +300 trofeos.
 
 | Comando                   | Qué hace                                                                             |
 | ------------------------- | ------------------------------------------------------------------------------------ |
-| `npm run dev`             | Servidor de desarrollo con recarga en caliente                                       |
+| `npm run dev`             | Servidor de juego + cliente con recarga en caliente                                  |
+| `npm run dev:server`      | Solo el servidor de juego (puerto 2567, `ARENA_PORT` para cambiarlo)                 |
+| `npm run start:server`    | Servidor sin recarga (producción: usa `PORT`)                                        |
 | `npm run build`           | Build de producción en `client/dist/` (estático, se puede subir a cualquier hosting) |
 | `npm run assets`          | Regenera atlas y `pack.json` desde el pack de sprites                                |
 | `npm run assets:fan-only` | Igual, pero solo con sprites de fans (ver [ART_PIPELINE.md](ART_PIPELINE.md))        |
@@ -32,6 +39,81 @@ La primera vez, `npm run dev` ejecuta `npm run assets`, que genera los atlas de 
 | `npm run typecheck`       | TypeScript en los cuatro proyectos                                                   |
 | `npm run format`          | Prettier                                                                             |
 | `npm run check`           | typecheck + lint + tests                                                             |
+
+## Pantalla y controles
+
+El diseño se elige solo según la forma de la ventana, o se fuerza en **Perfil → Pantalla** (o con `?layout=pc` /
+`?layout=mobile` en la URL). La arena siempre es vertical, como en el original:
+
+- **PC (1920×1080)**: arena en el centro a toda la altura. A la izquierda, el rival, sus coronas, los emotes y el botón
+  de rendirse. A la derecha, el reloj, tus coronas, la mano, la siguiente carta y el elixir. En el menú, barra lateral
+  de pestañas.
+- **Móvil (720×1280)**: el diseño vertical de siempre, con la mano abajo.
+
+| PC                  | Qué hace                                                        |
+| ------------------- | --------------------------------------------------------------- |
+| `1`-`4` o clic      | Elegir carta (se ve dónde caerá al pasar el ratón por la arena) |
+| Clic en la arena    | Desplegarla (también se puede arrastrar la carta)               |
+| Clic derecho / Esc  | Cancelar la carta elegida                                       |
+| `T`                 | Emotes (y luego `1`-`4`)                                        |
+| Esc (sin carta)     | Rendirse                                                        |
+| Espacio / `F`       | En repeticiones: pausa / velocidad x1-x2-x4                     |
+| `1`-`5`, Intro, Esc | En el menú: pestañas, batalla y cerrar ventanas                 |
+
+## Idiomas
+
+El juego está en **inglés** (por defecto) y **español**. Se cambia en **Perfil → Idioma** (se guarda en el navegador)
+o con `?lang=en` / `?lang=es` en la URL.
+
+- Los textos viven en `client/src/i18n/en.ts` y `es.ts`; en el código se usan con `t('clave', { parámetros })`.
+- Cartas, arenas, rarezas, Pokéballs y emotes: en español salen de `/shared`; en inglés, de `en.ts`
+  (`card.<id>.desc`, `arena.<n>`…). Ayudantes: `cardName`, `cardDesc`, `arenaName`, `rarityLabel`, `ballLabel`, `emoteText`.
+- El servidor no manda frases: manda códigos (`err.room.full`, `err.join.deckSize`…) que traduce cada cliente.
+- Un test (`client/test/i18n.test.ts`) falla si a un idioma le falta una clave o si no coinciden los `{parámetros}`.
+- Para añadir otro idioma: copia `en.ts`, tradúcelo y añádelo a `DICTS` y `LANGS` en `client/src/i18n/index.ts`.
+
+## Sistema de diseño
+
+Toda la interfaz sale de `client/src/ui/kit/`:
+
+- `theme.ts`: colores, tipografías (Lilita One para títulos, Rubik para texto), variantes de botón y de panel, medidas.
+- `textures.ts`: paneles, botones (normal, hover, pulsado, deshabilitado), barras, brillos, rayos y la gota de elixir,
+  dibujados con canvas en alta calidad y usados como **nine-slice** (se estiran sin deformar las esquinas).
+- `index.ts`: `text`, `panel`, `button`, `progressBar`, `pill`, `menuBackground` (fondo animado), `fadeIn` y `goTo`
+  (transiciones entre escenas).
+
+`ui/style.ts` mantiene las funciones de siempre (`txt`, `button`, `panel`) dibujadas con el kit. Los sprites de Pokémon
+se escalan como pixel art nítido; la interfaz y los textos se suavizan.
+
+## Online (Fase 1)
+
+```
+ cliente A ──"jugar carta X en (x,y)"──►  servidor (Colyseus)  ◄── cliente B
+                                          · valida mano, elixir, zona y ritmo
+                                          · lo programa 2 ticks después (~100 ms)
+                                          · ejecuta Match (la misma simulación)
+ cliente A ◄──── inputs de cada tick ────  · cada 20 ticks manda una huella del estado ──► cliente B
+```
+
+- **Servidor autoritativo**: los clientes solo mandan intenciones. Como la simulación es determinista, cada cliente la
+  reproduce idéntica a partir de los inputs (`shared/src/net/lockstep.ts`). Si la huella no coincide, el cliente pide
+  una resincronización y se reconstruye.
+- **Retardo de input** de 2 ticks (100 ms), como Clash Royale: mientras llega la confirmación, la carta se marca en la
+  arena y en la mano.
+- **Ritmo**: como mucho 4 cartas por segundo (ráfagas de 3). Lo que no cumple se rechaza con un motivo.
+- **Emparejamiento por trofeos**: ventana de ±100 que crece 50 por segundo de espera (máx. ±2000). A los **20 s** sin
+  rival, partida contra un bot que corre en el servidor. Si en una partida igualada el rival no se conecta en 10 s,
+  entra un bot.
+- **Amistosas**: _Amigo → Crear sala_ da un código de 5 caracteres; el otro jugador usa _Amigo → Unirme con código_.
+- **Reconexión**: si se corta, el cliente reintenta durante 30 s y se pone al día con todos los inputs. Si recargas la
+  página en mitad de una partida, vuelves a ella. Sin volver en 30 s, se pierde la partida.
+- **Repeticiones**: el servidor guarda cada partida (semilla + inputs) en `server/data/replays/`. Se ven en **TV**,
+  con pausa y velocidad. La huella final se comprueba al reproducirlas.
+- **Espectador**: en **TV** aparecen las partidas en directo; se entra con _Mirar_.
+- **API HTTP** (mismo puerto): `/api/health`, `/api/live`, `/api/replays`, `/api/replays/:id`, `/api/friendly/:code`.
+- **Hasta la Fase 2** (cuentas) el mazo, los niveles y los trofeos los manda el cliente y el servidor solo comprueba
+  que sean válidos; las recompensas se siguen calculando en el navegador.
+- Colyseus **0.16** porque la 0.18 exige Node 22. Al pasar a Node 22 se puede actualizar sin cambiar el diseño.
 
 ## Estructura
 
@@ -47,14 +129,21 @@ shared/   TypeScript puro, sin Phaser. Lo usan el cliente, el servidor y los tes
     rng.ts / math.ts   RNG con semilla y matemáticas deterministas
     replay.ts          Repeticiones (semilla + inputs) y partidas bot contra bot
   src/meta/            Pokéballs, camino de trofeos y generación de rivales
+  src/net/             Protocolo cliente-servidor, validación y Lockstep
   test/                Tests de Vitest
 client/   El juego en Phaser (solo dibuja e interpola)
-  src/scenes/          Boot, Lobby (menú), BallOpen (apertura de Pokéball), Battle
-  src/battle/          Vistas de tropas, torres y proyectiles + pools de efectos
+  src/layout.ts        Diseño PC (1920×1080) o móvil (720×1280)
+  src/scenes/          Boot, Lobby (menú), BallOpen, Battle, Online (cola/amistosas), Tv (directo y repeticiones)
+  src/battle/          Vistas de tropas, torres y proyectiles, pools de efectos y fuentes de partida
+                       (local contra bot, online, repetición)
   src/ui/              Mano, cartas, modales, pestañas del menú
   src/meta/Profile.ts  Progreso del jugador (localStorage hasta la Fase 2)
-  src/net/rewards.ts   Punto de enganche al terminar cada partida
-server/   Vacío hasta la Fase 1 (servidor autoritativo)
+  src/net/             Conexión con el servidor (OnlineSession), API HTTP y rewards.ts
+server/   Servidor de juego (Colyseus + Express)
+  src/rooms/MatchRoom.ts  Partida autoritativa (validación, retardo, reconexión, espectadores)
+  src/rooms/QueueRoom.ts  Cola de emparejamiento por trofeos
+  src/replays.ts          Repeticiones en disco
+  test/                   Tests de integración (servidor real + clientes)
 tools/    build-assets.ts (atlas + pack.json), ensure-assets.ts
 ```
 

@@ -8,6 +8,8 @@ interface Tap {
   w: number;
   h: number;
   cb: () => void;
+  /** Objeto que se resalta al pasar el ratón (PC). */
+  hover?: Phaser.GameObjects.Components.Transform & Phaser.GameObjects.GameObject;
 }
 
 /**
@@ -21,6 +23,7 @@ export class ScrollPanel {
   vel = 0;
   readonly content: Phaser.GameObjects.Container;
   private taps: Tap[] = [];
+  private hovered: Tap | null = null;
   private maskG: Phaser.GameObjects.Graphics;
   private down: { y: number; sy: number; moved: boolean; t: number; lastY: number } | null = null;
   private onDown: (p: Pointer) => void;
@@ -47,6 +50,7 @@ export class ScrollPanel {
       this.vel = 0;
     };
     this.onMove = (p) => {
+      if (!p.isDown) this.hoverAt(p);
       if (!this.down || !p.isDown) return;
       const dy = p.y - this.down.y;
       if (Math.abs(dy) > 10) this.down.moved = true;
@@ -89,8 +93,37 @@ export class ScrollPanel {
     return obj;
   }
 
-  addTap(cx: number, cy: number, w: number, h: number, cb: () => void): void {
-    this.taps.push({ x: cx, y: cy, w, h, cb });
+  /** Resalta (escala) el elemento pulsable que hay bajo el ratón. */
+  private hoverAt(p: Pointer): void {
+    let hit: Tap | null = null;
+    if (!this.scene.modalOpen && this.inside(p)) {
+      const lx = p.x - this.x,
+        ly = p.y - this.y + this.scrollY;
+      for (let i = this.taps.length - 1; i >= 0; i--) {
+        const t = this.taps[i];
+        if (Math.abs(lx - t.x) <= t.w / 2 && Math.abs(ly - t.y) <= t.h / 2) {
+          hit = t;
+          break;
+        }
+      }
+    }
+    if (hit === this.hovered) return;
+    const prev = this.hovered?.hover;
+    if (prev?.active) this.scene.tweens.add({ targets: prev, scale: 1, duration: 90 });
+    this.hovered = hit;
+    if (hit?.hover?.active) this.scene.tweens.add({ targets: hit.hover, scale: 1.04, duration: 90 });
+    this.scene.input.setDefaultCursor(hit ? 'pointer' : 'default');
+  }
+
+  addTap(
+    cx: number,
+    cy: number,
+    w: number,
+    h: number,
+    cb: () => void,
+    hover?: Phaser.GameObjects.Components.Transform & Phaser.GameObjects.GameObject,
+  ): void {
+    this.taps.push({ x: cx, y: cy, w, h, cb, hover });
   }
 
   setContentHeight(h: number): void {
@@ -112,6 +145,7 @@ export class ScrollPanel {
 
   destroy(): void {
     const i = this.scene.input;
+    i.setDefaultCursor('default');
     i.off('pointerdown', this.onDown);
     i.off('pointermove', this.onMove);
     i.off('pointerup', this.onUp);

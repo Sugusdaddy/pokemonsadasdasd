@@ -1,49 +1,57 @@
 import type Phaser from 'phaser';
-import { W, H, COLORS, ARENAS, KING_XP, type BallReward } from '@arena/shared';
+import { COLORS, KING_XP, type BallReward } from '@arena/shared';
+import { L } from '../layout';
 import { Profile } from '../meta/Profile';
 import { Music, Sfx } from '../systems/Sfx';
-import { txt, levelBadge, fmtNum } from '../ui/style';
+import { levelBadge, fmtNum } from '../ui/style';
+import * as kit from '../ui/kit';
+import { t } from '../i18n';
 import { BattleTab } from '../ui/tabs/BattleTab';
 import { CardsTab } from '../ui/tabs/CardsTab';
 import { ShopTab } from '../ui/tabs/ShopTab';
 import { RoadTab } from '../ui/tabs/RoadTab';
 import { ProfileTab } from '../ui/tabs/ProfileTab';
-import type { MenuScene, Tab, TabKey } from '../ui/tabs/Tab';
+import { SIDEBAR_W, TOP_BAR, playerName, type MenuScene, type Tab, type TabKey } from '../ui/tabs/Tab';
 import { BaseScene } from './BaseScene';
 
-export const TOP = 112; // alto de la barra superior
-export const NAV_Y = 1136; // inicio de la barra de pestañas
+export const TOP = TOP_BAR; // alto de la barra superior
+export const NAV_Y = 1136; // inicio de la barra de pestañas (móvil)
 
 type TabClass = new (scene: MenuScene) => Tab;
 const TABS: Array<{ key: TabKey; label: string; icon: string; cls: TabClass }> = [
-  { key: 'shop', label: 'Tienda', icon: 'ic_shop', cls: ShopTab },
-  { key: 'cards', label: 'Cartas', icon: 'ic_cards', cls: CardsTab },
-  { key: 'battle', label: 'Batalla', icon: 'ic_battle', cls: BattleTab },
-  { key: 'road', label: 'Camino', icon: 'ic_road', cls: RoadTab },
-  { key: 'profile', label: 'Perfil', icon: 'ic_profile', cls: ProfileTab },
+  { key: 'shop', label: 'nav.shop', icon: 'ic_shop', cls: ShopTab },
+  { key: 'cards', label: 'nav.cards', icon: 'ic_cards', cls: CardsTab },
+  { key: 'battle', label: 'nav.battle', icon: 'ic_battle', cls: BattleTab },
+  { key: 'road', label: 'nav.road', icon: 'ic_road', cls: RoadTab },
+  { key: 'profile', label: 'nav.profile', icon: 'ic_profile', cls: ProfileTab },
 ];
 
 interface NavItem {
   key: TabKey;
   x: number;
+  y: number;
   icon: Phaser.GameObjects.Image;
   label: Phaser.GameObjects.Text;
+  active: Phaser.GameObjects.NineSlice;
+  hover: Phaser.GameObjects.NineSlice;
 }
 
-/** Menú principal con barra superior, contenido por pestañas y navegación inferior. */
+/**
+ * Menú principal con barra superior, contenido por pestañas y navegación:
+ * abajo en móvil, barra lateral a la izquierda en PC.
+ */
 export class LobbyScene extends BaseScene implements MenuScene {
   private tab: Tab | null = null;
   private current: TabKey | null = null;
   private tickT = 0;
-  private topG!: Phaser.GameObjects.Graphics;
   private levelBadgeObjs: Array<Phaser.GameObjects.Graphics | Phaser.GameObjects.Text> | null = null;
   private badgeLevel = -1;
   private nameT!: Phaser.GameObjects.Text;
-  private xpT!: Phaser.GameObjects.Text;
-  private goldT!: Phaser.GameObjects.Text;
-  private gemT!: Phaser.GameObjects.Text;
-  private navG!: Phaser.GameObjects.Graphics;
+  private xpBar!: kit.Bar;
+  private gold!: ReturnType<typeof kit.pill>;
+  private gems!: ReturnType<typeof kit.pill>;
   private navItems: NavItem[] = [];
+  private accent!: Phaser.GameObjects.Graphics;
   private badges!: Phaser.GameObjects.Graphics;
 
   constructor() {
@@ -58,35 +66,48 @@ export class LobbyScene extends BaseScene implements MenuScene {
     this.levelBadgeObjs = null;
     Profile.tickSlots();
     Music.play('lobby');
-    this.drawBackground();
+    kit.menuBackground(this, L.w, L.h);
     this.buildTopBar();
     this.buildNav();
     this.showTab(data?.tab || 'battle', true);
     this.input.on('pointerdown', () => Sfx.unlock());
+    this.bindKeys();
+    kit.fadeIn(this);
+    // si la ventana cambió de forma durante la batalla, se aplica ahora
+    this.game.events.emit('layout-check');
     (window as unknown as { __lobby: LobbyScene }).__lobby = this;
-  }
-
-  drawBackground(): void {
-    const ar = ARENAS[Profile.arena];
-    const g = this.add.graphics();
-    g.fillGradientStyle(0x2a3a8f, 0x2a3a8f, 0x0d1024, 0x0d1024, 1).fillRect(0, 0, W, H);
-    g.fillStyle(ar.grass[0], 0.08);
-    for (let i = 0; i < 18; i++) g.fillCircle((i * 137) % W, (i * 263) % H, 40 + (i % 5) * 20);
   }
 
   // ───────── Barra superior ─────────
   buildTopBar(): void {
     const g = this.add.graphics().setDepth(100);
-    g.fillStyle(COLORS.panelDark, 0.85).fillRect(0, 0, W, TOP);
-    g.fillStyle(0x000000, 0.25).fillRect(0, TOP, W, 4);
-    this.topG = this.add.graphics().setDepth(101);
-    this.nameT = txt(this, 92, 34, '', 24, '#ffffff', { originX: 0 }).setDepth(102);
-    this.xpT = txt(this, 186, 74, '', 15, '#ffffff').setDepth(103);
-    this.goldT = txt(this, 482, 56, '', 24, '#ffffff', { originX: 1 }).setDepth(103);
-    this.gemT = txt(this, 680, 56, '', 24, '#ffffff', { originX: 1 }).setDepth(103);
-    this.add.image(392, 56, 'ic_gold').setDisplaySize(44, 44).setDepth(104);
-    this.add.image(574, 56, 'ic_gem').setDisplaySize(42, 42).setDepth(104);
-    const goShop = this.add.zone(540, 56, 360, 70).setInteractive({ useHandCursor: true }).setDepth(105);
+    g.fillGradientStyle(0x1f2660, 0x1f2660, 0x111538, 0x111538, 1).fillRect(0, 0, L.w, TOP);
+    g.fillStyle(kit.C.ink).fillRect(0, TOP - 2, L.w, 4);
+    g.fillStyle(kit.C.gold, 0.55).fillRect(0, TOP - 5, L.w, 2);
+    g.fillStyle(0xffffff, 0.06).fillRect(0, 0, L.w, TOP * 0.45);
+
+    // jugador: insignia, nombre y experiencia
+    this.nameT = kit.text(this, 96, 36, '', 'h3', '#ffffff', { originX: 0, size: 26 }).setDepth(102);
+    this.xpBar = kit.progressBar(this, 96, 58, L.pc ? 240 : 200, 28, kit.C.info, 0, '');
+    this.xpBar.root.setDepth(102);
+    const profileZone = this.add
+      .zone(170, TOP / 2, 300, TOP)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(105);
+    profileZone.on('pointerup', () => !this.modalOpen && this.showTab('profile'));
+
+    // monedas (al tocarlas se va a la tienda)
+    const pw = L.pc ? 200 : 150;
+    const gx = L.pc ? L.w - 2 * pw - 60 : 380,
+      mx = L.pc ? L.w - pw - 30 : 556;
+    this.gold = kit.pill(this, gx, 56, pw, 'ic_gold', '0');
+    this.gems = kit.pill(this, mx, 56, pw, 'ic_gem', '0');
+    this.gold.root.setDepth(102);
+    this.gems.root.setDepth(102);
+    const goShop = this.add
+      .zone(gx + (mx + pw - gx) / 2, 56, mx + pw - gx, 70)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(105);
     goShop.on('pointerup', () => {
       if (!this.modalOpen) this.showTab('shop');
     });
@@ -95,74 +116,97 @@ export class LobbyScene extends BaseScene implements MenuScene {
 
   refreshTop(): void {
     const d = Profile.d;
-    const g = this.topG;
-    g.clear();
-    // pastillas de oro y gemas
-    for (const [x, w] of [
-      [392, 110],
-      [574, 126],
-    ]) {
-      g.fillStyle(0x000000, 0.45).fillRoundedRect(x, 36, w, 40, 14);
-    }
-    // XP
     const need = KING_XP[d.kingLevel] || 1;
-    g.fillStyle(0x000000, 0.45).fillRoundedRect(92, 62, 190, 24, 10);
-    g.fillStyle(0x3a7cff).fillRoundedRect(92, 62, Math.max(12, 190 * Math.min(1, d.xp / need)), 24, 10);
     if (this.badgeLevel !== d.kingLevel) {
       if (this.levelBadgeObjs) this.levelBadgeObjs.forEach((o) => o.destroy());
-      this.levelBadgeObjs = levelBadge(this, 48, 56, d.kingLevel, 30);
+      this.levelBadgeObjs = levelBadge(this, 50, 56, d.kingLevel, 32);
       this.levelBadgeObjs.forEach((o) => o.setDepth(103));
       this.badgeLevel = d.kingLevel;
     }
-    this.nameT.setText(d.name);
-    this.xpT.setText(`${d.xp}/${need}`);
-    this.goldT.setText(fmtNum(d.gold));
-    this.gemT.setText(fmtNum(d.gems));
+    this.nameT.setText(playerName());
+    this.xpBar.set(d.xp / need, `${d.xp}/${need}`);
+    this.gold.set(fmtNum(d.gold));
+    this.gems.set(fmtNum(d.gems));
   }
 
-  // ───────── Navegación inferior ─────────
+  // ───────── Navegación (inferior en móvil, lateral en PC) ─────────
   buildNav(): void {
-    this.navG = this.add.graphics().setDepth(100);
-    this.navItems = TABS.map((t, i) => {
-      const x = 72 + i * 144;
-      const icon = this.add
-        .image(x, NAV_Y + 62, t.icon)
-        .setDisplaySize(64, 64)
-        .setDepth(102);
-      const label = txt(this, x, NAV_Y + 118, t.label, 20).setDepth(102);
-      const zone = this.add
-        .zone(x, NAV_Y + 72, 144, 144)
-        .setInteractive({ useHandCursor: true })
-        .setDepth(103);
+    if (L.pc) {
+      kit.panel(this, -24, TOP - 8, SIDEBAR_W + 24, L.h - TOP + 40, 'dark').setDepth(99);
+    } else {
+      kit.panel(this, -20, NAV_Y - 4, L.w + 40, L.h - NAV_Y + 40, 'dark').setDepth(99);
+    }
+    this.accent = this.add.graphics().setDepth(101);
+    this.navItems = TABS.map((tb, i) => {
+      const x = L.pc ? 62 : 72 + i * 144;
+      const y = L.pc ? TOP + 78 + i * 128 : NAV_Y + 62;
+      const active = L.pc
+        ? kit.panel(this, 12, y - 54, SIDEBAR_W - 26, 100, 'gold')
+        : kit.panel(this, x - 70, NAV_Y - 22, 140, 158, 'gold');
+      active.setDepth(100).setVisible(false);
+      const hover = L.pc
+        ? kit.panel(this, 12, y - 54, SIDEBAR_W - 26, 100, 'light')
+        : kit.panel(this, x - 66, NAV_Y + 2, 132, 128, 'light');
+      hover.setDepth(100).setVisible(false).setAlpha(0.55);
+      const icon = this.add.image(x, y, tb.icon).setDisplaySize(60, 60).setDepth(102);
+      const label = L.pc
+        ? kit.text(this, 104, y, t(tb.label), 'h3', '#ffffff', { originX: 0, size: 25 }).setDepth(102)
+        : kit.text(this, x, NAV_Y + 112, t(tb.label), 'label', '#ffffff', { size: 20 }).setDepth(102);
+      if (L.pc) {
+        const hk = kit.text(this, SIDEBAR_W - 30, y + 30, String(i + 1), 'small', '#7480c0', { size: 15, originX: 1 });
+        hk.setDepth(102);
+      }
+      const zone = L.pc ? this.add.zone(SIDEBAR_W / 2, y, SIDEBAR_W, 120) : this.add.zone(x, NAV_Y + 72, 144, 144);
+      zone.setInteractive({ useHandCursor: true }).setDepth(103);
       zone.on('pointerup', () => {
         if (!this.modalOpen) {
           Sfx.play('select');
-          this.showTab(t.key);
+          this.showTab(tb.key);
         }
       });
-      return { key: t.key, x, icon, label };
+      zone.on('pointerover', () => this.drawNav(tb.key));
+      zone.on('pointerout', () => this.drawNav());
+      return { key: tb.key, x, y, icon, label, active, hover };
     });
     this.badges = this.add.graphics().setDepth(104);
   }
 
-  drawNav(): void {
-    const g = this.navG;
+  drawNav(hover: TabKey | null = null): void {
+    const g = this.accent;
     g.clear();
-    g.fillStyle(COLORS.panelDark).fillRect(0, NAV_Y, W, H - NAV_Y);
-    g.fillStyle(0x2a2f5c).fillRect(0, NAV_Y + 4, W, H - NAV_Y);
     for (const it of this.navItems) {
       const active = it.key === this.current;
-      if (active) {
-        g.fillStyle(COLORS.panelDark).fillRoundedRect(it.x - 74, NAV_Y - 14, 148, 162, 16);
-        g.fillStyle(0x4a55c8).fillRoundedRect(it.x - 70, NAV_Y - 10, 140, 154, 14);
-        g.fillStyle(0xffffff, 0.15).fillRoundedRect(it.x - 64, NAV_Y - 4, 128, 40, 10);
+      it.active.setVisible(active);
+      it.hover.setVisible(!active && it.key === hover);
+      if (L.pc) {
+        it.icon.setDisplaySize(active ? 70 : 58, active ? 70 : 58);
+        it.label.setColor(active ? '#ffffff' : '#aab3e8');
+        if (active) {
+          g.fillStyle(kit.C.ink).fillRoundedRect(0, it.y - 42, 9, 84, 4);
+          g.fillStyle(kit.C.gold).fillRoundedRect(0, it.y - 39, 6, 78, 3);
+        }
       } else {
-        g.fillStyle(0x000000, 0.2).fillRect(it.x + 71, NAV_Y + 12, 2, 112);
+        it.icon.setDisplaySize(active ? 78 : 58, active ? 78 : 58).setY(NAV_Y + (active ? 44 : 62));
+        it.label.setVisible(active);
       }
-      it.icon.setDisplaySize(active ? 80 : 60, active ? 80 : 60).setY(NAV_Y + (active ? 50 : 62));
-      it.label.setVisible(active);
     }
     this.drawBadges();
+  }
+
+  /** Teclado: 1-5 cambian de pestaña y Enter empieza la batalla (Esc lo gestiona cada ventana). */
+  bindKeys(): void {
+    const kb = this.input.keyboard;
+    if (!kb) return;
+    kb.on('keydown', (e: KeyboardEvent) => {
+      if (this.modalOpen) return;
+      const n = Number(e.key);
+      if (n >= 1 && n <= TABS.length) {
+        Sfx.play('select');
+        this.showTab(TABS[n - 1].key);
+      } else if (e.key === 'Enter' && this.current === 'battle' && this.tab instanceof BattleTab) {
+        this.tab.startBattle();
+      }
+    });
   }
 
   drawBadges(): void {
@@ -172,8 +216,11 @@ export class LobbyScene extends BaseScene implements MenuScene {
       if (!on) return;
       const it = this.navItems.find((i) => i.key === key);
       if (!it) return;
-      g.fillStyle(COLORS.panelDark).fillCircle(it.x + 30, NAV_Y + 26, 15);
-      g.fillStyle(COLORS.red).fillCircle(it.x + 30, NAV_Y + 24, 13);
+      const bx = it.x + 30,
+        by = L.pc ? it.y - 28 : NAV_Y + 22;
+      g.fillStyle(kit.C.ink).fillCircle(bx, by + 2, 14);
+      g.fillStyle(COLORS.red).fillCircle(bx, by, 12);
+      g.fillStyle(0xffffff, 0.45).fillCircle(bx - 4, by - 4, 4);
     };
     dot(
       'cards',
@@ -187,18 +234,18 @@ export class LobbyScene extends BaseScene implements MenuScene {
     if (this.current === key && this.tab) return;
     if (this.tab) this.tab.destroy();
     this.current = key;
-    const Cls = (TABS.find((t) => t.key === key) ?? TABS[2]).cls;
+    const Cls = (TABS.find((tb) => tb.key === key) ?? TABS[2]).cls;
     this.tab = new Cls(this);
     if (!instant) {
       this.tab.root.setAlpha(0).setY(16);
-      this.tweens.add({ targets: this.tab.root, alpha: 1, y: 0, duration: 160, ease: 'Cubic.easeOut' });
+      this.tweens.add({ targets: this.tab.root, alpha: 1, y: 0, duration: 180, ease: 'Cubic.easeOut' });
     }
     this.drawNav();
   }
 
   /** Abre una Pokéball con la animación (sale del menú y vuelve a la pestaña indicada). */
   openBallScene(reward: BallReward, back?: TabKey): void {
-    this.scene.start('BallOpen', { reward, back: back || this.current });
+    kit.goTo(this, 'BallOpen', { reward, back: back || this.current });
   }
 
   override update(_t: number, delta: number): void {

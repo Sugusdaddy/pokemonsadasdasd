@@ -28,7 +28,6 @@ const NAMES = [
   'Gael',
   'Lola',
 ];
-const TITLES = ['Entrenador', 'Entrenadora', 'Domador', 'Campeona', 'As', 'Rival', 'Montañero', 'Nadadora'];
 
 export interface OpponentInput {
   arena: number;
@@ -84,7 +83,7 @@ export function makeOpponent(p: OpponentInput, rand: RandFn = defaultRand): Oppo
     levels[k] = Math.max(s, Math.min(MAX_LEVEL, Math.round(s + p.avgDeckLevel - 1 + randInt(rand, -1, 1) * 0.5)));
   }
   return {
-    name: `${TITLES[randInt(rand, 0, TITLES.length - 1)]} ${NAMES[randInt(rand, 0, NAMES.length - 1)]}`,
+    name: NAMES[randInt(rand, 0, NAMES.length - 1)],
     trophies: Math.max(0, p.trophies + randInt(rand, -40, 40)),
     kingLevel: Math.max(1, p.kingLevel + randInt(rand, -1, 1)),
     deck,

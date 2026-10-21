@@ -1,6 +1,11 @@
 import type Phaser from 'phaser';
-import { FONT, COLORS } from '@arena/shared';
-import { Sfx } from '../systems/Sfx';
+import { COLORS } from '@arena/shared';
+import { L } from '../layout';
+import { t } from '../i18n';
+import * as kit from './kit';
+
+// Ayudantes de UI de toda la vida, ahora dibujados con el sistema de diseño (ui/kit).
+// Las pantallas siguen llamando a txt/button/panel igual; para piezas nuevas, usa kit directamente.
 
 type Scene = Phaser.Scene;
 type Txt = Phaser.GameObjects.Text;
@@ -10,6 +15,7 @@ export interface TxtOpts extends Phaser.Types.GameObjects.Text.TextStyle {
   originY?: number;
 }
 
+/** Texto de títulos y etiquetas (fuente de display con contorno y sombra). */
 export function txt(
   scene: Scene,
   x: number,
@@ -19,19 +25,30 @@ export function txt(
   color = '#ffffff',
   opts: TxtOpts = {},
 ): Txt {
-  const { originX, originY, ...style } = opts;
-  const t = scene.add.text(x, y, str, {
-    fontFamily: FONT,
-    fontSize: `${size}px`,
-    color,
-    stroke: '#14122b',
-    strokeThickness: Math.max(2, Math.round(size / 6)),
-    align: 'center',
-    ...style,
-  });
-  t.setOrigin(originX ?? 0.5, originY ?? 0.5);
-  return t;
+  const noStroke = opts.strokeThickness === 0;
+  const o = kit.text(scene, x, y, str, 'label', color, { size, dropShadow: !noStroke, ...opts });
+  if (noStroke) o.setStroke('#000000', 0);
+  return o;
 }
+
+/** Texto de cuerpo (frases largas, descripciones): fuente legible sin contorno. */
+export function body(
+  scene: Scene,
+  x: number,
+  y: number,
+  str: string,
+  size = 20,
+  color = '#dfe4ff',
+  opts: TxtOpts = {},
+): Txt {
+  return kit.text(scene, x, y, str, 'body', color, { size, ...opts });
+}
+
+/**
+ * Posición vertical de pantallas centradas (Boot, Online, apertura de Pokéball) diseñadas
+ * para el lienzo de móvil (1280 de alto): en PC se comprime al alto de 1080.
+ */
+export const sy = (y: number): number => (L.pc ? Math.round((y * L.h) / 1280) : y);
 
 export const shade = (c: number, f: number): number => {
   const r = Math.min(255, Math.round(((c >> 16) & 255) * f));
@@ -40,14 +57,18 @@ export const shade = (c: number, f: number): number => {
   return (r << 16) | (g << 8) | b;
 };
 
-/** Botón: contenedor con su texto y un estado deshabilitado. */
-export interface Button extends Phaser.GameObjects.Container {
-  label: Txt;
-  disabled: boolean;
-  setDisabled(v: boolean): Button;
+export type Button = kit.Button;
+
+/** Color de botón antiguo → variante del sistema de diseño. */
+function buttonVariant(color: number): kit.ButtonVariant {
+  if (color === COLORS.green) return 'success';
+  if (color === COLORS.red) return 'danger';
+  if (color === COLORS.blue) return 'info';
+  if (color === COLORS.orange || color === 0xf2b01b || color === COLORS.gold) return 'primary';
+  return 'neutral';
 }
 
-/** Botón "gordito" con sombra, brillo, sonido y animación de pulsado. */
+/** Botón con volumen, brillo y estados (hover, pulsado, deshabilitado). */
 export function button(
   scene: Scene,
   x: number,
@@ -58,63 +79,27 @@ export function button(
   color: number,
   onClick: () => void,
   size = 34,
-  opts: { icon?: string } = {},
+  opts: { icon?: string; hotkey?: string } = {},
 ): Button {
-  const c = scene.add.container(x, y) as Button;
-  const g = scene.add.graphics();
-  const draw = (pressed: boolean) => {
-    g.clear();
-    const oy = pressed ? 4 : 0;
-    g.fillStyle(COLORS.panelDark).fillRoundedRect(-w / 2 - 3, -h / 2 - 3, w + 6, h + 12, 18);
-    g.fillStyle(shade(color, 0.6)).fillRoundedRect(-w / 2, -h / 2 + 6, w, h, 16);
-    g.fillStyle(color).fillRoundedRect(-w / 2, -h / 2 + oy, w, h - 2, 16);
-    g.fillStyle(0xffffff, 0.28).fillRoundedRect(-w / 2 + 6, -h / 2 + 4 + oy, w - 12, h * 0.36, 12);
-  };
-  draw(false);
-  c.add(g);
-  let ix = 0;
-  if (opts.icon) {
-    const ic = scene.add.image(-w / 2 + h * 0.55, 0, opts.icon).setDisplaySize(h * 0.6, h * 0.6);
-    c.add(ic);
-    ix = h * 0.25;
-  }
-  const t = txt(scene, ix, 0, label, size);
-  c.add(t);
-  c.label = t;
-  c.disabled = false;
-  c.setSize(w, h).setInteractive({ useHandCursor: true });
-  c.on('pointerdown', () => {
-    draw(true);
-    t.y = 4;
-  });
-  c.on('pointerout', () => {
-    draw(false);
-    t.y = 0;
-  });
-  c.on('pointerup', () => {
-    draw(false);
-    t.y = 0;
-    if (c.disabled) {
-      Sfx.play('noElixir');
-      return;
-    }
-    Sfx.play('click');
-    onClick();
-  });
-  c.setDisabled = (v: boolean) => {
-    c.disabled = v;
-    c.setAlpha(v ? 0.55 : 1);
-    return c;
-  };
-  return c;
+  return kit.button(scene, x, y, w, h, label, buttonVariant(color), onClick, { size, ...opts });
 }
 
-export function panel(scene: Scene, x: number, y: number, w: number, h: number, color = COLORS.panel, radius = 18) {
-  const g = scene.add.graphics();
-  g.fillStyle(COLORS.panelDark).fillRoundedRect(x - 3, y - 3, w + 6, h + 9, radius + 2);
-  g.fillStyle(color).fillRoundedRect(x, y, w, h, radius);
-  g.fillStyle(0xffffff, 0.08).fillRoundedRect(x + 4, y + 4, w - 8, Math.min(30, h * 0.3), radius - 4);
-  return g;
+/** Color de panel antiguo → variante del sistema de diseño. */
+function panelVariant(color: number): kit.PanelVariant {
+  const r = (color >> 16) & 255,
+    g = (color >> 8) & 255,
+    b = color & 255;
+  if (color === COLORS.panelDark || color === 0x23284d) return 'dark';
+  if (g > r * 1.3 && g > b) return 'green';
+  if (r > g * 1.6 && r > b * 1.4) return 'red';
+  if (r > b && g > b) return 'gold';
+  if (b > 0x80 && b > r * 1.6) return 'light';
+  return 'card';
+}
+
+/** Panel con borde, degradado, brillo y sombra (nine-slice). x, y = esquina superior izquierda. */
+export function panel(scene: Scene, x: number, y: number, w: number, h: number, color = COLORS.panel, _radius = 18) {
+  return kit.panel(scene, x, y, w, h, panelVariant(color));
 }
 
 function crownPts(x: number, y: number, s: number) {
@@ -130,21 +115,26 @@ function crownPts(x: number, y: number, s: number) {
 }
 
 export function drawCrown(g: Phaser.GameObjects.Graphics, x: number, y: number, s: number, color: number): void {
-  g.fillStyle(COLORS.panelDark);
-  g.fillPoints(crownPts(x, y + 2, s + 2), true);
+  g.fillStyle(kit.C.ink, 0.45);
+  g.fillPoints(crownPts(x, y + Math.max(3, s * 0.18), s + 2), true);
+  g.fillStyle(kit.C.ink);
+  g.fillPoints(crownPts(x, y + 1, s + 3), true);
   g.fillStyle(color);
   g.fillPoints(crownPts(x, y, s), true);
+  // brillo
+  g.fillStyle(0xffffff, 0.3);
+  g.fillTriangle(x - s * 0.85, y + s * 0.1, x - s * 0.85, y - s * 0.35, x - s * 0.35, y + s * 0.1);
 }
 
 export function fmtTime(sec: number): string {
   sec = Math.ceil(sec);
-  if (sec <= 0) return '¡Lista!';
+  if (sec <= 0) return t('time.ready');
   const h = Math.floor(sec / 3600),
     m = Math.floor((sec % 3600) / 60),
     s = sec % 60;
-  if (h) return `${h}h ${m}m`;
-  if (m) return `${m}m ${String(s).padStart(2, '0')}s`;
-  return `${s}s`;
+  if (h) return t('time.hm', { h, m });
+  if (m) return t('time.ms', { m, s: String(s).padStart(2, '0') });
+  return t('time.s', { s });
 }
 
 export const fmtNum = (n: number): string =>
@@ -166,12 +156,20 @@ export function levelBadge(
       x: x + Math.cos(Math.PI / 6 + (i * Math.PI) / 3) * r,
       y: y + Math.sin(Math.PI / 6 + (i * Math.PI) / 3) * r,
     }));
-  g.fillStyle(COLORS.panelDark).fillPoints(pts(size + 4), true);
-  g.fillStyle(0x3a7cff).fillPoints(pts(size), true);
-  g.fillStyle(0xffffff, 0.2).fillPoints(
-    pts(size * 0.7).map((p) => ({ x: p.x, y: p.y - 3 })),
+  g.fillStyle(kit.C.ink, 0.4).fillPoints(
+    pts(size + 4).map((p) => ({ x: p.x, y: p.y + 4 })),
     true,
   );
-  const t = txt(scene, x, y, String(level), size * 0.95);
-  return [g, t];
+  g.fillStyle(kit.C.ink).fillPoints(pts(size + 4), true);
+  g.fillStyle(0x2a6fe0).fillPoints(pts(size), true);
+  g.fillStyle(0x6fc0ff).fillPoints(
+    pts(size * 0.82).map((p) => ({ x: p.x, y: p.y - size * 0.08 })),
+    true,
+  );
+  g.fillStyle(0xffffff, 0.22).fillPoints(
+    pts(size * 0.6).map((p) => ({ x: p.x, y: p.y - size * 0.18 })),
+    true,
+  );
+  const tt = txt(scene, x, y, String(level), size * 0.95);
+  return [g, tt];
 }

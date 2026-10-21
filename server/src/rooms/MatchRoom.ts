@@ -94,14 +94,13 @@ export class MatchRoom extends Room {
   }
 
   override onAuth(_client: Client, options: JoinPayload): boolean {
-    if (options?.protocol !== undefined && options.protocol !== PROTOCOL_VERSION)
-      throw new Error('Versión del juego distinta: recarga la página');
+    if (options?.protocol !== undefined && options.protocol !== PROTOCOL_VERSION) throw new Error('err.version');
     if (options?.spectate) return true;
     const err = validateJoin(options);
     if (err) throw new Error(err);
     if (this.mode === 'ranked' && (!options.ticket || !this.tickets.has(options.ticket)))
-      throw new Error('Sala reservada');
-    if (this.seats.size >= 2 || this.match) throw new Error('La partida ya está completa');
+      throw new Error('err.room.reserved');
+    if (this.seats.size >= 2 || this.match) throw new Error('err.room.full');
     return true;
   }
 

@@ -54,13 +54,13 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   app.get('/api/replays', (req, res) => void res.json(replays.list(Number(req.query.limit) || 20)));
   app.get('/api/replays/:id', (req, res) => {
     const r = replays.get(req.params.id);
-    if (!r) return void res.status(404).json({ error: 'No existe esa repetición' });
+    if (!r) return void res.status(404).json({ error: 'err.replay.notFound' });
     res.json(r);
   });
   app.get('/api/friendly/:code', (req, res) => {
     const code = req.params.code.toUpperCase();
     const roomId = isFriendlyCode(code) ? ctx.friendly.get(code) : undefined;
-    if (!roomId) return void res.status(404).json({ error: 'No hay ninguna sala con ese código' });
+    if (!roomId) return void res.status(404).json({ error: 'err.friendly.notFound' });
     res.json({ roomId });
   });
   app.get('/api/live', async (_req, res) => {

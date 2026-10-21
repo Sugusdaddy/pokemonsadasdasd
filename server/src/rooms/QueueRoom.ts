@@ -32,8 +32,7 @@ export class QueueRoom extends Room {
   }
 
   override onAuth(_client: Client, options: Partial<JoinOptions>): boolean {
-    if (options?.protocol !== undefined && options.protocol !== PROTOCOL_VERSION)
-      throw new Error('Versión del juego distinta: recarga la página');
+    if (options?.protocol !== undefined && options.protocol !== PROTOCOL_VERSION) throw new Error('err.version');
     const err = validateJoin(options);
     if (err) throw new Error(err);
     return true;

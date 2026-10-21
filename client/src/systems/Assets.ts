@@ -1,4 +1,4 @@
-import type Phaser from 'phaser';
+import Phaser from 'phaser';
 import { BALLS, COLORS, PACK, TOWER_GUARDIANS, type AnimName, type BallConfig } from '@arena/shared';
 
 // Los sprites vienen de los atlas que genera `npm run assets` en public/gen/.
@@ -104,7 +104,14 @@ export function queueBattle(scene: Phaser.Scene, ids: number[]): void {
 
 const frameMs = (ticks: number) => (ticks * 1000) / 60;
 
+/** Los sprites del pack son pixel art: se escalan sin suavizar (el resto de la UI sí se suaviza). */
+function pixelArt(scene: Phaser.Scene, key: string): void {
+  if (scene.textures.exists(key)) scene.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+}
+
 export function createPortraitAnims(scene: Phaser.Scene, ids: number[]): void {
+  pixelArt(scene, 'portraits');
+  pixelArt(scene, 'fx');
   for (const id of ids) {
     const key = portraitAnim(id);
     const a = manifest().anims[String(id)]?.Idle;
@@ -121,6 +128,7 @@ export function createPortraitAnims(scene: Phaser.Scene, ids: number[]): void {
 /** Una animación por Pokémon × animación × dirección con la duración real de cada frame. */
 export function createAnims(scene: Phaser.Scene, ids: number[]): void {
   for (const id of ids) {
+    pixelArt(scene, pkAtlas(id));
     const info = manifest().anims[String(id)];
     if (!info || !scene.textures.exists(pkAtlas(id))) continue;
     for (const anim of ANIMS) {

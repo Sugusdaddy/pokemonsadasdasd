@@ -2,9 +2,64 @@ import type Phaser from 'phaser';
 import type { BallReward } from '@arena/shared';
 import type { BaseScene } from '../../scenes/BaseScene';
 import { ScrollPanel } from '../ScrollPanel';
+import { L } from '../../layout';
+import { Profile } from '../../meta/Profile';
+import { t } from '../../i18n';
+import * as kit from '../kit';
+
+/** Nombre del jugador (el nombre por defecto se traduce). */
+export function playerName(): string {
+  const n = Profile.d.name;
+  return !n || n === 'Entrenador' ? t('profile.defaultName') : n;
+}
+
+/**
+ * Cabecera de sección: título grande, texto secundario opcional a la derecha y una
+ * línea divisoria. Devuelve los objetos para añadirlos al contenedor que toque.
+ */
+export function sectionHeader(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  w: number,
+  title: string,
+  right?: string,
+): Phaser.GameObjects.GameObject[] {
+  const out: Phaser.GameObjects.GameObject[] = [
+    kit.text(scene, x, y, title, 'h2', '#ffffff', { originX: 0, size: 32 }),
+  ];
+  if (right) out.push(kit.text(scene, x + w, y + 4, right, 'body', '#aab3e8', { originX: 1, size: 20 }));
+  const g = scene.add.graphics();
+  g.fillStyle(0xffffff, 0.12).fillRect(x, y + 28, w, 2);
+  g.fillStyle(kit.C.gold, 0.8).fillRect(x, y + 28, 64, 3);
+  out.push(g);
+  return out;
+}
 
 export const CONTENT_TOP = 120;
 export const CONTENT_BOTTOM = 1128;
+/** Alto de la barra superior del menú (los dos diseños). */
+export const TOP_BAR = 112;
+/** Ancho de la barra lateral de pestañas (solo PC). */
+export const SIDEBAR_W = 220;
+/** Ancho máximo del contenido en PC, para que no se estire en pantallas muy anchas. */
+const MAX_CONTENT_W = 1500;
+
+export interface Area {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Zona de pantalla donde dibuja cada pestaña. */
+export function contentArea(): Area {
+  if (!L.pc) return { x: 0, y: CONTENT_TOP, w: 720, h: CONTENT_BOTTOM - CONTENT_TOP };
+  const avail = L.w - SIDEBAR_W;
+  const w = Math.min(MAX_CONTENT_W, avail - 80);
+  const y = TOP_BAR + 18;
+  return { x: SIDEBAR_W + Math.round((avail - w) / 2), y, w, h: L.h - y - 24 };
+}
 
 export type TabKey = 'shop' | 'cards' | 'battle' | 'road' | 'profile';
 
@@ -28,8 +83,14 @@ export class Tab {
   /** Se llama 4 veces por segundo (temporizadores). */
   tick(): void {}
 
-  scroll(x = 0, y = CONTENT_TOP, w = 720, h = CONTENT_BOTTOM - CONTENT_TOP): ScrollPanel {
-    const p = new ScrollPanel(this.scene, x, y, w, h);
+  get area(): Area {
+    return contentArea();
+  }
+
+  /** Panel con scroll; por defecto ocupa toda la zona de contenido. */
+  scroll(x?: number, y?: number, w?: number, h?: number): ScrollPanel {
+    const a = this.area;
+    const p = new ScrollPanel(this.scene, x ?? a.x, y ?? a.y, w ?? a.w, h ?? a.h);
     this.root.add(p.content);
     this.panels.push(p);
     return p;

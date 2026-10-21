@@ -55,7 +55,7 @@ export const api = {
 export function joinOptions(): JoinOptions {
   const deck = [...Profile.deck];
   return {
-    name: Profile.d.name.slice(0, 24) || 'Entrenador',
+    name: Profile.displayName.slice(0, 24),
     trophies: Profile.d.trophies,
     kingLevel: Profile.d.kingLevel,
     deck,

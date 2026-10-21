@@ -1,13 +1,22 @@
-import { W, COLORS, ARENAS, allCardKeys, getCard, ROAD, rewardLabel, type RoadStep } from '@arena/shared';
+import { ARENAS, allCardKeys, getCard, ROAD, type RoadReward, type RoadStep } from '@arena/shared';
 import { Profile } from '../../meta/Profile';
 import { animInfo } from '../../systems/Assets';
 import { Sfx } from '../../systems/Sfx';
-import { txt, panel } from '../style';
+import * as kit from '../kit';
+import { t, arenaName, ballLabel } from '../../i18n';
 import { toast } from '../Modal';
 import type { ScrollPanel } from '../ScrollPanel';
 import { Tab } from './Tab';
+import { L } from '../../layout';
 
 const ROW = 116;
+
+/** Texto de una recompensa del camino. */
+export function roadRewardLabel(r: RoadReward): string {
+  if ('gold' in r) return t('road.gold', { n: r.gold });
+  if ('gems' in r) return t('road.gems', { n: r.gems });
+  return ballLabel(r.ball);
+}
 
 export class RoadTab extends Tab {
   static claimable(): boolean {
@@ -16,15 +25,19 @@ export class RoadTab extends Tab {
 
   override build(): void {
     const s = this.scene;
-    const P = this.scroll();
+    // PC: columna centrada de 1000 px (en móvil, todo el ancho)
+    const A = this.area;
+    const colW = L.pc ? Math.min(1000, A.w) : A.w;
+    const P = this.scroll(A.x + Math.round((A.w - colW) / 2), A.y, colW, A.h);
+    const W = P.w;
     const tr = Profile.d.trophies;
     const best = Profile.d.maxTrophies;
     let y = 20;
-    P.add(panel(s, 20, y, W - 40, 100, 0x2a3170, 20));
-    P.add(s.add.image(80, y + 50, 'ic_trophy').setDisplaySize(60, 60));
-    P.add(txt(s, 130, y + 34, 'Camino de trofeos', 30, '#ffffff', { originX: 0 }));
-    P.add(txt(s, 130, y + 70, `Trofeos: ${tr}  ·  Récord: ${best}`, 21, '#ffd84a', { originX: 0 }));
-    y += 130;
+    P.add(kit.panel(s, 20, y, W - 40, 100, 'light'));
+    P.add(s.add.image(84, y + 48, 'ic_trophy').setDisplaySize(64, 64));
+    P.add(kit.text(s, 134, y + 32, t('road.title'), 'h2', '#ffffff', { originX: 0, size: 32 }));
+    P.add(kit.text(s, 134, y + 70, t('road.summary', { n: tr, best }), 'label', '#ffd75a', { originX: 0, size: 21 }));
+    y += 136;
 
     // vía central
     const track = s.add.graphics();
@@ -46,45 +59,54 @@ export class RoadTab extends Tab {
       const claimed = Profile.d.roadClaimed.includes(m.trophies);
       if (!focusY && !claimed) focusY = cy;
       // nodo con número de trofeos
-      const g = s.add.graphics();
-      g.fillStyle(COLORS.panelDark).fillRoundedRect(36, cy - 24, 120, 48, 14);
-      g.fillStyle(reached ? 0xffc21a : 0x3b3f63).fillRoundedRect(39, cy - 21, 114, 42, 12);
-      P.add(g);
-      P.add(
-        txt(s, 96, cy, String(m.trophies), 24, reached ? '#14122b' : '#9aa0c8', { strokeThickness: reached ? 0 : 4 }),
-      );
+      const node = s.add.container(96, cy);
+      node.add(kit.panel(s, -62, -26, 124, 50, reached ? 'gold' : 'inset'));
+      node.add(kit.text(s, 0, -2, String(m.trophies), 'label', reached ? '#ffffff' : '#7480c0', { size: 24 }));
       // tarjeta de recompensa
-      const col = claimed ? 0x262a48 : reached ? 0x2f7a43 : 0x2a3170;
-      P.add(panel(s, 210, cy - 46, 470, 92, col, 16));
+      const card = s.add.container(210 + (W - 250) / 2, cy);
+      const cw = W - 250;
+      card.add(kit.panel(s, -cw / 2, -46, cw, 92, claimed ? 'inset' : reached ? 'green' : 'card'));
       const r = m.reward;
       const icon = 'ball' in r ? `ball_${r.ball}` : 'gems' in r ? 'ic_gem' : 'ic_gold';
-      P.add(
+      card.add(
         s.add
-          .image(262, cy, icon)
+          .image(-cw / 2 + 52, -2, icon)
           .setDisplaySize(64, 64)
-          .setAlpha(claimed ? 0.5 : 1),
+          .setAlpha(claimed ? 0.45 : 1),
       );
-      P.add(txt(s, 310, cy, rewardLabel(r), 24, claimed ? '#6b70a0' : '#ffffff', { originX: 0 }));
-      if (claimed) P.add(txt(s, 650, cy, 'Hecho', 20, '#6b70a0', { originX: 1 }));
-      else if (reached) {
-        const pg = s.add.graphics();
-        pg.fillStyle(COLORS.panelDark).fillRoundedRect(522, cy - 25, 146, 54, 14);
-        pg.fillStyle(COLORS.orange).fillRoundedRect(525, cy - 22, 140, 46, 12);
-        P.add(pg);
-        P.add(txt(s, 595, cy, 'Reclamar', 22));
-        P.addTap(445, cy, 470, 92, () => this.claim(m));
+      card.add(
+        kit.text(s, -cw / 2 + 100, -2, roadRewardLabel(r), 'h3', claimed ? '#5a64a8' : '#ffffff', {
+          originX: 0,
+          size: 24,
+        }),
+      );
+      if (claimed) {
+        card.add(kit.text(s, cw / 2 - 28, -2, t('road.done'), 'label', '#5a64a8', { originX: 1, size: 20 }));
+      } else if (reached) {
+        const b = kit.button(s, cw / 2 - 98, -4, 160, 56, t('road.claim'), 'primary', () => {}, { size: 22 });
+        b.disableInteractive();
+        card.add(b);
+        P.addTap(210 + cw / 2, cy, cw, 92, () => this.claim(m), card);
       } else {
-        P.add(s.add.image(640, cy, 'ic_lock').setDisplaySize(36, 36));
+        card.add(
+          s.add
+            .image(cw / 2 - 40, -2, 'ic_lock')
+            .setDisplaySize(36, 36)
+            .setAlpha(0.8),
+        );
       }
+      P.add(node);
+      P.add(card);
       y += ROW;
     }
 
     // dibuja la vía y el progreso
-    track.fillStyle(COLORS.panelDark).fillRect(91, startY, 10, y - startY);
+    track.fillStyle(kit.C.ink).fillRoundedRect(89, startY, 14, y - startY, 7);
+    track.fillStyle(0x2a3170).fillRoundedRect(92, startY, 8, y - startY, 4);
     const progress = this.progressY(rows, best);
-    track.fillStyle(0xffc21a).fillRect(93, startY, 6, Math.max(0, progress - startY));
+    track.fillStyle(kit.C.gold).fillRoundedRect(92, startY, 8, Math.max(0, progress - startY), 4);
     P.setContentHeight(y + 40);
-    P.set((focusY || progress) - 400);
+    P.set((focusY || progress) - (L.pc ? Math.round(P.h * 0.4) : 400));
   }
 
   progressY(rows: number[], best: number): number {
@@ -97,25 +119,41 @@ export class RoadTab extends Tab {
 
   arenaHeader(P: ScrollPanel, idx: number, y: number): number {
     const s = this.scene,
-      ar = ARENAS[idx];
+      ar = ARENAS[idx],
+      W = P.w;
     const unlocked = Profile.d.maxTrophies >= ar.trophies;
-    P.add(panel(s, 20, y + 10, W - 40, 200, unlocked ? 0x3a3f8f : 0x23284d, 22));
-    P.add(txt(s, 44, y + 44, `Arena ${idx + 1} · ${ar.name}`, 30, unlocked ? '#ffd84a' : '#9aa0c8', { originX: 0 }));
-    P.add(txt(s, 44, y + 80, `${ar.trophies} trofeos`, 20, '#c9c3ff', { originX: 0 }));
+    P.add(kit.panel(s, 20, y + 10, W - 40, 200, unlocked ? 'blue' : 'dark'));
+    P.add(
+      kit.text(
+        s,
+        44,
+        y + 46,
+        t('road.arenaHeader', { n: idx + 1, name: arenaName(idx) }),
+        'h2',
+        unlocked ? '#ffd75a' : '#7480c0',
+        {
+          originX: 0,
+          size: 30,
+        },
+      ),
+    );
+    P.add(
+      kit.text(s, W - 44, y + 46, t('road.trophiesN', { n: ar.trophies }), 'label', '#dfe4ff', {
+        originX: 1,
+        size: 20,
+      }),
+    );
     const cards = allCardKeys().filter((k) => getCard(k).arena === idx);
-    const step = Math.min(92, 590 / Math.max(1, cards.length - 1));
+    const step = Math.min(L.pc ? 110 : 92, (W - 130) / Math.max(1, cards.length - 1));
     cards.forEach((k, i) => {
       const c = getCard(k),
         a = animInfo(c.pokemon, 'Idle');
-      const x = 80 + i * step,
-        cy = y + 160;
-      const g = s.add.graphics();
-      g.fillStyle(COLORS.panelDark).fillRoundedRect(x - 40, cy - 46, 80, 84, 12);
-      g.fillStyle(unlocked ? 0x4a55c8 : 0x30345c).fillRoundedRect(x - 37, cy - 43, 74, 78, 10);
-      P.add(g);
-      const sp = s.add.image(x, cy + 24, 'portraits', `${c.pokemon}_0`).setScale(a.frame_height > 60 ? 1 : 1.5);
+      const x = 84 + i * step,
+        cy = y + 148;
+      P.add(kit.panel(s, x - 40, cy - 44, 80, 82, unlocked ? 'light' : 'inset'));
+      const sp = s.add.image(x, cy + 26, 'portraits', `${c.pokemon}_0`).setScale(a.frame_height > 60 ? 1 : 1.5);
       sp.setOrigin(a.ground_anchor.x / a.frame_width, a.ground_anchor.y / a.frame_height);
-      if (!unlocked) sp.setTintFill(0x14122b);
+      if (!unlocked) sp.setTintFill(0x0b0d1f);
       P.add(sp);
     });
     return y + 230;
@@ -129,12 +167,12 @@ export class RoadTab extends Tab {
     if ('gold' in r) {
       Profile.d.gold += r.gold;
       Sfx.play('coin');
-      toast(s, `+${r.gold} de oro`, '#ffd84a');
+      toast(s, t('common.plusGold', { n: r.gold }), '#ffd84a');
     }
     if ('gems' in r) {
       Profile.d.gems += r.gems;
       Sfx.play('coin');
-      toast(s, `+${r.gems} gemas`, '#7dff8a');
+      toast(s, t('common.plusGems', { n: r.gems }), '#7dff8a');
     }
     Profile.save();
     if ('ball' in r) {
