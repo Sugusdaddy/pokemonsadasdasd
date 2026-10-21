@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { isFriendlyCode, type QueueStatusMsg } from '@arena/shared';
+import { getCard, isFriendlyCode, type ClientJoin, type DraftMsg, type QueueStatusMsg } from '@arena/shared';
+import { makeCardView } from '../ui/CardView';
 import { L } from '../layout';
 import { OnlineSession } from '../net/OnlineSession';
 import { Music, Sfx } from '../systems/Sfx';
@@ -11,6 +12,9 @@ import { Social } from '../net/social';
 
 export type OnlineData =
   | { mode: 'ranked' }
+  | { mode: 'draft' }
+  | { mode: 'challenge' }
+  | { mode: 'tournament'; tournamentId: string; name: string }
   | { mode: 'create'; inviteTo?: { accountId: string; name: string } }
   | { mode: 'join'; code: string }
   | { mode: 'spectate'; roomId: string }
@@ -35,6 +39,10 @@ export class OnlineScene extends BaseScene {
   private codeT!: Phaser.GameObjects.Text;
   private spinner!: Phaser.GameObjects.Container;
   private left = false;
+  /** Pantalla de elegir cartas (draft). */
+  private draftUi: Phaser.GameObjects.Container | null = null;
+  private draftTimer: Phaser.Time.TimerEvent | null = null;
+  private py = 0;
 
   constructor() {
     super('Online');
@@ -46,6 +54,8 @@ export class OnlineScene extends BaseScene {
     this.session = null;
     this.left = false;
     this.modalOpen = 0;
+    this.draftUi = null;
+    this.draftTimer = null;
   }
 
   create(): void {
@@ -54,6 +64,9 @@ export class OnlineScene extends BaseScene {
     const cx = L.w / 2;
     const titles: Record<OnlineData['mode'], string> = {
       ranked: t('online.searching'),
+      draft: t('online.draft'),
+      challenge: t('online.challenge'),
+      tournament: this.data_.mode === 'tournament' ? this.data_.name : '',
       create: t('online.friendly'),
       join: t('online.friendly'),
       spectate: t('online.spectating'),
@@ -61,6 +74,9 @@ export class OnlineScene extends BaseScene {
     };
     const chips: Record<OnlineData['mode'], [string, number]> = {
       ranked: [t('online.chipRanked'), kit.C.gold],
+      draft: [t('online.chipDraft'), 0xc58cff],
+      challenge: [t('online.chipChallenge'), 0xff9a3c],
+      tournament: [t('online.chipTournament'), 0x44d17a],
       create: [t('online.chipFriendly'), kit.C.info],
       join: [t('online.chipFriendly'), kit.C.info],
       spectate: [t('online.chipLive'), kit.C.bad],
@@ -69,6 +85,7 @@ export class OnlineScene extends BaseScene {
     const pw = Math.min(L.w - 40, 680),
       ph = sy(820);
     const py = sy(230);
+    this.py = py;
     kit.panel(this, cx - pw / 2, py, pw, ph, 'card');
     const rbw = Math.min(pw - 60, 520);
     kit.panel(this, cx - rbw / 2, py - 34, rbw, 70, 'blue');
@@ -126,9 +143,15 @@ export class OnlineScene extends BaseScene {
     const d = this.data_;
     try {
       let s: OnlineSession | null;
-      if (d.mode === 'ranked') {
-        this.status.setText(t('online.inQueue'));
-        s = await OnlineSession.findMatch((q) => this.onQueue(q), this.abort.signal);
+      if (d.mode === 'ranked' || d.mode === 'draft' || d.mode === 'challenge' || d.mode === 'tournament') {
+        this.status.setText(d.mode === 'tournament' ? t('online.waitTournament') : t('online.inQueue'));
+        const queue: Pick<ClientJoin, 'queue' | 'tournamentId'> =
+          d.mode === 'ranked'
+            ? {}
+            : d.mode === 'tournament'
+              ? { queue: 'tournament', tournamentId: d.tournamentId }
+              : { queue: d.mode };
+        s = await OnlineSession.findMatch((q) => this.onQueue(q), this.abort.signal, queue);
       } else if (d.mode === 'create') {
         s = await OnlineSession.createFriendly();
       } else if (d.mode === 'join') {
@@ -147,6 +170,8 @@ export class OnlineScene extends BaseScene {
       this.session = s;
       if (s.code) this.showCode(s.code);
       s.onCode = (c) => this.showCode(c);
+      s.onDraft = (m) => this.showDraft(m);
+      if (s.draft) this.showDraft(s.draft);
       if (s.start) this.go();
       else {
         this.status.setText(d.mode === 'create' ? t('online.waitingFriend') : t('online.found'));
@@ -159,8 +184,83 @@ export class OnlineScene extends BaseScene {
   }
 
   private onQueue(q: QueueStatusMsg): void {
-    this.status.setText(t('online.inQueueSecs', { n: Math.floor(q.waitedMs / 1000) }));
-    this.detail.setText(t('online.queueDetail', { n: q.window }));
+    const mode = this.data_.mode;
+    const secs = Math.floor(q.waitedMs / 1000);
+    if (mode === 'tournament') {
+      this.status.setText(t('online.waitTournamentSecs', { n: secs }));
+      this.detail.setText(t('online.tournamentDetail'));
+      return;
+    }
+    this.status.setText(t('online.inQueueSecs', { n: secs }));
+    this.detail.setText(mode === 'ranked' ? t('online.queueDetail', { n: q.window }) : t('online.queueDetailMode'));
+  }
+
+  /** Draft: dos cartas para elegir (la otra se la lleva el rival), cuenta atrás y el mazo que se va formando. */
+  private showDraft(m: DraftMsg): void {
+    if (this.left) return;
+    this.spinner.setVisible(false);
+    this.codeBox.setVisible(false);
+    this.draftUi?.destroy();
+    this.draftTimer?.remove();
+    const c = (this.draftUi = this.add.container(0, 0));
+    const cx = L.w / 2,
+      py = this.py;
+    const done = m.round >= m.rounds;
+    this.status.setText(done ? t('draft.ready') : t('draft.round', { n: m.round + 1, total: m.rounds }));
+    const until = Date.now() + m.msLeft;
+    const tick = () =>
+      this.detail.setText(
+        done
+          ? t('draft.readyBody')
+          : m.pair
+            ? t('draft.pickOne', { n: Math.max(0, Math.ceil((until - Date.now()) / 1000)) })
+            : t('draft.waiting'),
+      );
+    tick();
+    if (!done) this.draftTimer = this.time.addEvent({ delay: 250, loop: true, callback: tick });
+    // las dos cartas
+    if (m.pair) {
+      const views = m.pair.map((k, i) => {
+        const v = makeCardView(this, getCard(k), cx + (i ? 150 : -150), py + sy(260), 200, 240);
+        v.setSize(200, 240).setInteractive({ useHandCursor: true });
+        v.on('pointerover', () => this.tweens.add({ targets: v, scale: 1.05, duration: 100 }));
+        v.on('pointerout', () => this.tweens.add({ targets: v, scale: 1, duration: 100 }));
+        v.on('pointerup', () => {
+          if (!this.session || v.getData('picked')) return;
+          Sfx.play('select');
+          this.session.pick(i);
+          views.forEach((o, j) => {
+            o.setData('picked', true).disableInteractive();
+            // la elegida se queda; la otra se va hacia el rival
+            if (j === i) this.tweens.add({ targets: o, scale: 1.1, duration: 160 });
+            else this.tweens.add({ targets: o, y: o.y - 160, alpha: 0, duration: 320, ease: 'Cubic.easeIn' });
+          });
+        });
+        c.add(v);
+        return v;
+      });
+      c.add(kit.text(this, cx, py + sy(260), t('draft.or'), 'h2', '#ffd75a', { size: 34 }));
+    }
+    // el mazo que se va formando: elegidas (borde dorado) y recibidas
+    const deck = [...m.picks.map((k) => [k, true] as const), ...m.got.map((k) => [k, false] as const)];
+    for (let i = 0; i < 8; i++) {
+      const x = cx - 3.5 * 74 + i * 74,
+        y = py + sy(640);
+      const item = deck[i];
+      if (!item) {
+        c.add(kit.panel(this, x - 30, y - 37, 60, 74, 'inset'));
+        continue;
+      }
+      c.add(makeCardView(this, getCard(item[0]), x, y, 62, 76));
+      if (item[1])
+        c.add(
+          this.add
+            .graphics()
+            .lineStyle(3, kit.C.gold)
+            .strokeRoundedRect(x - 33, y - 40, 66, 80, 10),
+        );
+    }
+    c.add(kit.text(this, cx, py + sy(580), t('draft.yourDeck'), 'label', '#aab3e8', { size: 18 }));
   }
 
   private showCode(code: string): void {
@@ -185,6 +285,8 @@ export class OnlineScene extends BaseScene {
     const s = this.session;
     s.onStart = undefined;
     s.onCode = undefined;
+    s.onDraft = undefined;
+    this.draftTimer?.remove();
     Sfx.play('fight');
     kit.goTo(this, 'Battle', { kind: 'online', session: s });
   }

@@ -69,7 +69,9 @@ function maybe(key: string): string | undefined {
 
 /** Nombre de una carta: los Pokémon usan su nombre; los hechizos tienen nombre propio por idioma. */
 export function cardName(card: Pick<Card, 'key' | 'name'>): string {
-  return maybe(`card.${card.key}.name`) ?? (lang === 'es' ? card.name : card.name);
+  // en español el nombre propio de los hechizos está en cardDefs (sin pasar por el inglés)
+  if (lang === 'es') return DICTS.es[`card.${card.key}.name`] ?? card.name;
+  return maybe(`card.${card.key}.name`) ?? card.name;
 }
 
 export function cardDesc(card: Pick<Card, 'key' | 'desc'>): string {

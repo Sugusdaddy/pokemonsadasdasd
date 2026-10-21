@@ -172,7 +172,7 @@ export class Match {
       this.doubleAnnounced = true;
       this.emit({ e: 'doubleElixir' });
     }
-    const regen = (DT / RULES.elixirRegen) * (dbl ? 2 : 1);
+    const regen = (DT / RULES.elixirRegen) * (dbl ? 2 : 1) * (this.setup.rules?.elixir ?? 1);
     for (const team of TEAMS) this.elixir[team] = Math.min(RULES.elixirMax, this.elixir[team] + regen);
 
     this.runPending();
@@ -1009,7 +1009,8 @@ export class Match {
     this.crowns[winner] += 1;
     this.emit({ e: 'crown', team: winner, crowns: this.crowns[winner] });
     this.activateKing(this.towersBy[t.team].king);
-    if (this.overtime) this.end(winner, 'overtime');
+    if (this.setup.rules?.suddenDeath) this.end(winner, 'sudden');
+    else if (this.overtime) this.end(winner, 'overtime');
   }
 
   private onTimeUp(): void {

@@ -10,7 +10,7 @@
 import { MAX_LEVEL, RARITIES } from '../config';
 import { getCard, isCardKey } from '../data/cards';
 import type { Input, MatchSetup, PlayCheck, Team, TimedInput, Winner } from '../sim/types';
-import type { BattleResult, ProfileState } from '../meta/economy';
+import type { BattleResult, ChallengeOutcome, ProfileState } from '../meta/economy';
 
 export const PROTOCOL_VERSION = 2;
 export const DEFAULT_PORT = 2567;
@@ -36,7 +36,14 @@ export function trophyWindow(waitMs: number): number {
   return Math.min(2000, 100 + Math.floor(waitMs / 1000) * 50);
 }
 
-export type MatchMode = 'ranked' | 'friendly' | 'bot';
+/**
+ * ranked: por trofeos (y 'bot' si no aparece rival). friendly: por código.
+ * draft, challenge (desafío del día) y tournament: niveles iguales para todos, sin trofeos.
+ */
+export type MatchMode = 'ranked' | 'friendly' | 'bot' | 'draft' | 'challenge' | 'tournament';
+/** Colas de emparejamiento. */
+export type QueueKind = 'ranked' | 'draft' | 'challenge' | 'tournament';
+export const QUEUE_KINDS: readonly QueueKind[] = ['ranked', 'draft', 'challenge', 'tournament'];
 
 export interface PlayerInfo {
   name: string;
@@ -54,6 +61,9 @@ export interface ClientJoin {
   /** Solo para mirar una partida (no necesita sesión). */
   spectate?: boolean;
   protocol?: number;
+  /** En la cola: a qué modo juega (por defecto, clasificatoria) y en qué torneo. */
+  queue?: QueueKind;
+  tournamentId?: string;
 }
 
 /** Datos de juego de un jugador al entrar (los construye el servidor a partir de su cuenta). */
@@ -123,6 +133,26 @@ export interface EndMsg {
 export interface RewardsMsg {
   result: BattleResult;
   state: ProfileState;
+  mode?: MatchMode;
+  /** Desafío: cómo va el intento y los premios que se acaban de ganar. */
+  challenge?: Omit<ChallengeOutcome, 'run'> & { wins: number; losses: number };
+  /** Torneo: puesto y marcador tras la partida. */
+  tournament?: { rank: number; players: number; wins: number; losses: number };
+}
+
+/** Servidor → jugador: una ronda del draft (pair = null mientras espera al rival). */
+export interface DraftMsg {
+  round: number;
+  rounds: number;
+  pair: [string, string] | null;
+  picks: string[];
+  got: string[];
+  /** Ms que quedan para elegir. */
+  msLeft: number;
+}
+/** Jugador → servidor: elige la carta i (0 o 1) de su pareja. */
+export interface PickMsg {
+  i: number;
 }
 
 export interface QueueStatusMsg {

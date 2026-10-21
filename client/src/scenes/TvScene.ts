@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import type { PlayerInfo, Replay, Team } from '@arena/shared';
+import type { MatchMode, PlayerInfo, Replay, Team } from '@arena/shared';
 import { L } from '../layout';
 import { api, type LiveMatch, type ReplayMeta } from '../net/api';
 import { Sfx } from '../systems/Sfx';
@@ -152,10 +152,7 @@ export class TvScene extends BaseScene {
       row(
         vs(l.players),
         t('tv.watching', { n: l.spectators }),
-        [
-          [t('tv.chipLive'), kit.C.bad],
-          l.mode === 'bot' ? [t('tv.chipBot'), 0xaab3e8] : [t('tv.chipRanked'), kit.C.gold],
-        ],
+        [[t('tv.chipLive'), kit.C.bad], modeChip(l.mode)],
         t('tv.spectate'),
         'primary',
         () => kit.goTo(this, 'Online', { mode: 'spectate', roomId: l.roomId }),
@@ -173,13 +170,7 @@ export class TvScene extends BaseScene {
       row(
         vs(r.players),
         `${res} · ${ago(r.endedAt)}`,
-        [
-          r.mode === 'bot'
-            ? [t('tv.chipBot'), 0xaab3e8]
-            : r.mode === 'friendly'
-              ? [t('tv.chipFriendly'), kit.C.info]
-              : [t('tv.chipRanked'), kit.C.gold],
-        ],
+        [modeChip(r.mode)],
         t('tv.watch'),
         'info',
         () => void this.watch(r),
@@ -205,5 +196,23 @@ export class TvScene extends BaseScene {
     } catch {
       return null;
     }
+  }
+}
+
+/** Etiqueta de color del modo de una partida. */
+function modeChip(mode: MatchMode): Chip {
+  switch (mode) {
+    case 'bot':
+      return [t('tv.chipBot'), 0xaab3e8];
+    case 'friendly':
+      return [t('tv.chipFriendly'), kit.C.info];
+    case 'draft':
+      return [t('online.chipDraft'), 0xc58cff];
+    case 'challenge':
+      return [t('online.chipChallenge'), 0xff9a3c];
+    case 'tournament':
+      return [t('online.chipTournament'), 0x44d17a];
+    default:
+      return [t('tv.chipRanked'), kit.C.gold];
   }
 }

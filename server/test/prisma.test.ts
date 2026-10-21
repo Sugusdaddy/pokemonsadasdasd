@@ -16,6 +16,7 @@ describe.skipIf(!url)('PostgreSQL (PrismaStore)', () => {
     return row;
   };
   afterAll(async () => {
+    await store.db.tournament.deleteMany({ where: { creatorId: { in: created } } });
     await store.db.idea.deleteMany({ where: { accountId: { in: created } } });
     await store.db.ideaVote.deleteMany({ where: { accountId: { in: created } } });
     await store.db.adminLog.deleteMany({ where: { adminId: { in: created } } });
@@ -209,5 +210,39 @@ describe.skipIf(!url)('PostgreSQL (PrismaStore)', () => {
     expect((await store.listReports(500)).some((x) => x.messageId === msg.id)).toBe(false);
     const found = await store.searchAccounts(lead.state.name.toLowerCase(), 5);
     expect(found).toEqual([expect.objectContaining({ accountId: lead.id, clan: clan.name, reports: 1 })]);
+  });
+
+  it('torneos: 6 entrando a la vez en uno de 4 plazas → solo 4, marcador y premio una vez', async () => {
+    const owner = await store.createAccount(freshProfile(Date.now()), true);
+    const code = `Z${Math.random().toString(36).slice(2, 6).toUpperCase()}`.slice(0, 5);
+    const t = await store.createTournament(
+      {
+        code,
+        name: 'Copa',
+        creatorId: owner.id,
+        rules: 'classic',
+        maxPlayers: 4,
+        isPublic: true,
+        endsAt: new Date(Date.now() + 60_000),
+      },
+      { accountId: owner.id, name: 'Org' },
+    );
+    expect((await store.tournamentByCode(code))?.id).toBe(t.id);
+    const others = await Promise.all(
+      Array.from({ length: 6 }, () => store.createAccount(freshProfile(Date.now()), true)),
+    );
+    const res = await Promise.all(others.map((o) => store.joinTournament(t.id, o.id, 'X')));
+    expect(res.filter((r) => r === 'ok')).toHaveLength(3);
+    expect(res.filter((r) => r === 'full')).toHaveLength(3);
+    expect(await store.joinTournament(t.id, owner.id, 'Org')).toBe('already');
+    await store.recordTournamentGame(t.id, owner.id, true, 3);
+    await store.recordTournamentGame(t.id, owner.id, false, 1);
+    const me = (await store.tournamentPlayers(t.id)).find((p) => p.accountId === owner.id)!;
+    expect([me.wins, me.losses, me.crowns]).toEqual([1, 1, 4]);
+    expect((await store.openTournaments(new Date(), 50)).find((x) => x.id === t.id)?.players).toBe(4);
+    expect((await store.myTournaments(owner.id, new Date(Date.now() - 1000))).map((x) => x.id)).toContain(t.id);
+    expect(await store.activeCreated(owner.id, new Date())).toBe(1);
+    const claims = await Promise.all([store.markPrizeClaimed(t.id, owner.id), store.markPrizeClaimed(t.id, owner.id)]);
+    expect(claims.filter(Boolean)).toHaveLength(1);
   });
 });

@@ -19,6 +19,7 @@ import {
   type Match,
   type PlayerInfo,
   type Replay,
+  type RewardsMsg,
   type SimEvent,
   type Team,
   type Winner,
@@ -1182,7 +1183,7 @@ export class BattleScene extends BaseScene {
    * Recompensas: las calcula el servidor con SU partida y llegan en el mensaje 'rewards'.
    * En práctica sin conexión y en amistosas no hay premios.
    */
-  private async awaitRewards(): Promise<BattleResult | 'practice' | 'friendly' | null> {
+  private async awaitRewards(): Promise<RewardsMsg | 'practice' | 'friendly' | null> {
     const src = this.source;
     if (!(src instanceof OnlineSource)) return 'practice';
     if (src.session.start?.mode === 'friendly') return 'friendly';
@@ -1190,11 +1191,14 @@ export class BattleScene extends BaseScene {
     const r = src.session.rewards;
     if (!r) return null;
     Profile.applyState(r.state);
-    return r.result;
+    return r;
   }
 
   private async showRewards(c: Phaser.GameObjects.Container, outcome: BattleOutcome): Promise<void> {
-    const res = await this.awaitRewards();
+    const msg = await this.awaitRewards();
+    const res: BattleResult | 'practice' | 'friendly' | null = msg && typeof msg === 'object' ? msg.result : msg;
+    // draft, desafío y torneo: sin trofeos ni ball de batalla
+    const casual = !!msg && typeof msg === 'object' && !!msg.mode && !['ranked', 'bot'].includes(msg.mode);
     if (!this.sys.isActive()) return;
     let y = 640;
     let i = 0;
@@ -1239,7 +1243,32 @@ export class BattleScene extends BaseScene {
     if (res === 'practice') banner(t('result.practice'), 'dark');
     else if (res === 'friendly') banner(t('result.friendly'), 'dark');
     else if (!res) banner(t('result.rewardsLater'), 'dark');
-    else {
+    else if (casual && typeof msg === 'object' && msg) {
+      if (msg.challenge) {
+        const ch = msg.challenge;
+        banner(
+          ch.ended
+            ? t('result.challengeEnded', { w: ch.wins, l: ch.losses })
+            : t('result.challenge', { w: ch.wins, l: ch.losses }),
+          ch.ended ? 'gold' : 'dark',
+        );
+        for (const r of ch.rewards) {
+          if (r.gold) row('ic_gold', t('result.gold'), `+${fmtNum(r.gold)}`, '#ffd75a');
+          if (r.gems) row('ic_gem', t('result.gems'), `+${fmtNum(r.gems)}`, '#7dff8a');
+          if (r.ball) row(`ball_${r.ball.type}`, t('result.ball'), ballLabel(r.ball.type), '#7dff8a');
+        }
+      }
+      if (msg.tournament) {
+        const tr = msg.tournament;
+        banner(
+          t('result.tournament', { rank: tr.rank, n: tr.players, w: tr.wins, l: tr.losses }),
+          tr.rank === 1 ? 'gold' : 'dark',
+        );
+      }
+      if (res.gold) row('ic_gold', t('result.gold'), `+${fmtNum(res.gold)}`, '#ffd75a');
+      row('ic_crown', t('result.crowns'), `${Profile.d.crowns}/${CROWNS_FOR_CROWN_BALL}`, '#ffffff');
+      if (res.kingLevelUp) banner(t('result.kingLevel', { n: Profile.d.kingLevel }));
+    } else {
       row(
         'ic_trophy',
         t('result.trophies'),

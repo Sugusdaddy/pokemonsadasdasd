@@ -22,6 +22,8 @@ import type {
   ReportRow,
   SeasonResultRow,
   Store,
+  TournamentPlayerRow,
+  TournamentRow,
 } from './types';
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -46,6 +48,8 @@ export class MemoryStore implements Store {
   private ideas: IdeaRow[] = [];
   private ideaVotes = new Set<string>(); // idea|cuenta
   private adminLog: AdminLogRow[] = [];
+  private tournaments = new Map<string, TournamentRow>();
+  private tPlayers: TournamentPlayerRow[] = [];
 
   private ranked(range: RankRange): AccountRow[] {
     return [...this.accounts.values()]
@@ -577,4 +581,86 @@ export class MemoryStore implements Store {
   }
 
   async close(): Promise<void> {}
+
+  // ───────────────────────── Torneos ─────────────────────────
+
+  async createTournament(
+    t: Omit<TournamentRow, 'id' | 'createdAt'>,
+    creator: { accountId: string; name: string },
+  ): Promise<TournamentRow> {
+    const row: TournamentRow = { ...t, id: `t${crypto.randomBytes(6).toString('hex')}`, createdAt: new Date() };
+    this.tournaments.set(row.id, row);
+    await this.joinTournament(row.id, creator.accountId, creator.name);
+    return { ...row };
+  }
+
+  async getTournament(id: string): Promise<TournamentRow | null> {
+    const t = this.tournaments.get(id);
+    return t ? { ...t } : null;
+  }
+
+  async tournamentByCode(code: string): Promise<TournamentRow | null> {
+    const t = [...this.tournaments.values()].find((x) => x.code === code);
+    return t ? { ...t } : null;
+  }
+
+  async tournamentPlayers(id: string): Promise<TournamentPlayerRow[]> {
+    return this.tPlayers.filter((p) => p.tournamentId === id).map((p) => ({ ...p }));
+  }
+
+  async joinTournament(id: string, accountId: string, name: string): Promise<'ok' | 'full' | 'already'> {
+    const t = this.tournaments.get(id);
+    if (!t) throw new Error('err.tournament.notFound');
+    const inIt = this.tPlayers.filter((p) => p.tournamentId === id);
+    if (inIt.some((p) => p.accountId === accountId)) return 'already';
+    if (inIt.length >= t.maxPlayers) return 'full';
+    this.tPlayers.push({
+      tournamentId: id,
+      accountId,
+      name,
+      wins: 0,
+      losses: 0,
+      crowns: 0,
+      // con milisegundos: dos que entran seguidos no empatan
+      joinedAt: new Date(Date.now() + this.tPlayers.length).toISOString(),
+      prizeClaimed: false,
+    });
+    return 'ok';
+  }
+
+  async myTournaments(accountId: string, since: Date): Promise<TournamentRow[]> {
+    const ids = new Set(this.tPlayers.filter((p) => p.accountId === accountId).map((p) => p.tournamentId));
+    return [...this.tournaments.values()]
+      .filter((t) => ids.has(t.id) && t.endsAt >= since)
+      .sort((a, b) => b.endsAt.getTime() - a.endsAt.getTime())
+      .slice(0, 20)
+      .map((t) => ({ ...t }));
+  }
+
+  async openTournaments(now: Date, limit: number): Promise<Array<TournamentRow & { players: number }>> {
+    return [...this.tournaments.values()]
+      .filter((t) => t.isPublic && t.endsAt > now)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit)
+      .map((t) => ({ ...t, players: this.tPlayers.filter((p) => p.tournamentId === t.id).length }));
+  }
+
+  async activeCreated(accountId: string, now: Date): Promise<number> {
+    return [...this.tournaments.values()].filter((t) => t.creatorId === accountId && t.endsAt > now).length;
+  }
+
+  async recordTournamentGame(id: string, accountId: string, win: boolean, crowns: number): Promise<void> {
+    const p = this.tPlayers.find((x) => x.tournamentId === id && x.accountId === accountId);
+    if (!p) return;
+    if (win) p.wins += 1;
+    else p.losses += 1;
+    p.crowns += crowns;
+  }
+
+  async markPrizeClaimed(id: string, accountId: string): Promise<boolean> {
+    const p = this.tPlayers.find((x) => x.tournamentId === id && x.accountId === accountId);
+    if (!p || p.prizeClaimed) return false;
+    p.prizeClaimed = true;
+    return true;
+  }
 }

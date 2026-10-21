@@ -38,7 +38,10 @@ import type {
   ReportRow,
   SeasonResultRow,
   Store,
+  TournamentPlayerRow,
+  TournamentRow,
 } from './types';
+import type { RuleSet } from '@arena/shared';
 
 type DbAccount = Prisma.AccountGetPayload<{ include: { wallets: true } }>;
 
@@ -633,6 +636,99 @@ export class PrismaStore implements Store {
     createdAt: i.createdAt,
     updatedAt: i.updatedAt,
   });
+
+  // ───────────────────────── Torneos ─────────────────────────
+
+  private toTournament(t: {
+    id: string;
+    code: string;
+    name: string;
+    creatorId: string;
+    rules: string;
+    maxPlayers: number;
+    isPublic: boolean;
+    createdAt: Date;
+    endsAt: Date;
+  }): TournamentRow {
+    return { ...t, rules: t.rules as RuleSet };
+  }
+
+  async createTournament(
+    t: Omit<TournamentRow, 'id' | 'createdAt'>,
+    creator: { accountId: string; name: string },
+  ): Promise<TournamentRow> {
+    const row = await this.db.tournament.create({
+      data: { ...t, players: { create: { accountId: creator.accountId, name: creator.name } } },
+    });
+    return this.toTournament(row);
+  }
+
+  async getTournament(id: string): Promise<TournamentRow | null> {
+    const t = await this.db.tournament.findUnique({ where: { id } });
+    return t ? this.toTournament(t) : null;
+  }
+
+  async tournamentByCode(code: string): Promise<TournamentRow | null> {
+    const t = await this.db.tournament.findUnique({ where: { code } });
+    return t ? this.toTournament(t) : null;
+  }
+
+  async tournamentPlayers(id: string): Promise<TournamentPlayerRow[]> {
+    const rows = await this.db.tournamentPlayer.findMany({ where: { tournamentId: id } });
+    return rows.map((r) => ({ ...r, joinedAt: r.joinedAt.toISOString() }));
+  }
+
+  async joinTournament(id: string, accountId: string, name: string): Promise<'ok' | 'full' | 'already'> {
+    return this.db.$transaction(async (tx) => {
+      // el torneo bloqueado: dos jugadores a la vez no pueden pasarse del máximo
+      const t = await tx.$queryRaw<Array<{ maxPlayers: number }>>`
+        SELECT "maxPlayers" FROM "Tournament" WHERE id = ${id} FOR UPDATE`;
+      if (!t.length) throw new Error('err.tournament.notFound');
+      if (await tx.tournamentPlayer.findUnique({ where: { tournamentId_accountId: { tournamentId: id, accountId } } }))
+        return 'already';
+      if ((await tx.tournamentPlayer.count({ where: { tournamentId: id } })) >= t[0].maxPlayers) return 'full';
+      await tx.tournamentPlayer.create({ data: { tournamentId: id, accountId, name } });
+      return 'ok';
+    });
+  }
+
+  async myTournaments(accountId: string, since: Date): Promise<TournamentRow[]> {
+    const rows = await this.db.tournament.findMany({
+      where: { endsAt: { gte: since }, players: { some: { accountId } } },
+      orderBy: { endsAt: 'desc' },
+      take: 20,
+    });
+    return rows.map((r) => this.toTournament(r));
+  }
+
+  async openTournaments(now: Date, limit: number): Promise<Array<TournamentRow & { players: number }>> {
+    const rows = await this.db.tournament.findMany({
+      where: { isPublic: true, endsAt: { gt: now } },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: { _count: { select: { players: true } } },
+    });
+    return rows.map(({ _count, ...r }) => ({ ...this.toTournament(r), players: _count.players }));
+  }
+
+  async activeCreated(accountId: string, now: Date): Promise<number> {
+    return this.db.tournament.count({ where: { creatorId: accountId, endsAt: { gt: now } } });
+  }
+
+  async recordTournamentGame(id: string, accountId: string, win: boolean, crowns: number): Promise<void> {
+    await this.db.tournamentPlayer.updateMany({
+      where: { tournamentId: id, accountId },
+      data: { wins: { increment: win ? 1 : 0 }, losses: { increment: win ? 0 : 1 }, crowns: { increment: crowns } },
+    });
+  }
+
+  async markPrizeClaimed(id: string, accountId: string): Promise<boolean> {
+    const r = await this.db.tournamentPlayer.updateMany({
+      where: { tournamentId: id, accountId, prizeClaimed: false },
+      data: { prizeClaimed: true },
+    });
+    return r.count > 0;
+  }
 
   async createIdea(i: Pick<IdeaRow, 'accountId' | 'name' | 'title' | 'body' | 'category'>): Promise<IdeaRow> {
     return this.toIdea(await this.db.idea.create({ data: i }));

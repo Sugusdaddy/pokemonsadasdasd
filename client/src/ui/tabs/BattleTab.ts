@@ -12,6 +12,7 @@ import { textPrompt } from '../textPrompt';
 import { Tab, runAction } from './Tab';
 import { BRIDGE_OF, DECO_VARIANTS } from '../../art';
 import { openMissions } from '../MissionsModal';
+import { openModes } from '../ModesModal';
 
 type Txt = Phaser.GameObjects.Text;
 
@@ -142,11 +143,19 @@ export class BattleTab extends Tab {
       hotkey: L.pc ? t('lobby.enterKey') : undefined,
     });
     R.add(bb);
-    // amistosa por código y TV (en directo y repeticiones)
+    // modos (draft, desafío, torneos y amistosa) y TV (en directo y repeticiones)
     R.add(
-      kit.button(s, ox + (L.pc ? 58 : 78), btnY, 116, 96, t('lobby.friend'), 'info', () => this.friendly(), {
-        size: 24,
-      }),
+      kit.button(
+        s,
+        ox + (L.pc ? 58 : 78),
+        btnY,
+        116,
+        96,
+        t('lobby.modes'),
+        'info',
+        () => openModes(s, () => this.friendly()),
+        { size: 24 },
+      ),
     );
     R.add(
       kit.button(

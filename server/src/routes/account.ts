@@ -26,6 +26,7 @@ import {
   claimMission,
   claimMissionBonus,
   completeTutorial,
+  startChallenge,
   buyCardOffer,
   buyBall,
   buyGold,
@@ -269,6 +270,11 @@ export function accountRoutes(
     '/me/missions/bonus',
     auth,
     act((s, req) => claimMissionBonus(s, req.body?.period, rand)),
+  );
+  r.post(
+    '/me/challenge/start',
+    auth,
+    act((s, _req, now) => startChallenge(s, now)),
   );
   r.post(
     '/me/tutorial/complete',

@@ -17,6 +17,10 @@ import {
   type RejectMsg,
   type MatchedMsg,
   type MissionsState,
+  type DraftMsg,
+  STANDARD_KING,
+  DRAFT_ROUNDS,
+  challengeOfDay,
 } from '@arena/shared';
 import { startServer, type RunningServer } from '../src/app';
 import nacl from 'tweetnacl';
@@ -73,6 +77,7 @@ class Player {
   rejects: RejectMsg[] = [];
   ticks: TickMsg[] = [];
   code: string | null = null;
+  drafts: DraftMsg[] = [];
 
   constructor(public room: Room) {
     this.listen(room);
@@ -95,6 +100,7 @@ class Player {
     room.onMessage('reject', (m: RejectMsg) => this.rejects.push(m));
     room.onMessage('code', (m: { code: string }) => (this.code = m.code));
     room.onMessage('queue', () => {});
+    room.onMessage('draft', (m: DraftMsg) => this.drafts.push(m));
   }
 
   get hand(): string[] {
@@ -555,5 +561,117 @@ describe('rankings y temporadas', () => {
     expect(claim.json.result.ball?.type).toBe('master');
     expect(claim.json.account.state.gold).toBeGreaterThanOrEqual(before + 4000);
     expect((await api('/me/season/claim', p.token, {})).json.error).toBe('econ.claimed');
+  });
+});
+
+// ───────────────────────── Modos: draft, desafío y torneos ─────────────────────────
+
+describe('modos', () => {
+  it('draft entre dos jugadores: eligen por turnos y juegan con esos mazos a niveles iguales', async () => {
+    const ca = new Client(endpoint),
+      cb = new Client(endpoint);
+    const oa = await opts(500, 'DraftA'),
+      ob = await opts(40, 'DraftB');
+    const [ra, rb] = await Promise.all([queue(ca, { ...oa, queue: 'draft' }), queue(cb, { ...ob, queue: 'draft' })]);
+    expect(ra.matched.mode).toBe('draft');
+    const pa = new Player(ra.room),
+      pb = new Player(rb.room);
+    for (let round = 0; round < DRAFT_ROUNDS; round++) {
+      await until(
+        () => pa.drafts.some((d) => d.round === round && d.pair) && pb.drafts.some((d) => d.round === round && d.pair),
+        4000,
+        `ronda ${round}`,
+      );
+      ra.room.send('pick', { i: 0 });
+      rb.room.send('pick', { i: 1 });
+    }
+    await until(() => !!pa.start && !!pb.start, 5000, 'inicio tras el draft');
+    const last = pa.drafts[pa.drafts.length - 1];
+    const you = pa.start!.you as 'blue' | 'red';
+    const deck = pa.start!.setup.players[you].deck;
+    expect(deck).toHaveLength(8);
+    expect([...deck].sort()).toEqual([...last.picks, ...last.got].sort());
+    expect(pa.start!.setup.players[you].kingLevel).toBe(STANDARD_KING);
+    expect(pa.start!.setup.players[you].levels).toEqual({});
+    expect(pa.start!.mode).toBe('draft');
+    ra.room.send('surrender');
+    await until(() => pa.rewards.length > 0 && pb.rewards.length > 0, 5000, 'recompensas');
+    expect(pa.rewards[0].result.trophies).toBe(0);
+    expect(pb.rewards[0].result.gold).toBeGreaterThan(0); // el draft da oro al que gana
+  });
+
+  it('desafío del día: hay que empezarlo y la partida (contra un bot si no hay nadie) cuenta en el intento', async () => {
+    const client = new Client(endpoint);
+    const o = await opts(200, 'Desafio');
+    await expect(client.joinOrCreate('queue', { ...o, queue: 'challenge' })).rejects.toThrow(
+      'err.challenge.notStarted',
+    );
+    const start = await api('/me/challenge/start', o.token, {});
+    expect(start.status).toBe(200);
+    const { room, matched } = await queue(client, { ...o, queue: 'challenge' });
+    expect(matched.mode).toBe('challenge');
+    const p = new Player(room);
+    const c = challengeOfDay(Date.now());
+    // draft: el bot elige al momento y el jugador elige la primera
+    if (c.rules === 'draft')
+      for (let r = 0; r < DRAFT_ROUNDS; r++) {
+        await until(() => p.drafts.some((d) => d.round === r && d.pair), 4000, `ronda ${r}`);
+        room.send('pick', { i: 0 });
+      }
+    await until(() => !!p.start, 5000, 'inicio');
+    if (c.rules === 'double') expect(p.start!.setup.rules).toEqual({ elixir: 2 });
+    room.send('surrender');
+    await until(() => p.rewards.length > 0, 5000, 'recompensas');
+    expect(p.rewards[0].challenge).toMatchObject({ wins: 0, losses: 1, ended: false });
+    expect(p.rewards[0].state.challenge).toMatchObject({ losses: 1, active: true });
+  });
+
+  it('torneo: se crea, se entra con el código, se emparejan entre ellos y cuenta en la clasificación', async () => {
+    const oa = await opts(100, 'Org'),
+      ob = await opts(100, 'Invitado');
+    const created = await api<{ id: string; code: string; error?: string }>('/tournaments', oa.token, {
+      name: 'Copa de prueba',
+      rules: 'classic',
+      minutes: 15,
+      maxPlayers: 4,
+    });
+    expect(created.status).toBe(200);
+    // uno a la vez por creador y nombres limpios
+    expect(
+      (await api('/tournaments', oa.token, { name: 'Otra', rules: 'classic', minutes: 15, maxPlayers: 4 })).json.error,
+    ).toBe('err.tournament.oneAtATime');
+    const joined = await api<{ standings: unknown[] }>('/tournaments/join', ob.token, { code: created.json.code });
+    expect(joined.status).toBe(200);
+    expect(joined.json.standings).toHaveLength(2);
+    // fuera del torneo no se puede entrar en su cola
+    const outsider = await opts(100, 'Fuera');
+    await expect(
+      new Client(endpoint).joinOrCreate('queue', { ...outsider, queue: 'tournament', tournamentId: created.json.id }),
+    ).rejects.toThrow('err.tournament.notIn');
+    const ca = new Client(endpoint),
+      cb = new Client(endpoint);
+    const [ra, rb] = await Promise.all([
+      queue(ca, { ...oa, queue: 'tournament', tournamentId: created.json.id }),
+      queue(cb, { ...ob, queue: 'tournament', tournamentId: created.json.id }),
+    ]);
+    expect(ra.matched.mode).toBe('tournament');
+    const pa = new Player(ra.room),
+      pb = new Player(rb.room);
+    await until(() => !!pa.start && !!pb.start, 5000, 'inicio');
+    expect(pa.start!.setup.players.blue.kingLevel).toBe(STANDARD_KING);
+    rb.room.send('surrender');
+    await until(() => pa.rewards.length > 0, 5000, 'recompensas');
+    expect(pa.rewards[0].tournament).toMatchObject({ rank: 1, players: 2, wins: 1, losses: 0 });
+    const d = await api<{ standings: Array<{ name: string; wins: number; losses: number }>; ended: boolean }>(
+      `/tournaments/${created.json.id}`,
+      ob.token,
+    );
+    expect(d.json.standings.map((x) => [x.name, x.wins, x.losses])).toEqual([
+      ['Org', 1, 0],
+      ['Invitado', 0, 1],
+    ]);
+    expect((await api(`/tournaments/${created.json.id}/claim`, oa.token, {})).json.error).toBe(
+      'err.tournament.notEnded',
+    );
   });
 });

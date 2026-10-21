@@ -21,6 +21,7 @@ import { startSeasonJob } from './seasons';
 import { isSolanaAddress } from './auth';
 import { ideaRoutes } from './routes/ideas';
 import { adminRoutes } from './routes/admin';
+import { tournamentRoutes } from './routes/tournaments';
 import { MemoryStore } from './store/memory';
 import { PrismaStore } from './store/prisma';
 import type { Store } from './store/types';
@@ -97,6 +98,7 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   app.use('/api', socialRoutes(store));
   app.use('/api', ideaRoutes(store));
   app.use('/api', adminRoutes(store));
+  app.use('/api', tournamentRoutes(store));
   app.get('/api/replays', async (req, res) => {
     const list = await store.listMatches(Math.max(1, Math.min(100, Number(req.query.limit) || 20)));
     res.json(list.map((m) => ({ ...m, endedAt: m.endedAt.toISOString() })));

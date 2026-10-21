@@ -16,6 +16,20 @@ import {
   startLevel,
   getCard,
   applyBattle,
+  applyCasual,
+  recordChallenge,
+  rankStandings,
+  makeDraft,
+  draftPick,
+  draftDone,
+  draftDeck,
+  hasPicked,
+  autoPick,
+  DRAFT_ROUNDS,
+  DRAFT_PICK_SECONDS,
+  STANDARD_KING,
+  TOURNAMENT_GRACE_MS,
+  ECONOMY,
   battleStats,
   rollMissions,
   trackBattle,
@@ -40,13 +54,29 @@ import {
   type ClientJoin,
   type ProfileState,
   type RewardsMsg,
+  type MatchRules,
+  type DraftState,
+  type DraftMsg,
+  type PickMsg,
 } from '@arena/shared';
 import { ctx, newFriendlyCode, settings, store } from '../context';
 import { verifySession } from '../auth';
 
 export interface MatchRoomOptions {
   mode: MatchMode;
+  /** Reglas especiales (desafíos y torneos). */
+  rules?: MatchRules;
+  /** Los mazos se eligen por turnos antes de empezar. */
+  draft?: boolean;
+  /** La cola no encontró rival: entra un bot en cuanto llegue el jugador. */
+  vsBot?: boolean;
+  tournamentId?: string;
+  /** Desafío (día) con el que empezó la partida. */
+  challengePeriod?: string;
 }
+
+/** Modos con niveles iguales para todos (sin trofeos). */
+const STANDARD_MODES: readonly MatchMode[] = ['draft', 'challenge', 'tournament'];
 
 /** Quién es el jugador (lo comprueba onAuth o lo pasa la cola al reservar el sitio). */
 export interface SeatAuth {
@@ -98,6 +128,13 @@ type JoinPayload = ClientJoin & { mode?: MatchMode };
 export class MatchRoom extends Room {
   mode: MatchMode = 'ranked';
   code: string | null = null;
+  private opts: MatchRoomOptions = { mode: 'ranked' };
+  private draft: DraftState | null = null;
+  private drafted = false;
+  private draftTimer: { clear(): void } | null = null;
+  private draftDeadline = 0;
+  /** Un bot ocupó el sitio de quien no llegó (en torneos no cuenta para la clasificación). */
+  private botFilled = false;
   match: Match | null = null;
   private seats = new Map<Team, Seat>();
   private bySession = new Map<string, Team>();
@@ -110,6 +147,7 @@ export class MatchRoom extends Room {
 
   override onCreate(options: MatchRoomOptions): void {
     this.mode = options.mode ?? 'ranked';
+    this.opts = { ...options, mode: this.mode };
     this.maxClients = 2 + 30; // jugadores + espectadores
     if (this.mode === 'friendly') {
       this.code = newFriendlyCode();
@@ -121,8 +159,9 @@ export class MatchRoom extends Room {
     this.onMessage('emote', (c, m: EmoteMsg) => this.onEmote(c, m));
     this.onMessage('surrender', (c) => this.onSurrender(c));
     this.onMessage('resync', (c) => this.sendCatchup(c));
-    // en una partida igualada, si el rival no llega, entra un bot
-    if (this.mode === 'ranked') {
+    this.onMessage('pick', (c, m: PickMsg) => this.onPick(c, m));
+    // en una partida emparejada, si el rival no llega, entra un bot
+    if (this.mode !== 'friendly' && this.mode !== 'bot' && !options.vsBot) {
       this.fillTimer = this.clock.setTimeout(() => this.fillWithBot(), settings().matchFillBotAfterMs);
     }
   }
@@ -130,8 +169,8 @@ export class MatchRoom extends Room {
   override async onAuth(_client: Client, options: JoinPayload): Promise<SeatAuth | true> {
     if (options?.protocol !== undefined && options.protocol !== PROTOCOL_VERSION) throw new Error('err.version');
     if (options?.spectate) return true;
-    // a las igualadas solo se entra con el sitio que reserva la cola (sin pasar por aquí)
-    if (this.mode === 'ranked') throw new Error('err.room.reserved');
+    // a las emparejadas solo se entra con el sitio que reserva la cola (sin pasar por aquí)
+    if (this.mode !== 'friendly') throw new Error('err.room.reserved');
     if (this.seats.size >= 2 || this.match) throw new Error('err.room.full');
     const auth = await authAccount(options?.token);
     if ([...this.seats.values()].some((s) => s.accountId === auth.accountId)) throw new Error('err.room.self');
@@ -152,7 +191,7 @@ export class MatchRoom extends Room {
       return;
     }
     const team: Team = this.seats.has('blue') ? 'red' : 'blue';
-    const join = auth.join;
+    const join = this.standard ? { ...auth.join, levels: {}, kingLevel: STANDARD_KING } : auth.join;
     this.seats.set(team, {
       team,
       accountId: auth.accountId,
@@ -165,7 +204,7 @@ export class MatchRoom extends Room {
     });
     this.bySession.set(client.sessionId, team);
     if (this.mode === 'friendly' && this.code) client.send('code', { code: this.code });
-    if (this.mode === 'bot') this.fillWithBot();
+    if (this.mode === 'bot' || this.opts.vsBot) this.fillWithBot();
     else if (this.seats.size === 2) this.begin();
   }
 
@@ -175,6 +214,14 @@ export class MatchRoom extends Room {
     if (!team) return;
     const seat = this.seats.get(team)!;
     seat.client = null;
+    if (!this.match && this.draft) {
+      // se va durante el draft: su sitio lo ocupa un bot (sin premios para nadie de ese lado)
+      seat.accountId = null;
+      seat.info = { ...seat.info, bot: true };
+      this.bySession.delete(client.sessionId);
+      if (!draftDone(this.draft)) this.draftRound();
+      return;
+    }
     if (!this.match) {
       // aún no ha empezado: se libera el sitio
       this.seats.delete(team);
@@ -218,6 +265,12 @@ export class MatchRoom extends Room {
       kingLevel: human.join.kingLevel,
       avgDeckLevel: avg,
     });
+    if (this.standard) {
+      opp.levels = {};
+      opp.kingLevel = STANDARD_KING;
+    }
+    // si el rival no llegó a una partida emparejada, en torneos ya no cuenta
+    if (this.mode !== 'bot' && !this.opts.vsBot) this.botFilled = true;
     this.seats.set(team, {
       team,
       join: { name: opp.name, trophies: opp.trophies, kingLevel: opp.kingLevel, deck: opp.deck, levels: opp.levels },
@@ -231,11 +284,21 @@ export class MatchRoom extends Room {
     this.begin();
   }
 
+  private get standard(): boolean {
+    return STANDARD_MODES.includes(this.mode);
+  }
+
   private begin(): void {
     if (this.match) return;
     this.fillTimer?.clear();
+    // draft: primero se eligen los mazos
+    if (this.opts.draft && !this.drafted) {
+      if (!this.draft) this.startDraft();
+      return;
+    }
     const blue = this.seats.get('blue')!,
       red = this.seats.get('red')!;
+    const rules = this.opts.rules;
     const setup: MatchSetup = {
       seed: crypto.randomInt(0, 2 ** 32),
       arena: arenaFor(Math.min(blue.join.trophies, red.join.trophies)),
@@ -243,6 +306,8 @@ export class MatchRoom extends Room {
         blue: { deck: [...blue.join.deck], levels: { ...blue.join.levels }, kingLevel: blue.join.kingLevel },
         red: { deck: [...red.join.deck], levels: { ...red.join.levels }, kingLevel: red.join.kingLevel },
       },
+      // sin reglas especiales, la partida es idéntica a las de siempre (y sus repeticiones)
+      ...(rules && Object.keys(rules).length ? { rules } : {}),
     };
     this.match = new Match(setup);
     this.bots = makeBots(
@@ -261,6 +326,84 @@ export class MatchRoom extends Room {
     }
     this.clock.setTimeout(() => this.bots.forEach((b) => b.greet()), settings().matchStartDelayMs + 1500);
     this.setSimulationInterval(() => this.pump(), 10);
+  }
+
+  /** Apunta el resultado en el torneo (si no fue contra un bot de relleno y el torneo sigue) y da el puesto. */
+  private async recordTournament(
+    accountId: string,
+    win: boolean,
+    crowns: number,
+  ): Promise<TournamentResult | undefined> {
+    const id = this.opts.tournamentId;
+    const t = id ? await store().getTournament(id) : null;
+    if (!t || this.botFilled || Date.now() > +t.endsAt + TOURNAMENT_GRACE_MS) return undefined;
+    await store().recordTournamentGame(t.id, accountId, win, crowns);
+    const ranked = rankStandings(await store().tournamentPlayers(t.id));
+    const i = ranked.findIndex((p) => p.accountId === accountId);
+    return i < 0 ? undefined : { rank: i + 1, players: ranked.length, wins: ranked[i].wins, losses: ranked[i].losses };
+  }
+
+  // ───────────────────────── Draft ─────────────────────────
+
+  private startDraft(): void {
+    this.draft = makeDraft(rewardRand);
+    void this.setMetadata({ drafting: true });
+    this.draftRound();
+  }
+
+  /** Empieza (o sigue) la ronda actual: los bots eligen al momento y los demás tienen un tiempo. */
+  private draftRound(): void {
+    const d = this.draft!;
+    this.draftTimer?.clear();
+    for (const seat of this.seats.values())
+      if ((seat.info.bot || !seat.client) && !draftDone(d) && !hasPicked(d, seat.team))
+        draftPick(d, seat.team, autoPick(d.pairs[seat.team][d.round]));
+    if (draftDone(d)) return this.finishDraft();
+    const round = d.round;
+    this.draftDeadline = Date.now() + DRAFT_PICK_SECONDS * 1000;
+    this.sendDraft();
+    this.draftTimer = this.clock.setTimeout(() => {
+      if (!this.draft || this.draft.round !== round || draftDone(this.draft)) return;
+      // quien no elige a tiempo se queda la mejor de su pareja
+      for (const seat of this.seats.values())
+        if (!hasPicked(d, seat.team)) draftPick(d, seat.team, autoPick(d.pairs[seat.team][d.round]));
+      this.draftRound();
+    }, DRAFT_PICK_SECONDS * 1000);
+  }
+
+  private onPick(client: Client, m: PickMsg): void {
+    const team = this.bySession.get(client.sessionId);
+    const d = this.draft;
+    if (!team || !d || draftDone(d)) return;
+    const round = d.round;
+    if (!draftPick(d, team, Number(m?.i))) return;
+    if (d.round !== round) this.draftRound();
+    else this.sendDraft(); // el rival aún está eligiendo
+  }
+
+  private sendDraft(): void {
+    const d = this.draft!;
+    for (const seat of this.seats.values()) {
+      if (!seat.client) continue;
+      const msg: DraftMsg = {
+        round: d.round,
+        rounds: DRAFT_ROUNDS,
+        pair: draftDone(d) || hasPicked(d, seat.team) ? null : d.pairs[seat.team][d.round],
+        picks: [...d.picks[seat.team]],
+        got: [...d.got[seat.team]],
+        msLeft: Math.max(0, this.draftDeadline - Date.now()),
+      };
+      seat.client.send('draft', msg);
+    }
+  }
+
+  private finishDraft(): void {
+    const d = this.draft!;
+    this.draftTimer?.clear();
+    for (const seat of this.seats.values()) seat.join = { ...seat.join, deck: draftDeck(d, seat.team) };
+    this.drafted = true;
+    this.sendDraft(); // ronda final: los dos mazos completos
+    this.begin();
   }
 
   private startMsg(you: Team | 'spectator'): StartMsg {
@@ -414,15 +557,27 @@ export class MatchRoom extends Room {
       for (const seat of [blue, red]) {
         if (!seat.accountId) continue;
         const outcome = m.winner === 'draw' || !m.winner ? 'draw' : m.winner === seat.team ? 'win' : 'loss';
+        const win = outcome === 'win';
+        const crowns = m.crowns[seat.team];
         try {
+          const extra: Pick<RewardsMsg, 'challenge' | 'tournament'> = {};
+          if (this.mode === 'tournament') extra.tournament = await this.recordTournament(seat.accountId, win, crowns);
           const { result, state } = await store().mutate(seat.accountId, (s) => {
-            const res = applyBattle(s, outcome, m.crowns[seat.team], rewardRand);
+            const res =
+              this.mode === 'ranked' || this.mode === 'bot'
+                ? applyBattle(s, outcome, crowns, rewardRand)
+                : // sin trofeos: el draft da oro por ganar; desafíos y torneos, sus propios premios
+                  applyCasual(s, outcome, crowns, this.mode === 'draft' ? ECONOMY.winGold(m.setup.arena) : 0);
+            if (this.mode === 'challenge' && this.opts.challengePeriod) {
+              const c = recordChallenge(s, this.opts.challengePeriod, win, rewardRand);
+              if (c) extra.challenge = { wins: c.run.wins, losses: c.run.losses, ended: c.ended, rewards: c.rewards };
+            }
             // misiones: con lo que ha pasado en ESTA simulación (los inputs que aceptó)
             rollMissions(s, Date.now(), rewardRand);
-            trackBattle(s, battleStats(m.log, seat.team, outcome, m.crowns[seat.team]));
+            trackBattle(s, battleStats(m.log, seat.team, outcome, crowns));
             return res;
           });
-          seat.client?.send('rewards', { result, state } satisfies RewardsMsg);
+          seat.client?.send('rewards', { result, state, mode: this.mode, ...extra } satisfies RewardsMsg);
         } catch (e) {
           console.error('[match] no se pudieron dar las recompensas', e);
         }
@@ -434,3 +589,5 @@ export class MatchRoom extends Room {
 }
 
 const rewardRand = (): number => crypto.randomInt(0, 2 ** 32) / 2 ** 32;
+
+export type TournamentResult = NonNullable<RewardsMsg['tournament']>;

@@ -11,6 +11,40 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Torneo creado por un jugador: dura unos minutos y se juega por código (o abierto a todos).
+model Tournament {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  name       String
+  creatorId  String
+  /// Reglas: classic | double | triple | sudden | draft
+  rules      String
+  maxPlayers Int
+  isPublic   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  endsAt     DateTime
+  players    TournamentPlayer[]
+
+  @@index([endsAt])
+  @@index([creatorId])
+}
+
+/// Jugador apuntado a un torneo, con su marcador.
+model TournamentPlayer {
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  accountId    String
+  name         String
+  wins         Int        @default(0)
+  losses       Int        @default(0)
+  crowns       Int        @default(0)
+  joinedAt     DateTime   @default(now())
+  prizeClaimed Boolean    @default(false)
+
+  @@id([tournamentId, accountId])
+  @@index([accountId])
+}
+
 /// Una cuenta de jugador. Las de invitado no tienen wallet hasta que la conectan.
 model Account {
   id          String   @id @default(cuid())

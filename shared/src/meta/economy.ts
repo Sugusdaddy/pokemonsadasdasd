@@ -31,6 +31,14 @@ import { defaultRand, randInt, type RandFn } from './random';
 import { hasProfanity } from '../social/filter';
 import { seasonAt, softReset, tierFor, type SeasonProgress, type SeasonReward } from './season';
 import { MISSION_BONUS, missionDone, type MissionPeriod, type MissionReward, type MissionsState } from './missions';
+import {
+  CHALLENGE_MAX_LOSSES,
+  CHALLENGE_MAX_WINS,
+  TOURNAMENT_PRIZES,
+  challengeOfDay,
+  challengeRewardsBetween,
+  type ChallengeRun,
+} from './modes';
 
 export type SlotState = 'locked' | 'unlocking' | 'ready';
 export interface BallSlot {
@@ -71,6 +79,10 @@ export interface ProfileState {
   missions?: MissionsState;
   /** Tutorial terminado (y su premio cobrado). */
   tutorialDone?: boolean;
+  /** Intento del desafío del día. */
+  challenge?: ChallengeRun;
+  /** Día (UTC) del último premio de torneo cobrado: como mucho uno al día. */
+  tournamentPrizeDay?: string;
 }
 
 /** Error de regla de juego. `code` es una clave de traducción (`econ.*`). */
@@ -470,6 +482,34 @@ export function applyBattle(
   return res;
 }
 
+/**
+ * Partida sin trofeos (draft, desafío, torneo): cuenta en las estadísticas y en las coronas de
+ * la ball de coronas; si gana, `gold` y un poco de experiencia. Solo la llama el servidor.
+ */
+export function applyCasual(s: ProfileState, outcome: BattleOutcome, myCrowns: number, gold: number): BattleResult {
+  const st = s.stats;
+  st.battles += 1;
+  if (outcome === 'win') {
+    st.wins += 1;
+    if (myCrowns === 3) st.threeCrowns += 1;
+  } else if (outcome === 'loss') st.losses += 1;
+  else st.draws += 1;
+  const win = outcome === 'win';
+  const res: BattleResult = {
+    trophies: 0,
+    gold: win ? gold : 0,
+    ball: null,
+    xp: win ? 1 : 0,
+    arenaUp: false,
+    crowns: myCrowns,
+    kingLevelUp: false,
+  };
+  s.gold += res.gold;
+  s.crowns = Math.min(CROWNS_FOR_CROWN_BALL, s.crowns + myCrowns);
+  res.kingLevelUp = addXp(s, res.xp);
+  return res;
+}
+
 /** Limpia un estado cargado (cartas que ya no existen, mazos incompletos). */
 export function sanitize(s: ProfileState): ProfileState {
   for (const k of Object.keys(s.cards)) if (!isCardKey(k)) delete s.cards[k];
@@ -578,6 +618,58 @@ export function completeTutorial(s: ProfileState): { gold: number; gems: number 
   s.gold += TUTORIAL_REWARD.gold;
   s.gems += TUTORIAL_REWARD.gems;
   return { ...TUTORIAL_REWARD };
+}
+
+// ───────────────────────── Desafío del día y torneos ─────────────────────────
+
+/** Empieza (o sigue) el intento del desafío de hoy. Repetir es gratis; los premios ya cobrados hoy no se repiten. */
+export function startChallenge(s: ProfileState, now: number): ChallengeRun {
+  const { period } = challengeOfDay(now);
+  const run = s.challenge;
+  if (run?.period === period && run.active) return run;
+  s.challenge = { period, wins: 0, losses: 0, paid: run?.period === period ? run.paid : 0, active: true };
+  return s.challenge;
+}
+
+export interface ChallengeOutcome {
+  run: ChallengeRun;
+  rewards: MissionClaim[];
+  /** El intento ha terminado (12 victorias o 3 derrotas). */
+  ended: boolean;
+}
+
+/**
+ * Resultado de una partida de desafío (solo lo llama el servidor con SU partida). `period` es
+ * el desafío con el que empezó la partida. Un empate cuenta como derrota.
+ */
+export function recordChallenge(
+  s: ProfileState,
+  period: string,
+  win: boolean,
+  rand: RandFn = defaultRand,
+): ChallengeOutcome | null {
+  const run = s.challenge;
+  if (!run || !run.active || run.period !== period) return null;
+  const rewards: MissionClaim[] = [];
+  if (win) {
+    run.wins += 1;
+    for (const r of challengeRewardsBetween(run.paid, run.wins)) rewards.push(grantMissionReward(s, r, rand));
+    run.paid = Math.max(run.paid, run.wins);
+  } else run.losses += 1;
+  const ended = run.wins >= CHALLENGE_MAX_WINS || run.losses >= CHALLENGE_MAX_LOSSES;
+  if (ended) run.active = false;
+  return { run: { ...run }, rewards, ended };
+}
+
+/** Premio de un torneo por su puesto (1-3). Uno al día como mucho. */
+export function claimTournamentPrize(s: ProfileState, now: number, rank: number): number {
+  const gold = TOURNAMENT_PRIZES[rank - 1];
+  if (!gold) fail('econ.noPrize');
+  const day = shopDay(now);
+  if (s.tournamentPrizeDay === day) fail('econ.prizeToday');
+  s.tournamentPrizeDay = day;
+  s.gold += gold;
+  return gold;
 }
 
 // ───────────────────────── Solo en desarrollo ─────────────────────────

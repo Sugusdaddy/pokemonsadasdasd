@@ -16,10 +16,19 @@ export interface PlayerSetup {
   kingLevel: number;
 }
 
+/** Reglas especiales (desafíos y torneos). Sin reglas = partida normal. */
+export interface MatchRules {
+  /** Multiplicador de la recarga de elixir desde el principio (2 = doble, 3 = triple). */
+  elixir?: number;
+  /** Muerte súbita: la primera torre que cae decide la partida. */
+  suddenDeath?: boolean;
+}
+
 export interface MatchSetup {
   seed: number;
   arena: number;
   players: Record<Team, PlayerSetup>;
+  rules?: MatchRules;
 }
 
 // ───────────────────────── Inputs ─────────────────────────
@@ -197,4 +206,4 @@ export type SimEvent =
   | { e: 'doubleElixir' }
   | { e: 'overtime' }
   | { e: 'emote'; team: Team; id: number }
-  | { e: 'end'; winner: Winner; reason: 'king' | 'time' | 'tiebreak' | 'overtime' | 'surrender' };
+  | { e: 'end'; winner: Winner; reason: 'king' | 'time' | 'tiebreak' | 'overtime' | 'surrender' | 'sudden' };

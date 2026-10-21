@@ -3,6 +3,8 @@ import {
   Lockstep,
   RECONNECT_SECONDS,
   type CatchupMsg,
+  type ClientJoin,
+  type DraftMsg,
   type EndMsg,
   type Input,
   type MatchedMsg,
@@ -33,6 +35,8 @@ export class OnlineSession {
   /** Recompensas que calcula el servidor al acabar (no llegan en amistosas ni a espectadores). */
   rewards: RewardsMsg | null = null;
   code: string | null = null;
+  /** Última ronda del draft (si la partida empieza eligiendo mazos). */
+  draft: DraftMsg | null = null;
   state: SessionState = 'waiting';
   /** Se activa cuando la partida se ha reconstruido (reconexión/resync): hay que redibujar todo. */
   resetPending = false;
@@ -41,6 +45,7 @@ export class OnlineSession {
   onReject?: (r: RejectMsg) => void;
   onEnd?: (e: EndMsg) => void;
   onCode?: (code: string) => void;
+  onDraft?: (d: DraftMsg) => void;
   onState?: (s: SessionState) => void;
 
   constructor(room: Room) {
@@ -73,6 +78,10 @@ export class OnlineSession {
       this.onCode?.(m.code);
     });
     room.onMessage('rewards', (m: RewardsMsg) => (this.rewards = m));
+    room.onMessage('draft', (m: DraftMsg) => {
+      this.draft = m;
+      this.onDraft?.(m);
+    });
     room.onMessage('end', (m: EndMsg) => {
       this.end = m;
       forget();
@@ -115,6 +124,11 @@ export class OnlineSession {
     else this.room.send('surrender');
   }
 
+  /** Draft: elige la carta i (0 o 1) de la pareja de esta ronda. */
+  pick(i: number): void {
+    this.room.send('pick', { i });
+  }
+
   leave(): void {
     forget();
     if (this.state !== 'lost') void this.room.leave(true).catch(() => {});
@@ -122,9 +136,16 @@ export class OnlineSession {
 
   // ───────────────────────── Formas de entrar ─────────────────────────
 
-  /** Cola de emparejamiento por trofeos. onStatus recibe la espera y la ventana actual. */
-  static async findMatch(onStatus: (s: QueueStatusMsg) => void, signal: AbortSignal): Promise<OnlineSession> {
-    const q = await net().joinOrCreate('queue', joinOptions());
+  /**
+   * Cola de emparejamiento: por trofeos (por defecto), draft, desafío del día o un torneo.
+   * onStatus recibe la espera y la ventana actual.
+   */
+  static async findMatch(
+    onStatus: (s: QueueStatusMsg) => void,
+    signal: AbortSignal,
+    queue: Pick<ClientJoin, 'queue' | 'tournamentId'> = {},
+  ): Promise<OnlineSession> {
+    const q = await net().joinOrCreate('queue', { ...joinOptions(), ...queue });
     try {
       const matched = await new Promise<MatchedMsg>((resolve, reject) => {
         q.onMessage('queue', onStatus);

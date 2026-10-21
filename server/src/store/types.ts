@@ -13,6 +13,7 @@ import type {
   Team,
   Winner,
 } from '@arena/shared';
+import type { RuleSet, TournamentStanding } from '@arena/shared';
 
 export interface AccountRow {
   id: string;
@@ -300,11 +301,54 @@ export interface AdminStore {
   listAdminLog(limit: number): Promise<AdminLogRow[]>;
 }
 
+// ───────────────────────── Torneos ─────────────────────────
+
+export interface TournamentRow {
+  id: string;
+  /** Código para unirse (5 caracteres, como el de las amistosas). */
+  code: string;
+  name: string;
+  creatorId: string;
+  rules: RuleSet;
+  maxPlayers: number;
+  /** Aparece en la lista de torneos abiertos (si no, solo con el código). */
+  isPublic: boolean;
+  createdAt: Date;
+  endsAt: Date;
+}
+
+export interface TournamentPlayerRow extends TournamentStanding {
+  tournamentId: string;
+  prizeClaimed: boolean;
+}
+
+export interface TournamentStore {
+  /** Crea el torneo con su creador ya dentro. */
+  createTournament(
+    t: Omit<TournamentRow, 'id' | 'createdAt'>,
+    creator: { accountId: string; name: string },
+  ): Promise<TournamentRow>;
+  getTournament(id: string): Promise<TournamentRow | null>;
+  tournamentByCode(code: string): Promise<TournamentRow | null>;
+  tournamentPlayers(id: string): Promise<TournamentPlayerRow[]>;
+  /** Entra (sin pasarse del máximo, de forma atómica). */
+  joinTournament(id: string, accountId: string, name: string): Promise<'ok' | 'full' | 'already'>;
+  /** Torneos en los que está la cuenta que acabaron después de `since` (o siguen). */
+  myTournaments(accountId: string, since: Date): Promise<TournamentRow[]>;
+  /** Públicos que no han acabado, con cuántos jugadores tienen. */
+  openTournaments(now: Date, limit: number): Promise<Array<TournamentRow & { players: number }>>;
+  /** Cuántos torneos sin terminar ha creado la cuenta. */
+  activeCreated(accountId: string, now: Date): Promise<number>;
+  recordTournamentGame(id: string, accountId: string, win: boolean, crowns: number): Promise<void>;
+  /** Marca el premio como cobrado. Devuelve false si ya lo estaba. */
+  markPrizeClaimed(id: string, accountId: string): Promise<boolean>;
+}
+
 /**
  * Acceso a datos. Hay dos implementaciones con el mismo comportamiento:
  * PrismaStore (PostgreSQL) y MemoryStore (tests y arranque sin base de datos).
  */
-export interface Store extends SocialStore, AdminStore {
+export interface Store extends SocialStore, AdminStore, TournamentStore {
   readonly kind: 'postgres' | 'memory';
 
   createAccount(state: ProfileState, isGuest: boolean, wallet?: string): Promise<AccountRow>;

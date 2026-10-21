@@ -19,6 +19,7 @@ import {
   type BattleResult,
   type CardOffer,
   type MissionClaim,
+  type ChallengeRun,
   type MissionPeriod,
   type ProfileState,
 } from '@arena/shared';
@@ -208,6 +209,7 @@ class ProfileStore {
   claimMission = (period: MissionPeriod, id: string) => this.act<MissionClaim>('/me/missions/claim', { period, id });
   claimMissionBonus = (period: MissionPeriod) => this.act<MissionClaim>('/me/missions/bonus', { period });
   completeTutorial = () => this.act<{ gold: number; gems: number }>('/me/tutorial/complete');
+  startChallenge = () => this.act<ChallengeRun>('/me/challenge/start');
   devCheat = (kind: 'resources' | 'trophies') => this.act<void>('/me/dev', { kind });
   reset = () => this.act<void>('/me/reset');
 

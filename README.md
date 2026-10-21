@@ -471,8 +471,7 @@ cuando y destellos en las legendarias.
   elixir gastado, abrir balls, mejorar cartas y gastar oro. Cada una da oro (y gemas las semanales); cobrar las tres
   de un periodo da un premio extra (Poké Ball + gemas al día, Ultra Ball + gemas a la semana).
 - **Todo lo decide el servidor**: reparte las misiones al empezar cada periodo (dentro del estado de la cuenta, sin
-  tablas nuevas) y el progreso de batalla sale de los inputs que aceptó SU simulación. Cuentan las clasificatorias y
-  las partidas contra el bot; las amistosas, no (como sus trofeos). El resto (balls, mejoras, oro) cuenta al hacer la
+  tablas nuevas) y el progreso de batalla sale de los inputs que aceptó SU simulación. Cuentan todas las batallas menos las amistosas. El resto (balls, mejoras, oro) cuenta al hacer la
   acción. API: `POST /api/me/missions/claim` `{ period, id }`, `POST /api/me/missions/bonus` `{ period }` y
   `POST /api/me/tutorial/complete`.
 - En el menú, la fila de premios de la pestaña Batalla tiene ahora tres recuadros: ball gratis, ball de coronas y
@@ -507,6 +506,32 @@ Nueve cartas más (50 en total), repartidas entre las arenas 1 a 4:
 - Las cartas de antes funcionan exactamente igual (los 27 tests de la simulación siguen pasando y las
   repeticiones antiguas se reproducen igual). El protocolo sube a la versión 2: un cliente antiguo no puede jugar
   contra uno nuevo.
+
+## Modos: draft, desafíos y torneos (Fase 4C)
+
+El botón **Modos** de la pestaña Batalla (antes "Amigo") reúne draft, desafío del día, torneos y amistosa. Todo es
+gratis, sin cuotas de entrada, y salvo la amistosa se juega con **niveles iguales para todos**: cartas al nivel
+inicial de su rareza y rey a nivel 5 (`STANDARD_KING`). Gana quien juega mejor, no quien ha mejorado más. Estos modos
+no dan ni quitan trofeos.
+
+- **Draft**: cada uno de los 4 rondas te enseña una pareja de cartas; eliges una y la otra se la lleva el rival. Al
+  final cada uno tiene 4 elegidas + 4 recibidas (16 cartas distintas en total, con pocos hechizos y edificios). Hay
+  12 s por ronda (si no eliges, se queda la mejor). Cola propia; si no aparece nadie en 20 s, contra un bot. Ganar da
+  oro.
+- **Desafío del día**: rota cada día UTC entre elixir doble, muerte súbita (la primera torre decide), draft y elixir
+  triple. Un intento dura hasta 12 victorias o 3 derrotas (un empate cuenta como derrota) y se repite gratis; los
+  premios por victorias (1, 3, 5, 7, 9 y 12: oro, gemas, Super Ball, Ultra Ball) se cobran una vez al día.
+- **Torneos**: cualquiera crea uno (nombre, reglas, 15/30/60 min, 4-32 plazas, público o con código; uno a la vez).
+  Mientras dura, los apuntados se emparejan **solo entre ellos** (nunca con bots; si el rival no se conecta y entra
+  un bot, esa partida no cuenta). Clasificación por victorias, menos derrotas, coronas y antigüedad. Al acabar, los
+  tres primeros cobran 500/300/150 de oro si han jugado al menos 4 jugadores con 3 partidas cada uno, y como mucho un
+  premio de torneo al día por cuenta (contra granjas de cuentas).
+- **Reglas en la simulación**: `MatchSetup.rules` (`elixir` multiplicador y `suddenDeath`). Viajan con la partida,
+  así que las repeticiones se reproducen igual; sin reglas, la partida es idéntica a las de siempre.
+- **Servidor**: la cola (`QueueRoom`) separa a los jugadores por modo, desafío del día o torneo; la sala
+  (`MatchRoom`) hace el draft antes de empezar y reparte los premios según el modo. Tablas nuevas `Tournament` y
+  `TournamentPlayer` (migración `tournaments`). API: `POST /api/me/challenge/start`, `GET/POST /api/tournaments`,
+  `POST /api/tournaments/join`, `GET /api/tournaments/:id` y `POST /api/tournaments/:id/claim`.
 
 ## Arte y modo "solo fans"
 

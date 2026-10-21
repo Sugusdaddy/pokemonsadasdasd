@@ -1,13 +1,18 @@
 import { Room, matchMaker, type Client } from '@colyseus/core';
 import {
   PROTOCOL_VERSION,
+  QUEUE_KINDS,
+  challengeOfDay,
+  rulesOf,
   trophyWindow,
   type ClientJoin,
   type MatchMode,
   type MatchedMsg,
+  type QueueKind,
   type QueueStatusMsg,
+  type RuleSet,
 } from '@arena/shared';
-import { settings } from '../context';
+import { settings, store } from '../context';
 import { authAccount, type MatchRoomOptions, type SeatAuth } from './MatchRoom';
 
 interface Waiting {
@@ -15,12 +20,21 @@ interface Waiting {
   auth: SeatAuth;
   since: number;
   busy: boolean;
+  queue: QueueKind;
+  /** Solo se emparejan los que tienen la misma clave (modo + desafío del día o torneo). */
+  key: string;
+  /** Reglas de la partida (desafío o torneo). */
+  rules: RuleSet;
+  tournamentId?: string;
 }
 
 /**
- * Cola de emparejamiento por trofeos. Cada medio segundo intenta emparejar a quien
- * más lleva esperando con el rival más cercano dentro de su ventana, que se amplía
- * con la espera. Si nadie encaja en QUEUE_BOT_AFTER_MS, le crea una partida contra un bot.
+ * Colas de emparejamiento. Cada medio segundo intenta emparejar a quien más lleva
+ * esperando:
+ *  - clasificatoria: con el rival más cercano en trofeos dentro de su ventana, que se amplía
+ *    con la espera; si nadie encaja en QUEUE_BOT_AFTER_MS, contra un bot;
+ *  - draft y desafío del día: con el siguiente que espere en la misma cola (o un bot);
+ *  - torneo: solo con otro jugador del mismo torneo (nunca con bots).
  */
 export class QueueRoom extends Room {
   private waiting = new Map<string, Waiting>();
@@ -30,16 +44,33 @@ export class QueueRoom extends Room {
     this.clock.setInterval(() => void this.matchmake(), 500);
   }
 
-  override async onAuth(_client: Client, options: ClientJoin): Promise<SeatAuth> {
+  override async onAuth(_client: Client, options: ClientJoin): Promise<Omit<Waiting, 'client' | 'since' | 'busy'>> {
     if (options?.protocol !== undefined && options.protocol !== PROTOCOL_VERSION) throw new Error('err.version');
     const auth = await authAccount(options?.token);
     // una cuenta solo puede estar una vez en la cola
     for (const w of this.waiting.values()) if (w.auth.accountId === auth.accountId) throw new Error('err.queue.twice');
-    return auth;
+    const queue: QueueKind = QUEUE_KINDS.includes(options?.queue as QueueKind)
+      ? (options.queue as QueueKind)
+      : 'ranked';
+    if (queue === 'ranked') return { auth, queue, key: 'ranked', rules: 'classic' };
+    if (queue === 'draft') return { auth, queue, key: 'draft', rules: 'draft' };
+    if (queue === 'challenge') {
+      const c = challengeOfDay(Date.now());
+      const run = (await store().getAccount(auth.accountId))?.state.challenge;
+      if (!run || !run.active || run.period !== c.period) throw new Error('err.challenge.notStarted');
+      return { auth, queue, key: `challenge:${c.period}`, rules: c.rules };
+    }
+    const id = String(options?.tournamentId ?? '');
+    const t = id ? await store().getTournament(id) : null;
+    if (!t) throw new Error('err.tournament.notFound');
+    if (Date.now() >= +t.endsAt) throw new Error('err.tournament.ended');
+    if (!(await store().tournamentPlayers(id)).some((p) => p.accountId === auth.accountId))
+      throw new Error('err.tournament.notIn');
+    return { auth, queue, key: `t:${id}`, rules: t.rules, tournamentId: id };
   }
 
-  override onJoin(client: Client, _options: ClientJoin, auth: SeatAuth): void {
-    this.waiting.set(client.sessionId, { client, auth, since: Date.now(), busy: false });
+  override onJoin(client: Client, _options: ClientJoin, w: Omit<Waiting, 'client' | 'since' | 'busy'>): void {
+    this.waiting.set(client.sessionId, { ...w, client, since: Date.now(), busy: false });
   }
 
   override onLeave(client: Client): void {
@@ -52,20 +83,22 @@ export class QueueRoom extends Room {
     const used = new Set<Waiting>();
     for (const a of list) {
       if (used.has(a)) continue;
-      const winA = trophyWindow(now - a.since);
       let best: Waiting | null = null;
-      for (const b of list) {
-        if (b === a || used.has(b)) continue;
-        const diff = Math.abs(a.auth.join.trophies - b.auth.join.trophies);
-        if (diff > Math.min(winA, trophyWindow(now - b.since))) continue;
-        if (!best || diff < Math.abs(a.auth.join.trophies - best.auth.join.trophies)) best = b;
-      }
+      if (a.queue === 'ranked') {
+        const winA = trophyWindow(now - a.since);
+        for (const b of list) {
+          if (b === a || used.has(b) || b.key !== a.key) continue;
+          const diff = Math.abs(a.auth.join.trophies - b.auth.join.trophies);
+          if (diff > Math.min(winA, trophyWindow(now - b.since))) continue;
+          if (!best || diff < Math.abs(a.auth.join.trophies - best.auth.join.trophies)) best = b;
+        }
+      } else best = list.find((b) => b !== a && !used.has(b) && b.key === a.key) ?? null;
       if (best) {
         used.add(a).add(best);
-        void this.createMatch('ranked', [a, best]);
-      } else if (now - a.since >= settings().queueBotAfterMs) {
+        void this.createMatch([a, best], false);
+      } else if (a.queue !== 'tournament' && now - a.since >= settings().queueBotAfterMs) {
         used.add(a);
-        void this.createMatch('bot', [a]);
+        void this.createMatch([a], true);
       }
     }
     for (const w of this.waiting.values()) {
@@ -75,10 +108,20 @@ export class QueueRoom extends Room {
     }
   }
 
-  private async createMatch(mode: MatchMode, players: Waiting[]): Promise<void> {
+  private async createMatch(players: Waiting[], vsBot: boolean): Promise<void> {
+    const w = players[0];
+    const mode: MatchMode = w.queue === 'ranked' ? (vsBot ? 'bot' : 'ranked') : w.queue;
     players.forEach((p) => (p.busy = true));
     try {
-      const options: MatchRoomOptions = { mode };
+      const { rules, draft } = rulesOf(w.rules);
+      const options: MatchRoomOptions = {
+        mode,
+        rules,
+        draft,
+        vsBot,
+        tournamentId: w.tournamentId,
+        challengePeriod: w.queue === 'challenge' ? w.key.slice('challenge:'.length) : undefined,
+      };
       const room = await matchMaker.createRoom('match', options);
       for (const p of players) {
         if (!this.waiting.has(p.client.sessionId)) continue; // se fue mientras tanto

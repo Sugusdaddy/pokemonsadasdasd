@@ -67,7 +67,7 @@ export function openModal(
     closed = true;
     scene.input.keyboard?.off('keydown-ESC', onEsc);
     stack.splice(stack.indexOf(entry), 1);
-    scene.modalOpen -= 1;
+    scene.modalOpen = Math.max(0, scene.modalOpen - 1);
     scene.tweens.add({ targets: dim, alpha: 0, duration: 140 });
     scene.tweens.add({ targets: box, scale: 0.85 * fit, alpha: 0, duration: 140, onComplete: () => root.destroy() });
   };
