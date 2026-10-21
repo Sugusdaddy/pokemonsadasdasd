@@ -13,3 +13,7 @@ server/data/
 server/.pgdata/
 server/.env
 !.env.example
+
+# enlaces locales de las CLI de despliegue
+.vercel/
+.railway/

@@ -1,0 +1,19 @@
+# Lo que NO se sube a Vercel (allí solo se compila el cliente).
+# server/package.json y server/prisma sí hacen falta: npm ci instala todo el monorepo
+# y el postinstall genera el cliente de Prisma.
+.git
+**/node_modules
+**/dist
+coverage
+*.log
+**/.env
+**/.env.*
+!**/.env.example
+.vercel
+assets
+server/.pgdata
+server/data
+server/src
+server/test
+shared/test
+client/test
