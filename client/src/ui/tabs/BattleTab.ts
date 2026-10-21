@@ -5,6 +5,7 @@ import { animInfo, portraitSprite } from '../../systems/Assets';
 import { Sfx } from '../../systems/Sfx';
 import { txt, button, panel, fmtTime } from '../style';
 import { openModal, toast } from '../Modal';
+import { textPrompt } from '../textPrompt';
 import { Tab } from './Tab';
 
 type Txt = Phaser.GameObjects.Text;
@@ -82,8 +83,11 @@ export class BattleTab extends Tab {
     R.add(txt(s, bx + bw / 2, 581, next ? `${next.name}: ${next.trophies}` : '¡Arena máxima!', 17));
 
     // ── Botón de batalla ──
-    const bb = button(s, W / 2, 712, 420, 118, 'BATALLA', 0xf2b01b, () => this.startBattle(), 52);
+    const bb = button(s, W / 2, 712, 400, 118, 'BATALLA', 0xf2b01b, () => this.startBattle(), 52);
     R.add(bb);
+    // amistosa por código y TV (en directo y repeticiones)
+    R.add(button(s, 78, 712, 116, 96, 'Amigo', COLORS.blue, () => this.friendly(), 24));
+    R.add(button(s, W - 78, 712, 116, 96, 'TV', COLORS.orange, () => !s.modalOpen && s.scene.start('Tv'), 30));
     s.tweens.add({ targets: bb, scale: 1.03, yoyo: true, repeat: -1, duration: 700, ease: 'Sine.easeInOut' });
 
     // ── Ball gratis y ball de coronas ──
@@ -97,7 +101,50 @@ export class BattleTab extends Tab {
 
   startBattle(): void {
     if (this.scene.modalOpen) return;
-    this.scene.scene.start('Battle');
+    this.scene.scene.start('Online', { mode: 'ranked' });
+  }
+
+  /** Partida amistosa: crear una sala con código o unirse a la de un amigo. */
+  friendly(): void {
+    const s = this.scene;
+    if (s.modalOpen) return;
+    openModal(s, 600, 460, 'Partida amistosa', (box, close) => {
+      box.add(txt(s, 0, -80, 'Juega contra un amigo con un código.', 24, '#c9c3ff'));
+      box.add(
+        button(
+          s,
+          0,
+          10,
+          420,
+          90,
+          'Crear sala',
+          COLORS.green,
+          () => {
+            close();
+            s.scene.start('Online', { mode: 'create' });
+          },
+          32,
+        ),
+      );
+      box.add(
+        button(
+          s,
+          0,
+          130,
+          420,
+          90,
+          'Unirme con código',
+          COLORS.blue,
+          () => {
+            close();
+            void textPrompt('Código de la sala', { maxLength: 5, upper: true, placeholder: 'ABCDE' }).then((code) => {
+              if (code) s.scene.start('Online', { mode: 'join', code });
+            });
+          },
+          30,
+        ),
+      );
+    });
   }
 
   drawExtras(): void {

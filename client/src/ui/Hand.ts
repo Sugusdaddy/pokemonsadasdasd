@@ -142,7 +142,7 @@ export class Hand {
   private showGhost(x: number, y: number): void {
     if (this.selected < 0 || !this.ghostCard) return;
     const [sx, sy] = this.snap(x, y);
-    const ok = this.b.match.canDeploy(this.b.me, this.ghostCard, sx, sy);
+    const ok = this.b.match.canDeploy(this.b.me, this.ghostCard, sx, this.b.view.y(sy));
     this.ghost
       .setPosition(sx, sy)
       .setVisible(true)
@@ -206,7 +206,8 @@ export class Hand {
   private deployAt(x: number, y: number): void {
     if (this.selected < 0) return;
     const [sx, sy] = this.snap(x, y);
-    if (this.b.playCard(this.cycle.hand[this.selected], sx, sy)) {
+    // la mano trabaja en pantalla; la partida, en coordenadas del mundo
+    if (this.b.playCard(this.cycle.hand[this.selected], sx, this.b.view.y(sy))) {
       this.selected = -1;
       this.layout();
       this.buildGhost();
@@ -220,7 +221,10 @@ export class Hand {
       this.build();
     }
     const e = this.b.match.elixir[this.b.me];
-    this.views.forEach((v, i) => v.dim.setVisible(getCard(this.cycle.hand[i]).cost > e));
+    this.views.forEach((v, i) => {
+      const k = this.cycle.hand[i];
+      v.dim.setVisible(getCard(k).cost > e || this.b.isPending(k));
+    });
     const g = this.elixirG;
     g.clear();
     const x0 = 104,

@@ -144,7 +144,8 @@ export type SimEvent =
   | { e: 'spawn'; id: number }
   | { e: 'attack'; id: number; targetId: number; melee: boolean }
   | { e: 'shoot'; id: number }
-  | { e: 'impact'; x: number; y: number; palette: string; scale: number }
+  /** y es el suelo; h la altura visual del impacto. */
+  | { e: 'impact'; x: number; y: number; h: number; palette: string; scale: number }
   | { e: 'damage'; id: number; amount: number; mult: number; silent: boolean }
   | { e: 'splash'; x: number; y: number; r: number; palette: string }
   | { e: 'spellCast'; team: Team; card: string; x: number; y: number }

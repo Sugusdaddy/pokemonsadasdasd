@@ -9,3 +9,4 @@ coverage/
 assets/SpritesPokemon/
 assets/custom/
 client/public/gen/
+server/data/

@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────
 
 export const TITLE = 'Arena Royale';
-export const VERSION = '3.0-phase0';
+export const VERSION = '3.0-phase1';
 
 // ─────────────────────────── Arte ───────────────────────────
 // `npm run assets` lee el pack de `root` y genera los atlas del cliente.
@@ -165,6 +165,15 @@ export const ARENAS: ArenaTheme[] = [
     star: 150,
   },
 ];
+
+/** Índice de la arena que corresponde a unos trofeos. */
+export function arenaFor(trophies: number): number {
+  let a = 0;
+  ARENAS.forEach((ar, i) => {
+    if (trophies >= ar.trophies) a = i;
+  });
+  return a;
+}
 
 // ─────────────────────────── Cartas ───────────────────────────
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';

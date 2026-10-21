@@ -4,6 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "dependencies": {
-    "@arena/shared": "*"
+    "@arena/shared": "*",
+    "@colyseus/core": "^0.16.26",
+    "@colyseus/schema": "^3.0.76",
+    "@colyseus/ws-transport": "^0.16.5",
+    "express": "^4.22.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.25",
+    "@types/ws": "^8.18.2"
   }
 }

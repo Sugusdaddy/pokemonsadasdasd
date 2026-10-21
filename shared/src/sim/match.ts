@@ -664,7 +664,7 @@ export class Match {
       p.x = p.tx;
       p.y = p.ty;
       const hit = p.target.alive ? p.target : null;
-      this.emit({ e: 'impact', x: p.tx, y: p.ty - hitHeight(p.target), palette: p.src.palette, scale: 2 });
+      this.emit({ e: 'impact', x: p.tx, y: p.ty, h: hitHeight(p.target), palette: p.src.palette, scale: 2 });
       if (!p.src.isTower && p.src.splash > 0) this.applyDamage(p.src, hit, p.tx, p.ty);
       else if (hit) this.applyDamage(p.src, hit, p.tx, p.ty);
       return;
@@ -684,7 +684,7 @@ export class Match {
         if (!u.alive) continue;
         if (p.melee) {
           if (p.target.alive) {
-            this.emit({ e: 'impact', x: p.target.x, y: p.target.y - 12, palette: u.card.palette, scale: 3 });
+            this.emit({ e: 'impact', x: p.target.x, y: p.target.y, h: 12, palette: u.card.palette, scale: 3 });
             this.applyDamage(this.sourceOf(u), p.target, p.target.x, p.target.y);
           }
         } else {

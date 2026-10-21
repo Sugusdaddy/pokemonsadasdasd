@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
 import { hitHeight, type SimProjectile } from '@arena/shared';
 import { palette } from '../systems/Assets';
+import type { View } from './View';
 import type { FxPools } from './Pools';
 
 /**
@@ -17,11 +18,12 @@ export class ProjectileView {
   constructor(
     private readonly fx: FxPools,
     readonly p: SimProjectile,
+    private readonly view: View,
   ) {
     this.img = fx.projectile(p.move);
     this.trail = palette(p.src.palette)[3];
     this.lastX = p.x;
-    this.lastY = p.y - p.h0;
+    this.lastY = view.y(p.y) - p.h0;
     this.img.setPosition(this.lastX, this.lastY);
   }
 
@@ -32,7 +34,7 @@ export class ProjectileView {
     const done = Math.hypot(x - p.sx, y - p.sy);
     const left = Math.hypot(p.tx - x, p.ty - y);
     const k = done + left > 0 ? done / (done + left) : 1;
-    const vy = y - (p.h0 + (hitHeight(p.target) - p.h0) * k);
+    const vy = this.view.y(y) - (p.h0 + (hitHeight(p.target) - p.h0) * k);
     const dx = x - this.lastX,
       dy = vy - this.lastY;
     if (dx * dx + dy * dy > 0.01) this.img.setRotation(Math.atan2(dy, dx));

@@ -1,7 +1,7 @@
 {
   "name": "arena-royale",
   "private": true,
-  "version": "3.0.0-phase0",
+  "version": "3.0.0-phase1",
   "type": "module",
   "workspaces": [
     "shared",
@@ -12,7 +12,7 @@
     "node": ">=18.18"
   },
   "scripts": {
-    "dev": "tsx tools/ensure-assets.ts && npm run dev -w client",
+    "dev": "tsx tools/ensure-assets.ts && concurrently -k -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
     "build": "tsx tools/ensure-assets.ts && npm run build -w client",
     "preview": "npm run preview -w client",
     "assets": "tsx tools/build-assets.ts",
@@ -23,12 +23,16 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run lint && npm test",
-    "assets:fan-only": "tsx tools/build-assets.ts --fan-only"
+    "assets:fan-only": "tsx tools/build-assets.ts --fan-only",
+    "dev:server": "tsx watch server/src/index.ts",
+    "dev:client": "npm run dev -w client",
+    "start:server": "tsx server/src/index.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@types/node": "^18.19.130",
     "@types/pngjs": "^6.0.5",
+    "concurrently": "^9.2.5",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^9.1.2",
     "globals": "^17.13.0",

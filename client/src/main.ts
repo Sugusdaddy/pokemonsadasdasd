@@ -4,6 +4,8 @@ import { BootScene } from './scenes/BootScene';
 import { LobbyScene } from './scenes/LobbyScene';
 import { BallOpenScene } from './scenes/BallOpenScene';
 import { BattleScene } from './scenes/BattleScene';
+import { OnlineScene } from './scenes/OnlineScene';
+import { TvScene } from './scenes/TvScene';
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -17,7 +19,7 @@ const game = new Phaser.Game({
     height: H,
   },
   input: { activePointers: 2 },
-  scene: [BootScene, LobbyScene, BallOpenScene, BattleScene],
+  scene: [BootScene, LobbyScene, BallOpenScene, BattleScene, OnlineScene, TvScene],
 });
 
 // para depurar desde la consola

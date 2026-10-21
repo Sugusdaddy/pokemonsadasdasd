@@ -13,6 +13,7 @@ import {
   createDecoTextures,
   type Manifest,
 } from '../systems/Assets';
+import { OnlineSession } from '../net/OnlineSession';
 import { BaseScene } from './BaseScene';
 
 /** Carga el manifest de los atlas, el perfil y los retratos (Idle) de todas las cartas. */
@@ -90,7 +91,9 @@ export class BootScene extends BaseScene {
       createBallTextures(this);
       createIconTextures(this);
       createDecoTextures(this);
-      this.scene.start('Lobby', { tab: 'battle' });
+      // si se recargó la página en mitad de una partida online, se vuelve a ella
+      if (OnlineSession.hasActive()) this.scene.start('Online', { mode: 'resume' });
+      else this.scene.start('Lobby', { tab: 'battle' });
     });
     this.load.start();
   }

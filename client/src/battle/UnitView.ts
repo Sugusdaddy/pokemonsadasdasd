@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
 import { COLORS, RULES, PACK, HOVER, T, type AnimName, type SimUnit } from '@arena/shared';
 import { animKey, animInfo, dirFromVector, pkAtlas } from '../systems/Assets';
+import type { View } from './View';
 import { Sfx } from '../systems/Sfx';
 
 const CASTING = new Set<AnimName>(['Attack', 'Shoot', 'Charge']);
@@ -27,15 +28,16 @@ export class UnitView {
     private readonly scene: Phaser.Scene,
     readonly u: SimUnit,
     readonly mine: boolean,
+    private readonly view: View,
   ) {
     const s = scene.add;
     const r = u.radius;
     this.x = u.x;
-    this.y = u.y;
-    this.dir = u.faceY < 0 ? 4 : 0;
-    this.shadow = s.ellipse(u.x, u.y, r * 2.4, r * 1.1, 0x000000, u.flying ? 0.18 : 0.3);
-    this.ring = s.ellipse(u.x, u.y, r * 2.6, r * 1.2).setStrokeStyle(3, mine ? COLORS.player : COLORS.enemy, 0.85);
-    this.sprite = s.sprite(u.x, u.y, pkAtlas(u.card.pokemon), 'Idle_0_0').setScale(u.card.scale);
+    this.y = view.y(u.y);
+    this.dir = view.dy(u.faceY) < 0 ? 4 : 0;
+    this.shadow = s.ellipse(u.x, this.y, r * 2.4, r * 1.1, 0x000000, u.flying ? 0.18 : 0.3);
+    this.ring = s.ellipse(u.x, this.y, r * 2.6, r * 1.2).setStrokeStyle(3, mine ? COLORS.player : COLORS.enemy, 0.85);
+    this.sprite = s.sprite(u.x, this.y, pkAtlas(u.card.pokemon), 'Idle_0_0').setScale(u.card.scale);
     this.hpBar = s.graphics();
     this.play('Idle');
     this.sprite.setAlpha(0.55);
@@ -72,7 +74,7 @@ export class UnitView {
   /** La simulación ha empezado un ataque. */
   onAttack(melee: boolean): void {
     const anim = melee ? 'Attack' : (PACK.castAnim[this.u.card.moveKind] ?? 'Shoot');
-    this.face(this.u.faceX, this.u.faceY);
+    this.face(this.u.faceX, this.view.dy(this.u.faceY));
     this.play(anim === 'Walk' ? 'Attack' : anim, true);
   }
 
@@ -105,14 +107,14 @@ export class UnitView {
     if (this.dead) return;
     const u = this.u;
     this.x = u.px + (u.x - u.px) * alpha;
-    this.y = u.py + (u.y - u.py) * alpha;
+    this.y = this.view.y(u.py + (u.y - u.py) * alpha);
     this.bob += dt * 4;
 
     if (u.state === 'deploy') {
       this.sprite.setAlpha(0.55 + 0.35 * Math.abs(Math.sin(u.deployLeft * 8)));
     } else {
       this.sprite.setAlpha(1);
-      this.face(u.faceX, u.faceY);
+      this.face(u.faceX, this.view.dy(u.faceY));
       if (u.state === 'move') {
         if (this.curAnim !== 'Walk' && !this.isCasting()) this.play('Walk');
       } else if (!this.isCasting() && this.curAnim !== 'Idle') {
@@ -147,6 +149,12 @@ export class UnitView {
       g.fillStyle(this.mine ? COLORS.player : COLORS.enemy).fillRect(bx, by, w * Math.max(0, u.hp / u.maxHp), h);
       g.setDepth(4000);
     }
+  }
+
+  /** Borra la vista al instante (reconstrucción tras reconectar). */
+  destroy(): void {
+    this.dead = true;
+    for (const o of [this.sprite, this.shadow, this.ring, this.hpBar]) o.destroy();
   }
 
   /** Altura del cuerpo para colocar números de daño. */

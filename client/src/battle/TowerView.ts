@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
 import { COLORS, RULES, TOWER_GUARDIANS, type AnimName, type SimTower } from '@arena/shared';
 import { animKey, animInfo, dirFromVector, palette, pkAtlas } from '../systems/Assets';
+import type { View } from './View';
 import { Sfx } from '../systems/Sfx';
 import { txt } from '../ui/style';
 import type { FxPools } from './Pools';
@@ -20,31 +21,37 @@ export class TowerView {
   private awake: boolean;
   /** Punto desde el que sale el disparo (encima de la torre). */
   readonly gy: number;
+  /** Y de pantalla de la base. */
+  readonly sy: number;
 
   constructor(
     private readonly scene: Phaser.Scene,
     readonly t: SimTower,
     readonly mine: boolean,
+    private readonly view: View,
   ) {
+    /** Y de pantalla de la torre. */
+    const ty = view.y(t.y);
+    this.sy = ty;
     const side = mine ? 'player' : 'enemy';
     // el jugador local siempre ve sus guardianes "azules"
     this.guardian = TOWER_GUARDIANS[mine ? 'blue' : 'red'][t.kind].pokemon;
     this.dir = mine ? 4 : 0;
     this.base = scene.add
-      .image(t.x, t.y + 10, `tower_${t.kind}_${side}`)
+      .image(t.x, ty + 10, `tower_${t.kind}_${side}`)
       .setOrigin(0.5, 0.82)
-      .setDepth(t.y);
-    const topY = t.y + 10 - this.base.displayHeight * 0.82 + 8;
+      .setDepth(ty);
+    const topY = ty + 10 - this.base.displayHeight * 0.82 + 8;
     this.gy = topY + 6;
     this.sprite = scene.add
       .sprite(t.x, this.gy, pkAtlas(this.guardian), 'Idle_0_0')
       .setScale(RULES.unitScale)
-      .setDepth(t.y + 1);
+      .setDepth(ty + 1);
     this.play('Idle');
     this.awake = t.active;
     if (!t.active) {
       this.sprite.setTint(0x9a9ab0);
-      this.sleepZ = txt(scene, t.x + 22, this.gy - 50, 'z', 22, '#c9c3ff').setDepth(t.y + 2);
+      this.sleepZ = txt(scene, t.x + 22, this.gy - 50, 'z', 22, '#c9c3ff').setDepth(ty + 2);
       scene.tweens.add({ targets: this.sleepZ, y: this.gy - 70, alpha: 0, duration: 1200, repeat: -1 });
     }
     this.hpBar = scene.add.graphics().setDepth(4500);
@@ -62,16 +69,17 @@ export class TowerView {
     this.sprite.setOrigin(a.ground_anchor.x / a.frame_width, a.ground_anchor.y / a.frame_height);
   }
 
-  onAwake(): void {
+  onAwake(silent = false): void {
     if (this.awake || !this.t.alive) return;
     this.awake = true;
     this.sprite.clearTint();
     this.sleepZ?.destroy();
-    this.scene.tweens.add({ targets: this.sprite, scale: RULES.unitScale * 1.3, yoyo: true, duration: 160 });
+    if (!silent)
+      this.scene.tweens.add({ targets: this.sprite, scale: RULES.unitScale * 1.3, yoyo: true, duration: 160 });
   }
 
   onShoot(tx: number, ty: number): void {
-    const d = dirFromVector(tx - this.t.x, ty - this.t.y);
+    const d = dirFromVector(tx - this.t.x, this.view.dy(ty - this.t.y));
     this.dir = d;
     this.play('Shoot', true);
     this.sprite.once('animationcomplete', () => this.t.alive && this.play('Idle', true));
@@ -86,18 +94,29 @@ export class TowerView {
     }
   }
 
-  onDestroyed(fx: FxPools): void {
+  /** silent: sin efectos (al reconstruir la escena tras reconectar). */
+  onDestroyed(fx: FxPools, silent = false): void {
     this.base.clearTint();
     this.base.setTexture('tower_rubble').setOrigin(0.5, 0.75);
-    this.play('Faint', true);
     this.sleepZ?.destroy();
+    if (silent) {
+      this.sprite.setVisible(false);
+      this.drawHp();
+      return;
+    }
+    this.play('Faint', true);
     this.scene.tweens.add({ targets: this.sprite, alpha: 0, delay: 600, duration: 400 });
     this.scene.cameras.main.shake(350, 0.012);
     Sfx.play('tower');
     const col = this.mine ? COLORS.player : COLORS.enemy;
-    for (let i = 0; i < 18; i++) fx.debris(this.t.x, this.t.y - 30, i % 3 ? 0x8f91a0 : col);
-    fx.ring(this.t.x, this.t.y, 90, palette('fire')[3]);
+    for (let i = 0; i < 18; i++) fx.debris(this.t.x, this.sy - 30, i % 3 ? 0x8f91a0 : col);
+    fx.ring(this.t.x, this.sy, 90, palette('fire')[3]);
     this.drawHp();
+  }
+
+  destroy(): void {
+    for (const o of [this.base, this.sprite, this.hpBar, this.hpText, this.lvT]) o.destroy();
+    this.sleepZ?.destroy();
   }
 
   update(): void {
@@ -117,7 +136,7 @@ export class TowerView {
     const w = t.kind === 'king' ? 100 : 76;
     const h = 14;
     const bx = t.x - w / 2;
-    const by = t.y + 30;
+    const by = this.sy + 30;
     g.fillStyle(COLORS.panelDark).fillRoundedRect(bx - 2, by - 2, w + 4, h + 4, 4);
     g.fillStyle(this.mine ? COLORS.player : COLORS.enemy).fillRoundedRect(
       bx,

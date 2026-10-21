@@ -8,3 +8,6 @@ export * from './meta/random';
 export * from './meta/balls';
 export * from './meta/road';
 export * from './meta/opponent';
+export * from './net/protocol';
+export * from './net/lockstep';
+export * from './net/view';
