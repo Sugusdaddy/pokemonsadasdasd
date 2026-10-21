@@ -690,4 +690,13 @@ export const EN: Record<string, string> = {
   'profile.volMaster': 'General volume',
   'profile.volMusic': 'Music',
   'profile.volSfx': 'Sound effects',
+  'profile.quality': 'Graphics',
+  'quality.auto': 'Auto',
+  'quality.high': 'High',
+  'quality.low': 'Low',
+  'quality.autoLowShort': 'Auto (low)',
+  'quality.autoLow': 'Graphics lowered to keep the game smooth',
+  'profile.install': 'Install app',
+  'profile.installed': 'Installed! Look for Arena Royale on your home screen',
+  'profile.installIos': 'To install it: Share → Add to Home Screen',
 };

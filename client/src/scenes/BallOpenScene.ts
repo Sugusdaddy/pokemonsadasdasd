@@ -11,6 +11,7 @@ import type { TabKey } from '../ui/tabs/Tab';
 import { BaseScene } from './BaseScene';
 import { shake as shakeCam } from '../systems/Shake';
 import { BattleParticles } from '../battle/Particles';
+import { particleAmount } from '../systems/Quality';
 
 const RAR_SFX: Record<string, string> = { common: 'card', rare: 'rare', epic: 'epic', legendary: 'legendary' };
 const RAR_RANK: Record<Rarity, number> = { common: 0, rare: 1, epic: 2, legendary: 3 };
@@ -171,6 +172,7 @@ export class BallOpenScene extends BaseScene {
     this.add.rectangle(W / 2, H / 2, W, H, kit.C.ink, 0.55);
     kit.fadeIn(this);
     this.fx = new BattleParticles(this);
+    this.fx.amount = particleAmount();
 
     // luz radial detrás de la Pokéball (cambia de color con cada carta)
     this.light = this.add.image(this.bx, this.by, 'ui_glow').setTint(cfg.colors[0]).setBlendMode(Phaser.BlendModes.ADD);

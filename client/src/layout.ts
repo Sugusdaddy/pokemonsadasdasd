@@ -2,7 +2,9 @@ import type Phaser from 'phaser';
 
 // ─────────────────────────────────────────────────────────────
 //  DISEÑO DE PANTALLA
-//  - 'pc'     lienzo horizontal 1920×1080: la arena vertical en el centro y paneles a los lados.
+//  - 'pc'     lienzo horizontal de 1080 de alto y entre 1440 y 1920 de ancho según la ventana
+//             (16:9 en un monitor, 4:3 en una tableta en horizontal: sin franjas negras y la
+//             interfaz más grande). La batalla se diseña siempre a 1920 y se ajusta con zoom.
 //  - 'mobile' lienzo vertical 720×1280 (el diseño original).
 //  Se elige según la forma de la ventana. Se puede forzar con ?layout=pc o ?layout=mobile,
 //  o desde Perfil (se guarda en el navegador).
@@ -15,6 +17,15 @@ const SIZES: Record<LayoutMode, { w: number; h: number }> = {
   pc: { w: 1920, h: 1080 },
   mobile: { w: 720, h: 1280 },
 };
+/** Ancho de diseño de la batalla en PC (arena de 720 + dos paneles de 600). */
+export const PC_BATTLE_W = 1920;
+const PC_MIN_W = 1440;
+
+/** Ancho del lienzo en PC para la forma de la ventana (de 4:3 a 16:9, número par). */
+export function pcWidthFor(winW: number, winH: number): number {
+  const w = Math.round((1080 * winW) / Math.max(1, winH));
+  return Math.max(PC_MIN_W, Math.min(PC_BATTLE_W, w - (w % 2)));
+}
 
 const PREF_KEY = 'arenaRoyale.layout';
 
@@ -49,6 +60,7 @@ export function detectMode(): LayoutMode {
 }
 
 let mode: LayoutMode = detectMode();
+let pcW = pcWidthFor(window.innerWidth, window.innerHeight);
 
 /** Tamaño y modo actuales del lienzo. */
 export const L = {
@@ -60,14 +72,18 @@ export const L = {
   },
   /** Ancho y alto de la pantalla (no de la arena: esa sigue siendo W×H de shared). */
   get w(): number {
-    return SIZES[mode].w;
+    return mode === 'pc' ? pcW : SIZES.mobile.w;
   },
   get h(): number {
     return SIZES[mode].h;
   },
   /** En PC, cuánto se desplaza la arena para quedar centrada (la cámara de la batalla). */
   get arenaX(): number {
-    return mode === 'pc' ? (SIZES.pc.w - 720) / 2 : 0;
+    return mode === 'pc' ? (PC_BATTLE_W - 720) / 2 : 0;
+  },
+  /** Zoom de la cámara de la batalla en PC: su diseño (1920) cabe en el ancho real del lienzo. */
+  get battleZoom(): number {
+    return mode === 'pc' ? pcW / PC_BATTLE_W : 1;
   },
 };
 
@@ -80,10 +96,12 @@ export const initialSize = (): { width: number; height: number } => ({ width: L.
 export function watchLayout(game: Phaser.Game): void {
   const check = () => {
     const next = detectMode();
-    if (next === mode) return;
+    const nextW = pcWidthFor(window.innerWidth, window.innerHeight);
+    if (next === mode && (next !== 'pc' || nextW === pcW)) return;
     const active = game.scene.getScenes(true);
     if (active.some((s) => s.scene.key === 'Battle' || s.scene.key === 'Boot')) return;
     mode = next;
+    pcW = nextW;
     game.scale.setGameSize(L.w, L.h);
     for (const s of active) s.scene.restart();
   };

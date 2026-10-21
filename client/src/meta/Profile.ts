@@ -24,6 +24,7 @@ import { t } from '../i18n';
 import { ensureSession, request, signOut, type AccountView } from '../net/session';
 import type { ShakeLevel } from '../battle/juice';
 import type { Volumes } from '../systems/Sfx';
+import type { QualityLevel } from '../systems/Quality';
 
 export type { BallSlot, BattleResult, ProfileState };
 export type ProfileData = ProfileState;
@@ -49,7 +50,7 @@ class ProfileStore {
     admin: false,
   };
   /** Ajustes de este navegador. `sfx`/`music` (sí/no) son de versiones antiguas: ahora manda `vol`. */
-  settings: { sfx: boolean; music: boolean; shake: ShakeLevel; vol?: Volumes } = {
+  settings: { sfx: boolean; music: boolean; shake: ShakeLevel; vol?: Volumes; quality?: QualityLevel } = {
     sfx: true,
     music: true,
     shake: 'normal',

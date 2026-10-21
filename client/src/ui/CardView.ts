@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import type { Card, Rarity } from '@arena/shared';
 import { animInfo, hasTypeIcon, palette, portraitSprite } from '../systems/Assets';
-import { cardName, t } from '../i18n';
+import { cardName, getLang, t } from '../i18n';
 import * as kit from './kit';
+import { lowQuality } from '../systems/Quality';
 
 export interface CardViewOpts {
   level?: number | null;
@@ -257,6 +258,53 @@ function elixirDrop(
   return [g, n];
 }
 
+/** Nitidez del horneado: píxeles reales por píxel del juego (densidad de la pantalla), entre 1 y 2. */
+function bakeRes(scene: Phaser.Scene): number {
+  const s = scene.scale;
+  const css = s.displaySize.width / Math.max(1, s.gameSize.width);
+  return Phaser.Math.Clamp(Math.ceil(css * (window.devicePixelRatio || 1) * 2) / 2, 1, 2);
+}
+
+/** ¿Ya cargó la fuente de los títulos? (si no, lo horneado se rehace cuando llegue). */
+const fontsReady = (): number => {
+  try {
+    return document.fonts.check('20px "Lilita One"') ? 1 : 0;
+  } catch {
+    return 1;
+  }
+};
+
+/**
+ * "Hornea" las partes fijas de una carta en una textura (una sola imagen en vez de una
+ * docena de gráficos y textos que se recalculan en cada fotograma). Se guarda por `key`
+ * y se reutiliza en toda la partida. (rx, ry, rw, rh) = zona que ocupa, relativa a la carta.
+ */
+function baked(
+  scene: Phaser.Scene,
+  key: string,
+  rx: number,
+  ry: number,
+  rw: number,
+  rh: number,
+  build: () => Phaser.GameObjects.GameObject[],
+): Phaser.GameObjects.Image {
+  const res = bakeRes(scene);
+  const full = `${key}@${res}f${fontsReady()}`;
+  if (!scene.textures.exists(full)) {
+    const tex = scene.textures.addDynamicTexture(full, Math.ceil(rw * res), Math.ceil(rh * res));
+    if (tex) {
+      const tmp = scene.make.container({ x: -rx * res, y: -ry * res }, false).setScale(res);
+      tmp.add(build());
+      tex.draw(tmp);
+      tmp.destroy();
+    }
+  }
+  return scene.add
+    .image(rx, ry, full)
+    .setOrigin(0, 0)
+    .setScale(1 / res);
+}
+
 /** Dibuja una carta. */
 export function makeCardView(
   scene: Phaser.Scene,
@@ -273,8 +321,15 @@ export function makeCardView(
   const small = h < 110;
   const pal = palette(card.types[0]);
   const rarCol = RARITY_COLOR[card.rarity];
+  // en cartas pequeñas el marco se dibuja más grande y se reduce, para no deformar las esquinas
+  const k = Math.min(1, w / 150);
+  const corner = 22 * k;
+  const b = Math.max(6, Math.round(w * 0.085));
+  const fs = Math.max(11, Math.round(h * 0.105));
+  const ribbonH = Math.round(h * 0.22);
+  const bh = Math.max(18, Math.round(h * 0.12));
 
-  // brillo de fondo para épicas y legendarias
+  // brillo de fondo para épicas y legendarias (animado: no se hornea)
   if (!locked && (card.rarity === 'epic' || card.rarity === 'legendary') && !small) {
     const glow = scene.add.image(0, 0, 'ui_glow').setTint(rarCol).setBlendMode(Phaser.BlendModes.ADD);
     glow.setDisplaySize(w * 1.7, h * 1.6).setAlpha(card.rarity === 'legendary' ? 0.55 : 0.4);
@@ -289,35 +344,44 @@ export function makeCardView(
     });
   }
 
-  // sombra
-  const sh = scene.add.graphics();
-  sh.fillStyle(kit.C.ink, 0.4).fillRoundedRect(-w / 2 + 2, -h / 2 + 6, w, h, Math.min(16, w * 0.12));
-  c.add(sh);
+  // ── capa de abajo (horneada): sombra, marco de rareza, fondo del color del tipo y luz ──
+  c.add(
+    baked(
+      scene,
+      `cardU_${locked ? 'locked' : card.rarity}_${locked ? 0 : pal[2]}_${pal[4]}_${w}x${h}`,
+      -w / 2 - 4,
+      -h / 2 - 4,
+      w + 10,
+      h + 14,
+      () => {
+        const out: Phaser.GameObjects.GameObject[] = [];
+        const sh = scene.add.graphics();
+        sh.fillStyle(kit.C.ink, 0.4).fillRoundedRect(-w / 2 + 2, -h / 2 + 6, w, h, Math.min(16, w * 0.12));
+        out.push(sh);
+        out.push(
+          scene.add
+            .nineslice(0, 0, `card_frame_${locked ? 'locked' : card.rarity}`, undefined, w / k, h / k, 22, 22, 22, 22)
+            .setScale(k),
+        );
+        const art = scene.add
+          .nineslice(0, 0, 'card_art', undefined, (w - 2 * b) / k, (h - 2 * b) / k, 12, 12, 12, 12)
+          .setScale(k);
+        art.setTint(locked ? 0x2a2e52 : pal[2]);
+        out.push(art);
+        if (!locked) {
+          const light = scene.add
+            .image(0, -h * 0.08, 'ui_glow')
+            .setTint(pal[4] ?? 0xffffff)
+            .setAlpha(0.55);
+          light.setDisplaySize(w * 0.95, w * 0.95).setBlendMode(Phaser.BlendModes.ADD);
+          out.push(light);
+        }
+        return out;
+      },
+    ),
+  );
 
-  // marco de rareza (nine-slice)
-  // en cartas pequeñas el marco se dibuja más grande y se reduce, para no deformar las esquinas
-  const k = Math.min(1, w / 150);
-  const corner = 22 * k;
-  const frame = scene.add
-    .nineslice(0, 0, `card_frame_${locked ? 'locked' : card.rarity}`, undefined, w / k, h / k, 22, 22, 22, 22)
-    .setScale(k);
-  c.add(frame);
-
-  // arte: fondo del color del tipo + luz detrás del Pokémon
-  const b = Math.max(6, Math.round(w * 0.085));
-  const artH = h - 2 * b;
-  const art = scene.add.nineslice(0, 0, 'card_art', undefined, (w - 2 * b) / k, artH / k, 12, 12, 12, 12).setScale(k);
-  art.setTint(locked ? 0x2a2e52 : pal[2]);
-  c.add(art);
-  if (!locked) {
-    const light = scene.add
-      .image(0, -h * 0.08, 'ui_glow')
-      .setTint(pal[4] ?? 0xffffff)
-      .setAlpha(0.55);
-    light.setDisplaySize(w * 0.95, w * 0.95).setBlendMode(Phaser.BlendModes.ADD);
-    c.add(light);
-  }
-
+  // ── Pokémon (animado) ──
   const a = animInfo(card.pokemon, 'Idle');
   const scale = Math.min(h > 220 ? 4 : 2.5, Math.max(1, Math.floor(((h * 0.52) / (a.frame_height * 0.7)) * 2) / 2));
   const sp = portraitSprite(scene, 0, -h / 2 + h * 0.62, card.pokemon).setScale(scale);
@@ -329,7 +393,7 @@ export function makeCardView(
   c.portrait = sp;
 
   // brillo que recorre las épicas y legendarias de vez en cuando (cada carta a su ritmo)
-  if (!locked && (card.rarity === 'epic' || card.rarity === 'legendary')) {
+  if (!locked && !lowQuality() && (card.rarity === 'epic' || card.rarity === 'legendary')) {
     const legendary = card.rarity === 'legendary';
     const shine = scene.add
       .sprite(0, 0, 'card_shine', 0)
@@ -370,84 +434,109 @@ export function makeCardView(
     }
   }
 
-  // cinta del nombre
-  const fs = Math.max(11, Math.round(h * 0.105));
-  const ribbonH = Math.round(h * 0.22);
-  if (!small) {
-    const rib = scene.add.graphics();
-    rib
-      .fillStyle(kit.C.ink, 0.78)
-      .fillRoundedRect(-w / 2 + b, h / 2 - b - ribbonH, w - 2 * b, ribbonH, { tl: 0, tr: 0, bl: 10, br: 10 });
-    rib.fillStyle(rarCol, locked ? 0.15 : 0.55).fillRect(-w / 2 + b, h / 2 - b - ribbonH, w - 2 * b, 2);
-    c.add(rib);
-    const nameY = h / 2 - b - ribbonH / 2;
-    const label = locked ? '???' : cardName(card);
-    const nt = kit.text(scene, 0, nameY, label, 'label', card.type === 'spell' ? '#ffe38a' : '#ffffff', { size: fs });
-    // nombres largos: se encogen para caber
-    const maxW = w - 2 * b - 8;
-    if (nt.width > maxW) nt.setScale(maxW / nt.width);
-    c.add(nt);
-  }
-
-  // coste
-  const r = Math.max(10, Math.round(h * 0.105));
-  c.add(elixirDrop(scene, -w / 2 + r + 2, -h / 2 + r * 1.55, r, card.cost));
-
-  // icono de tipo y cantidad
-  if (!locked && !small && hasTypeIcon(scene, card.moveType)) {
-    const ts = Math.max(1, Math.round(h / 80));
-    const tb = scene.add.graphics();
-    tb.fillStyle(kit.C.ink, 0.6).fillCircle(w / 2 - b - 9 * ts + 2, -h / 2 + b + 9 * ts + 1, 9 * ts + 2);
-    c.add(tb);
-    c.add(scene.add.image(w / 2 - b - 9 * ts + 2, -h / 2 + b + 9 * ts + 1, 'fx', `type_${card.moveType}`).setScale(ts));
-  }
-  if (card.count > 1 && !locked && !small) {
-    c.add(
-      kit.text(scene, w / 2 - b - 4, -h / 2 + h * 0.46, `x${card.count}`, 'label', '#ffffff', { size: fs, originX: 1 }),
-    );
-  }
-
-  // nivel
-  if (opts.level != null && !locked && !small) {
-    const lv = opts.compact ? t('card.lvShort', { n: opts.level }) : t('card.level', { n: opts.level });
-    const lt = kit.text(scene, 0, 0, lv, 'label', RARITY_CSS[card.rarity], { size: Math.round(fs * 0.85) });
-    const pw = lt.width + 14,
-      ph = Math.round(fs * 1.25);
-    // esquina derecha, montada sobre el borde de la cinta: no tapa al Pokémon ni al tipo
-    const py = h / 2 - b - ribbonH;
-    const px = w / 2 - b - pw / 2 - 2;
-    const pg = scene.add.graphics();
-    pg.fillStyle(kit.C.ink, 0.92).fillRoundedRect(px - pw / 2, py - ph / 2, pw, ph, ph / 2);
-    pg.lineStyle(1.5, RARITY_COLOR[card.rarity], 0.8).strokeRoundedRect(px - pw / 2, py - ph / 2, pw, ph, ph / 2);
-    lt.setPosition(px, py);
-    c.add([pg, lt]);
-  }
-
-  // progreso de cartas para subir de nivel
-  if (opts.progress && !locked) {
-    const { have, need } = opts.progress;
-    const bh = Math.max(18, Math.round(h * 0.12)),
-      by = h / 2 + 6;
-    const ready = have >= need && need !== Infinity;
-    const f = need === Infinity ? 1 : Math.min(1, have / need);
-    const bar = kit.progressBar(
+  // ── capa de arriba (horneada): nombre, coste, tipo, cantidad, nivel y progreso ──
+  const prog = opts.progress && !locked ? opts.progress : null;
+  const ready = !!prog && prog.have >= prog.need && prog.need !== Infinity;
+  const progKey = prog ? `${prog.have}/${prog.need}` : '';
+  c.add(
+    baked(
       scene,
-      -w / 2,
-      by,
-      w,
-      bh,
-      ready ? kit.C.good : kit.C.info,
-      f,
-      need === Infinity ? t('card.max') : `${have}/${need}`,
-    );
-    c.add(bar.root);
-    if (ready) {
-      const arrow = scene.add.graphics();
-      arrow.fillStyle(kit.C.ink).fillTriangle(w / 2 - 2, by - 2, w / 2 + 16, by - 2, w / 2 + 7, by - 16);
-      arrow.fillStyle(kit.C.good).fillTriangle(w / 2 + 1, by - 4, w / 2 + 13, by - 4, w / 2 + 7, by - 13);
-      c.add(arrow);
-      scene.tweens.add({ targets: arrow, y: -6, yoyo: true, repeat: -1, duration: 420, ease: 'Sine.easeInOut' });
-    }
+      `cardO_${card.key}_${w}x${h}_${locked ? 1 : 0}_${opts.level ?? ''}_${opts.compact ? 1 : 0}_${progKey}_${getLang()}`,
+      -w / 2 - 12,
+      -h / 2 - 14,
+      w + 24,
+      h + 28 + (prog ? bh + 10 : 0),
+      () => {
+        const out: Phaser.GameObjects.GameObject[] = [];
+        if (!small) {
+          const rib = scene.add.graphics();
+          rib
+            .fillStyle(kit.C.ink, 0.78)
+            .fillRoundedRect(-w / 2 + b, h / 2 - b - ribbonH, w - 2 * b, ribbonH, { tl: 0, tr: 0, bl: 10, br: 10 });
+          rib.fillStyle(rarCol, locked ? 0.15 : 0.55).fillRect(-w / 2 + b, h / 2 - b - ribbonH, w - 2 * b, 2);
+          out.push(rib);
+          const label = locked ? '???' : cardName(card);
+          const nt = kit.text(
+            scene,
+            0,
+            h / 2 - b - ribbonH / 2,
+            label,
+            'label',
+            card.type === 'spell' ? '#ffe38a' : '#ffffff',
+            {
+              size: fs,
+            },
+          );
+          // nombres largos: se encogen para caber
+          const maxW = w - 2 * b - 8;
+          if (nt.width > maxW) nt.setScale(maxW / nt.width);
+          out.push(nt);
+        }
+        // coste
+        const r = Math.max(10, Math.round(h * 0.105));
+        out.push(...elixirDrop(scene, -w / 2 + r + 2, -h / 2 + r * 1.55, r, card.cost));
+        // icono de tipo y cantidad
+        if (!locked && !small && hasTypeIcon(scene, card.moveType)) {
+          const ts = Math.max(1, Math.round(h / 80));
+          const tb = scene.add.graphics();
+          tb.fillStyle(kit.C.ink, 0.6).fillCircle(w / 2 - b - 9 * ts + 2, -h / 2 + b + 9 * ts + 1, 9 * ts + 2);
+          out.push(tb);
+          out.push(
+            scene.add
+              .image(w / 2 - b - 9 * ts + 2, -h / 2 + b + 9 * ts + 1, 'fx', `type_${card.moveType}`)
+              .setScale(ts),
+          );
+        }
+        if (card.count > 1 && !locked && !small) {
+          out.push(
+            kit.text(scene, w / 2 - b - 4, -h / 2 + h * 0.46, `x${card.count}`, 'label', '#ffffff', {
+              size: fs,
+              originX: 1,
+            }),
+          );
+        }
+        // nivel: esquina derecha, montada sobre el borde de la cinta (no tapa al Pokémon ni al tipo)
+        if (opts.level != null && !locked && !small) {
+          const lv = opts.compact ? t('card.lvShort', { n: opts.level }) : t('card.level', { n: opts.level });
+          const lt = kit.text(scene, 0, 0, lv, 'label', RARITY_CSS[card.rarity], { size: Math.round(fs * 0.85) });
+          const pw = lt.width + 14,
+            ph = Math.round(fs * 1.25);
+          const py = h / 2 - b - ribbonH;
+          const px = w / 2 - b - pw / 2 - 2;
+          const pg = scene.add.graphics();
+          pg.fillStyle(kit.C.ink, 0.92).fillRoundedRect(px - pw / 2, py - ph / 2, pw, ph, ph / 2);
+          pg.lineStyle(1.5, RARITY_COLOR[card.rarity], 0.8).strokeRoundedRect(px - pw / 2, py - ph / 2, pw, ph, ph / 2);
+          lt.setPosition(px, py);
+          out.push(pg, lt);
+        }
+        // progreso de cartas para subir de nivel
+        if (prog) {
+          const f = prog.need === Infinity ? 1 : Math.min(1, prog.have / prog.need);
+          const bar = kit.progressBar(
+            scene,
+            -w / 2,
+            h / 2 + 6,
+            w,
+            bh,
+            ready ? kit.C.good : kit.C.info,
+            f,
+            prog.need === Infinity ? t('card.max') : `${prog.have}/${prog.need}`,
+          );
+          out.push(bar.root);
+        }
+        return out;
+      },
+    ),
+  );
+
+  // flecha de "se puede mejorar" (animada)
+  if (ready) {
+    const by = h / 2 + 6;
+    const arrow = scene.add.graphics();
+    arrow.fillStyle(kit.C.ink).fillTriangle(w / 2 - 2, by - 2, w / 2 + 16, by - 2, w / 2 + 7, by - 16);
+    arrow.fillStyle(kit.C.good).fillTriangle(w / 2 + 1, by - 4, w / 2 + 13, by - 4, w / 2 + 7, by - 13);
+    c.add(arrow);
+    scene.tweens.add({ targets: arrow, y: -6, yoyo: true, repeat: -1, duration: 420, ease: 'Sine.easeInOut' });
   }
 
   if (opts.isNew) {

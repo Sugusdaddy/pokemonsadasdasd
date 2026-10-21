@@ -2,6 +2,7 @@ node_modules
 dist
 assets
 client/public/gen
+client/public/audio
 shared/src/data/*.json
 CREDITS.md
 package-lock.json

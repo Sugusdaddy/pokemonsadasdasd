@@ -40,6 +40,8 @@ Sin servidor, la pantalla de carga ofrece reintentar o jugar una **práctica** c
 | `npm run build`           | Build de producción en `client/dist/` (estático, se puede subir a cualquier hosting) |
 | `npm run assets`          | Regenera atlas y `pack.json` desde el pack de sprites                                |
 | `npm run assets:fan-only` | Igual, pero solo con sprites de fans (ver [ART_PIPELINE.md](ART_PIPELINE.md))        |
+| `npm run icons`           | Regenera los iconos de la app (`client/public/icons/`) desde el pixel art propio     |
+| `npm run audio`           | Regenera los sonidos desde los paquetes CC0 (ver "Sonido y música")                  |
 | `npm test`                | Tests (Vitest) de la simulación, los datos y la meta                                 |
 | `npm run lint`            | ESLint                                                                               |
 | `npm run typecheck`       | TypeScript en los cuatro proyectos                                                   |
@@ -51,9 +53,10 @@ Sin servidor, la pantalla de carga ofrece reintentar o jugar una **práctica** c
 El diseño se elige solo según la forma de la ventana, o se fuerza en **Perfil → Pantalla** (o con `?layout=pc` /
 `?layout=mobile` en la URL). La arena siempre es vertical, como en el original:
 
-- **PC (1920×1080)**: arena en el centro a toda la altura. A la izquierda, el rival, sus coronas, los emotes y el botón
-  de rendirse. A la derecha, el reloj, tus coronas, la mano, la siguiente carta y el elixir. En el menú, barra lateral
-  de pestañas.
+- **PC (1080 de alto, de 1440 a 1920 de ancho)**: arena en el centro a toda la altura. A la izquierda, el rival, sus
+  coronas, los emotes y el botón de rendirse. A la derecha, el reloj, tus coronas, la mano, la siguiente carta y el
+  elixir. En el menú, barra lateral de pestañas. El ancho se adapta a la ventana: 16:9 en un monitor y 4:3 en una
+  **tableta en horizontal**, sin franjas negras en el menú (la batalla se aleja un poco para caber entera).
 - **Móvil (720×1280)**: el diseño vertical de siempre, con la mano abajo.
 
 | PC                  | Qué hace                                                        |
@@ -418,6 +421,26 @@ cuando y destellos en las legendarias.
   ```
 
   (necesita ffmpeg). Los paquetes originales no van a git: solo los sonidos elegidos.
+
+## Rendimiento, calidad gráfica y app instalable (Fase 3E)
+
+- **Calidad gráfica** en Perfil: **Auto** (por defecto), **Alta** o **Baja**. Baja = 30 fps, sin el shader del río ni
+  la viñeta, un tercio de las partículas y sin brillos animados en las cartas. En Auto, si una batalla va por debajo de
+  45 fps durante 4 segundos seguidos, el juego baja la calidad solo, avisa y lo recuerda en ese navegador (elegir otra
+  opción a mano lo olvida).
+- **Cartas más baratas de dibujar**: las capas fijas de cada carta (marco, arte, nombre, coste, nivel) se pintan una
+  vez en una textura y se reutilizan; solo el retrato, el brillo y las marcas siguen vivas. La mano en batalla pasa de
+  68 a 28 objetos y el tiempo de dibujo por fotograma en móvil baja a la mitad (3,7 → 1,9 ms).
+- **Tableta**: ver "Pantalla y controles". Todo el menú se ha revisado a 1440 de ancho.
+- **App instalable (PWA)**: `manifest.webmanifest`, iconos propios en pixel art (`npm run icons`) y un service worker
+  que solo existe en el build de producción (`client/pwa/sw.js` es la plantilla; `vite.config.ts` la rellena con la
+  lista de ficheros y una versión). Guarda al instalar el código, los iconos y los sprites, así que tras la primera
+  visita **arranca sin red** y se puede jugar la práctica contra el bot; el audio y las fuentes se guardan la primera
+  vez que se usan. Nunca guarda la API ni el servidor de juego. Cada build nuevo cambia la versión y borra las cachés
+  viejas.
+- **Instalar**: en Chrome, Edge y Android, botón **Instalar app** en Perfil (sale cuando el navegador lo permite). En
+  iPhone/iPad, Perfil explica cómo: Compartir → Añadir a pantalla de inicio.
+- Para probar el build con el service worker: `npm run build` y `npm run preview` (puerto 4173).
 
 ## Arte y modo "solo fans"
 

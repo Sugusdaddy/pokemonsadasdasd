@@ -17,6 +17,7 @@
     "preview": "npm run preview -w client",
     "assets": "tsx tools/build-assets.ts",
     "audio": "tsx tools/build-audio.ts",
+    "icons": "tsx tools/build-icons.ts",
     "typecheck": "tsc -p shared && tsc -p client && tsc -p server && tsc -p tools",
     "lint": "eslint .",
     "format": "prettier --write .",

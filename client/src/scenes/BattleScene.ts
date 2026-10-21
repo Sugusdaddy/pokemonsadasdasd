@@ -46,6 +46,8 @@ import { L } from '../layout';
 import { t, arenaName, ballLabel, emoteText } from '../i18n';
 import * as kit from '../ui/kit';
 import { BaseScene } from './BaseScene';
+import { applyFpsCap, isAutoLow, lowQuality, particleAmount, qualitySetting, setAutoLow } from '../systems/Quality';
+import { FpsWatch } from '../systems/fpsWatch';
 
 const FLAG = { x: W - 34, y: 104, r: 24 };
 const RIVER_TOP = ARENA.riverY - ARENA.riverHalf;
@@ -79,6 +81,7 @@ export class BattleScene extends BaseScene {
   private particles!: BattleParticles;
   /** Pausa breve en golpes fuertes (solo visual: el tiempo se recupera al salir). */
   private hitStop = new HitStop();
+  private fpsWatch: FpsWatch | null = null;
   /** Río animado (WebGL); sin él se dibujan las olas de siempre. */
   private river: Phaser.GameObjects.Shader | null = null;
   private units = new Map<number, UnitView>();
@@ -181,18 +184,33 @@ export class BattleScene extends BaseScene {
 
     this.fx = new FxPools(this);
     this.particles = new BattleParticles(this);
+    this.particles.amount = particleAmount();
+    // Auto: si va lento varios segundos, baja la calidad (y lo dice)
+    this.fpsWatch = new FpsWatch(
+      () => {
+        setAutoLow(true);
+        applyFpsCap(this.game);
+        this.particles.amount = particleAmount();
+        this.toast(t('quality.autoLow'), 0xaab3e8);
+      },
+      () => qualitySetting() === 'auto' && !isAutoLow(),
+    );
     this.hitStop = new HitStop();
     this.setTimeScale(1);
     this.events.once('shutdown', () => this.setTimeScale(1));
-    // PC: la arena (720 de ancho) queda centrada en la pantalla de 1920
-    this.cameras.main.setScroll(-L.arenaX, 0);
+    // PC: la arena (720 de ancho) queda centrada en un diseño de 1920; si el lienzo es más
+    // estrecho (tableta), la cámara se aleja para que quepa entero
+    if (L.pc) this.cameras.main.setZoom(L.battleZoom).centerOn(W / 2, L.h / 2);
+    else this.cameras.main.setScroll(0, 0);
     this.drawArena();
-    this.particles.ambient(this.theme, 0, ARENA.top, W, ARENA.bottom - ARENA.top);
-    // viñeta: oscurece un poco los bordes de la arena (no el HUD)
-    this.add
-      .image(W / 2, (ARENA.top + ARENA.bottom) / 2, 'fx_vignette')
-      .setDisplaySize(W * 1.08, (ARENA.bottom - ARENA.top) * 1.08)
-      .setDepth(FX_DEPTH.vignette);
+    if (!lowQuality()) {
+      this.particles.ambient(this.theme, 0, ARENA.top, W, ARENA.bottom - ARENA.top);
+      // viñeta: oscurece un poco los bordes de la arena (no el HUD)
+      this.add
+        .image(W / 2, (ARENA.top + ARENA.bottom) / 2, 'fx_vignette')
+        .setDisplaySize(W * 1.08, (ARENA.bottom - ARENA.top) * 1.08)
+        .setDepth(FX_DEPTH.vignette);
+    }
     for (const t of this.match.towers) this.towers.set(t.id, new TowerView(this, t, t.team === this.me, this.view));
     this.overlay = this.add.graphics().setDepth(5).setVisible(false);
     this.createHud();
@@ -357,7 +375,7 @@ export class BattleScene extends BaseScene {
     );
     g.fillStyle(th.river).fillRect(0, RIVER_TOP, W, ARENA.riverHalf * 2);
     this.waves = this.add.graphics().setDepth(1);
-    this.river = riverShader(this, th, 0, RIVER_TOP, W, ARENA.riverHalf * 2);
+    this.river = lowQuality() ? null : riverShader(this, th, 0, RIVER_TOP, W, ARENA.riverHalf * 2);
     this.river?.setDepth(1);
     if (th.liquid === 'lava') {
       // la lava ilumina las orillas
@@ -483,6 +501,28 @@ export class BattleScene extends BaseScene {
     for (const x of [LX, RX]) {
       this.add.image(x, 0, 'ui_bg').setOrigin(0, 0).setDisplaySize(PW, PH).setTint(0x9aa2dc).setDepth(D);
       this.add.tileSprite(x, 0, PW, PH, 'ui_stripes').setOrigin(0, 0).setDepth(D);
+    }
+    // tableta (zoom < 1): la cámara ve más alto que el diseño; franjas arriba y abajo con el
+    // mismo fondo que los paneles para que no asome el borde de la arena
+    const band = Math.ceil((L.h / L.battleZoom - L.h) / 2);
+    if (band > 0) {
+      for (const y of [-band, PH]) {
+        this.add
+          .image(LX, y, 'ui_bg')
+          .setOrigin(0, 0)
+          .setDisplaySize(W + 2 * PW, band)
+          .setTint(0x9aa2dc)
+          .setDepth(D);
+        this.add
+          .tileSprite(LX, y, W + 2 * PW, band, 'ui_stripes')
+          .setOrigin(0, 0)
+          .setDepth(D);
+      }
+      this.add
+        .graphics()
+        .setDepth(D + 1)
+        .fillStyle(kit.C.ink)
+        .fillRect(-5, PH, W + 10, 5);
     }
     const edge = this.add.graphics().setDepth(D + 1);
     edge.fillGradientStyle(kit.C.ink, kit.C.ink, kit.C.ink, kit.C.ink, 0, 0.7, 0, 0.7).fillRect(-40, 0, 40, PH);
@@ -760,7 +800,7 @@ export class BattleScene extends BaseScene {
     const c = this.add.container(0, 0).setDepth(9500);
     const dim = this.add.rectangle(W / 2, H / 2, W, H, 0x05060f, L.pc ? 0 : 0.7);
     // en PC la intro se escala para caber en 1080: las bandas se alargan hasta los bordes
-    const ext = L.pc ? (L.w / (L.h / H) - W) / 2 + 30 : 30;
+    const ext = L.pc ? (L.w / L.battleZoom / (L.h / H) - W) / 2 + 30 : 30;
     const band = (info: PlayerInfo, y: number, variant: 'red' | 'blue', fromX: number) => {
       const b = this.add.container(fromX, 0);
       b.add(kit.panel(this, -ext, y, W + 2 * ext, 230, variant));
@@ -1222,10 +1262,12 @@ export class BattleScene extends BaseScene {
   private fitOverlay(c: Phaser.GameObjects.Container, dim: number): void {
     c.setScrollFactor(0);
     if (!L.pc) return;
+    // la cámara tiene zoom (tableta): lo visible mide L.w/zoom × L.h/zoom, centrado en el lienzo
+    const z = L.battleZoom;
     const s = L.h / H;
-    c.setScale(s).setPosition((L.w - W * s) / 2, 0);
+    c.setScale(s).setPosition((L.w - W * s) / 2, (L.h - H * s) / 2);
     const bd = this.add
-      .rectangle(L.w / 2, L.h / 2, L.w, L.h, 0x05060f, dim)
+      .rectangle(L.w / 2, L.h / 2, L.w / z, L.h / z, 0x05060f, dim)
       .setScrollFactor(0)
       .setDepth(c.depth - 1);
     c.once('destroy', () => bd.destroy());
@@ -1236,6 +1278,7 @@ export class BattleScene extends BaseScene {
   override update(_time: number, delta: number): void {
     const realDt = delta / 1000;
     this.elapsed += realDt;
+    this.fpsWatch?.frame(delta);
     if (!this.river) this.drawWaves();
     // durante el hit-stop todo va a cámara muy lenta y la simulación espera
     const frozen = this.hitStop.active(this.time.now);

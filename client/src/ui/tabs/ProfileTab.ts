@@ -15,6 +15,15 @@ import { availableWallets, shortAddress, type WalletOption } from '../../net/wal
 import type { ScrollPanel } from '../ScrollPanel';
 import { SHAKE_LEVELS, type ShakeLevel } from '../../battle/juice';
 import { shake } from '../../systems/Shake';
+import { canInstall, iosInstallHint, promptInstall } from '../../systems/Install';
+import {
+  QUALITY_LEVELS,
+  applyFpsCap,
+  isAutoLow,
+  qualitySetting,
+  setAutoLow,
+  type QualityLevel,
+} from '../../systems/Quality';
 
 export class ProfileTab extends Tab {
   override build(): void {
@@ -98,6 +107,26 @@ export class ProfileTab extends Tab {
       },
     );
 
+    // ── Calidad gráfica ──
+    y = this.segmented(
+      P,
+      rx,
+      W,
+      y,
+      t('profile.quality'),
+      qualitySetting(),
+      QUALITY_LEVELS.map(
+        (q) => [q, q === 'auto' && isAutoLow() ? t('quality.autoLowShort') : t(`quality.${q}`)] as [string, string],
+      ),
+      (v) => {
+        settings.quality = v as QualityLevel;
+        setAutoLow(false); // elegir a mano vuelve a dejar que Auto lo mida de nuevo
+        Profile.saveSettings();
+        applyFpsCap(s.game);
+        this.rebuild();
+      },
+    );
+
     // ── Pantalla e idioma ──
     y = this.segmented(
       P,
@@ -127,6 +156,36 @@ export class ProfileTab extends Tab {
         s.scene.restart({ tab: 'profile' });
       },
     );
+
+    // ── App instalable (si el navegador lo permite) ──
+    if (canInstall()) {
+      const b = kit.button(s, rx + W / 2, y + 38, W - 40, 72, t('profile.install'), 'success', () => {}, { size: 22 });
+      b.disableInteractive();
+      P.add(b);
+      P.addTap(
+        rx + W / 2,
+        y + 38,
+        W - 40,
+        72,
+        () => {
+          Sfx.play('click');
+          void promptInstall().then((ok) => {
+            if (ok) toast(s, t('profile.installed'), '#7dff8a');
+            if (s.sys.isActive()) this.rebuild();
+          });
+        },
+        b,
+      );
+      y += 92;
+    } else if (iosInstallHint()) {
+      P.add(
+        kit.text(s, rx + W / 2, y + 26, t('profile.installIos'), 'body', '#aab3e8', {
+          size: 18,
+          wordWrap: { width: W - 60 },
+        }),
+      );
+      y += 62;
+    }
 
     // ── Herramientas ──
     y += 10;
@@ -193,7 +252,6 @@ export class ProfileTab extends Tab {
     P.setContentHeight(y + 180);
   }
 
-  /** Fila de ajuste con opciones excluyentes (pantalla, idioma). */
   /** Fila de volumen: − [10 tramos que se pueden tocar] +. */
   volumeRow(P: ScrollPanel, rx: number, W: number, y: number, label: string, key: keyof Volumes): number {
     const s = this.scene;
@@ -240,6 +298,7 @@ export class ProfileTab extends Tab {
     return y + 94;
   }
 
+  /** Fila de ajuste con opciones excluyentes (pantalla, idioma). */
   segmented(
     P: ScrollPanel,
     rx: number,

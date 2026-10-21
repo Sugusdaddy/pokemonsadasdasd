@@ -112,7 +112,8 @@ function pixelArt(scene: Phaser.Scene, key: string): void {
 export function createPortraitAnims(scene: Phaser.Scene, ids: number[]): void {
   pixelArt(scene, 'portraits');
   pixelArt(scene, 'fx');
-  for (const id of ids) {
+  // si el atlas no llegó a cargar (sin red), sin animaciones: una vacía rompe play()
+  for (const id of scene.textures.exists('portraits') ? ids : []) {
     const key = portraitAnim(id);
     const a = manifest().anims[String(id)]?.Idle;
     if (!a || scene.anims.exists(key)) continue;

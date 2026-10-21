@@ -38,7 +38,8 @@ export function openModal(
   const fit = Math.min(1, (H - 40) / (h + (title ? 40 : 0)), (W - 40) / w);
   // scrollFactor 0: en la batalla de PC la cámara está desplazada y la ventana debe quedar centrada en pantalla
   const root = scene.add.container(0, 0).setDepth(8000).setScrollFactor(0);
-  const dim = scene.add.rectangle(W / 2, H / 2, W, H, kit.C.ink, 0.72).setInteractive();
+  // el doble de grande: también cubre la pantalla si la cámara tiene zoom (batalla en tableta)
+  const dim = scene.add.rectangle(W / 2, H / 2, W * 2, H * 2, kit.C.ink, 0.72).setInteractive();
   root.add(dim);
   const box = scene.add.container(W / 2, H / 2 + (title ? 16 : 0) * fit);
   root.add(box);

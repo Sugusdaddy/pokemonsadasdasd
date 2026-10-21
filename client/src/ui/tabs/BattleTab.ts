@@ -33,13 +33,14 @@ export class BattleTab extends Tab {
     const A = this.area;
     // PC: el bloque (600 de alto) se centra en vertical; columnas de la mitad del ancho
     const oy = L.pc ? A.y + Math.round((A.h - 600) / 2) : 0;
-    const half = Math.round(A.w / 2) - 20;
+    // la columna derecha (botón, balls) necesita 720; en pantallas estrechas (tableta) la
+    // vista de la arena de la izquierda se queda con lo que sobra
+    const rw = L.pc ? Math.max(Math.round(A.w / 2) - 20, 720) : 720;
     const px = L.pc ? A.x : 30,
       py = L.pc ? oy + 10 : 150,
-      pw = L.pc ? half : 660,
+      pw = L.pc ? A.w - rw - 40 : 660,
       ph = L.pc ? 590 : 490;
-    const rx = L.pc ? A.x + A.w - half : 0,
-      rw = L.pc ? half : 720;
+    const rx = L.pc ? A.x + A.w - rw : 0;
     this.lay = {
       ox: rx + Math.round((rw - 720) / 2),
       cx: rx + rw / 2,

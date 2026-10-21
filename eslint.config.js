@@ -16,6 +16,11 @@ export default tseslint.config(
     },
   },
   {
+    // plantilla del service worker: vite.config.ts rellena __PRECACHE__ al compilar
+    files: ['client/pwa/**/*.js'],
+    languageOptions: { globals: { ...globals.serviceworker, __PRECACHE__: 'readonly' } },
+  },
+  {
     // La simulación debe ser determinista: nada de Math.random ni relojes.
     files: ['shared/src/sim/**/*.ts'],
     rules: {

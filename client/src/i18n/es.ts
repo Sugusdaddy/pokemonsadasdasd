@@ -613,4 +613,13 @@ export const ES: Record<string, string> = {
   'profile.volMaster': 'Volumen general',
   'profile.volMusic': 'Música',
   'profile.volSfx': 'Efectos de sonido',
+  'profile.quality': 'Calidad gráfica',
+  'quality.auto': 'Auto',
+  'quality.high': 'Alta',
+  'quality.low': 'Baja',
+  'quality.autoLowShort': 'Auto (baja)',
+  'quality.autoLow': 'Calidad gráfica bajada para que vaya fluido',
+  'profile.install': 'Instalar app',
+  'profile.installed': '¡Instalada! Búscala en tu pantalla de inicio',
+  'profile.installIos': 'Para instalarla: Compartir → Añadir a pantalla de inicio',
 };

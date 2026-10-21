@@ -18,6 +18,7 @@ import { createArtTextures } from '../art';
 import * as kit from '../ui/kit';
 import { t } from '../i18n';
 import { BaseScene } from './BaseScene';
+import { applyFpsCap } from '../systems/Quality';
 
 /** Carga el manifest de los atlas, el perfil y los retratos (Idle) de todas las cartas. */
 export class BootScene extends BaseScene {
@@ -103,6 +104,7 @@ export class BootScene extends BaseScene {
 
   private enterGame(): void {
     Sfx.configure(Profile.settings);
+    applyFpsCap(this.game);
     // si se recargó la página en mitad de una partida online, se vuelve a ella
     if (OnlineSession.hasActive()) kit.goTo(this, 'Online', { mode: 'resume' });
     else kit.goTo(this, 'Lobby', { tab: 'battle' });

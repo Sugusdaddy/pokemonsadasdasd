@@ -7,6 +7,7 @@ import { BattleScene } from './scenes/BattleScene';
 import { OnlineScene } from './scenes/OnlineScene';
 import { TvScene } from './scenes/TvScene';
 import { Sfx } from './systems/Sfx';
+import { registerServiceWorker } from './systems/Install';
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -25,6 +26,7 @@ const game = new Phaser.Game({
 });
 
 watchLayout(game);
+registerServiceWorker();
 
 // para depurar desde la consola
 (window as unknown as { __game: Phaser.Game }).__game = game;

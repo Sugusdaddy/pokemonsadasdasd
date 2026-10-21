@@ -73,7 +73,7 @@ export class TvScene extends BaseScene {
     this.loading.destroy();
     this.list.removeAll(true);
     // columnas: una en móvil; en PC, en directo a la izquierda y repeticiones a la derecha
-    const colW = L.pc ? 820 : 720;
+    const colW = L.pc ? Math.min(820, L.w / 2 - 40) : 720; // 680 en una tableta (1440)
     const cols = L.pc ? [L.w / 2 - colW - 20, L.w / 2 + 20] : [0, 0];
     const top = L.pc ? 170 : 160;
     let x = cols[0];

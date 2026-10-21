@@ -14,12 +14,12 @@ const GOLD = { base: 0xffc93c, light: 0xfff1b8, dark: 0xd9921a };
 const WOOD = { base: 0x8a5a2b, light: 0xb07a3e, dark: 0x5a3818 };
 const HOLE = 0x241f33;
 
-interface TeamCols {
+export interface TeamCols {
   base: number;
   light: number;
   dark: number;
 }
-const team = (c: number): TeamCols => ({ base: c, light: shade(c, 0.4), dark: shade(c, -0.4) });
+export const teamCols = (c: number): TeamCols => ({ base: c, light: shade(c, 0.4), dark: shade(c, -0.4) });
 
 /** Muro de ladrillos con luz arriba a la izquierda y sombra a la derecha. */
 function bricks(p: Pix, x: number, y: number, w: number, h: number, s = STONE): void {
@@ -124,7 +124,7 @@ function damage(p: Pix, x: number, y: number, w: number, h: number, cracks: numb
   p.speckle(x, y + Math.floor(h * 0.5), w, Math.ceil(h * 0.5), 0x4a4458, 0.07);
 }
 
-function kingTower(t: TeamCols, damaged: boolean): Pix {
+export function kingTower(t: TeamCols, damaged: boolean): Pix {
   const p = new Pix(56, 52, damaged ? 77 : 7);
   // cimientos
   bricks(p, 1, 40, 54, 4, { ...STONE, base: STONE.dark, light: STONE.base, dark: STONE.mortar });
@@ -221,7 +221,7 @@ export function createTowerArt(scene: Phaser.Scene): void {
     ['player', COLORS.player],
     ['enemy', COLORS.enemy],
   ] as const) {
-    const t = team(col);
+    const t = teamCols(col);
     kingTower(t, false).toTexture(scene, `tower_king_${side}`);
     kingTower(t, true).toTexture(scene, `tower_king_${side}_dmg`);
     princessTower(t, false).toTexture(scene, `tower_princess_${side}`);
