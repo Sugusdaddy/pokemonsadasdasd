@@ -28,6 +28,7 @@ import { STARTER_DECK, cardsUpToArena, getCard, isCardKey, startLevel } from '..
 import { rollBall, type BallReward } from './balls';
 import { ROAD } from './road';
 import { defaultRand, randInt, type RandFn } from './random';
+import { hasProfanity } from '../social/filter';
 import { seasonAt, softReset, tierFor, type SeasonProgress, type SeasonReward } from './season';
 
 export type SlotState = 'locked' | 'unlocking' | 'ready';
@@ -159,7 +160,7 @@ function addCards(s: ProfileState, key: string, n: number): boolean {
   return isNew;
 }
 
-function addXp(s: ProfileState, xp: number): boolean {
+export function addXp(s: ProfileState, xp: number): boolean {
   s.xp += xp;
   let up = false;
   while (s.xp >= (KING_XP[s.kingLevel] ?? Infinity)) {
@@ -194,7 +195,7 @@ export function refreshShop(s: ProfileState, now: number): void {
 export function setName(s: ProfileState, name: unknown): void {
   if (typeof name !== 'string') fail('econ.name');
   const n = (name as string).replace(/\s+/g, ' ').trim();
-  if (!n || n.length > NAME_MAX || /[<>]/.test(n)) fail('econ.name');
+  if (!n || n.length > NAME_MAX || /[<>]/.test(n) || hasProfanity(n)) fail('econ.name');
   s.name = n;
 }
 
@@ -493,7 +494,14 @@ export function rollSeason(s: ProfileState, now: number, rank?: number): boolean
   const before = s.trophies;
   const after = softReset(before);
   if (old.battles > 0) {
-    s.pendingSeason = { seasonId: old.id, best: Math.max(old.best, before), trophiesBefore: before, trophiesAfter: after, rank, tier: tierFor(Math.max(old.best, before)) };
+    s.pendingSeason = {
+      seasonId: old.id,
+      best: Math.max(old.best, before),
+      trophiesBefore: before,
+      trophiesAfter: after,
+      rank,
+      tier: tierFor(Math.max(old.best, before)),
+    };
   }
   s.trophies = after;
   s.season = { id: current, best: after, battles: 0 };
@@ -501,7 +509,10 @@ export function rollSeason(s: ProfileState, now: number, rank?: number): boolean
 }
 
 /** Reclama la recompensa de la temporada anterior. */
-export function claimSeasonReward(s: ProfileState, rand: RandFn = defaultRand): { gold: number; gems: number; ball?: BallReward } {
+export function claimSeasonReward(
+  s: ProfileState,
+  rand: RandFn = defaultRand,
+): { gold: number; gems: number; ball?: BallReward } {
   const p = s.pendingSeason;
   if (!p) fail('econ.claimed');
   const { gold, gems, ball } = p!.tier;

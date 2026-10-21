@@ -42,7 +42,8 @@ export interface SeasonInfo {
 /** Temporada en la que cae un instante. */
 export function seasonAt(now: number): SeasonInfo {
   const d = new Date(now);
-  const y = d.getUTCFullYear(), m = d.getUTCMonth();
+  const y = d.getUTCFullYear(),
+    m = d.getUTCMonth();
   return {
     id: `${y}-${String(m + 1).padStart(2, '0')}`,
     startsAt: Date.UTC(y, m, 1),
@@ -60,7 +61,9 @@ export const tierFor = (best: number): SeasonTier =>
   [...SEASON_TIERS].reverse().find((t) => best >= t.trophies) ?? SEASON_TIERS[0];
 
 export const softReset = (trophies: number): number =>
-  trophies > SEASON.resetAbove ? SEASON.resetAbove + Math.floor((trophies - SEASON.resetAbove) * SEASON.keepRatio) : trophies;
+  trophies > SEASON.resetAbove
+    ? SEASON.resetAbove + Math.floor((trophies - SEASON.resetAbove) * SEASON.keepRatio)
+    : trophies;
 
 /** Lo que guarda cada jugador de la temporada en curso. */
 export interface SeasonProgress {

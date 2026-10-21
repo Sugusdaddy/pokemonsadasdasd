@@ -506,7 +506,11 @@ describe('rankings y temporadas', () => {
     expect(season.previous.id).toBe(prev);
     expect(season.previous.top.length).toBeGreaterThan(0);
     const before = (await api('/me', p.token)).json.account.state.gold;
-    const claim = await api<{ result: { gold: number; ball?: { type: string } }; account: AccountView }>('/me/season/claim', p.token, {});
+    const claim = await api<{ result: { gold: number; ball?: { type: string } }; account: AccountView }>(
+      '/me/season/claim',
+      p.token,
+      {},
+    );
     expect(claim.status).toBe(200);
     expect(claim.json.result.ball?.type).toBe('master');
     expect(claim.json.account.state.gold).toBeGreaterThanOrEqual(before + 4000);

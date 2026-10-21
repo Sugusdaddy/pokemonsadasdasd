@@ -13,9 +13,13 @@ import { RoadTab } from '../ui/tabs/RoadTab';
 import { ProfileTab } from '../ui/tabs/ProfileTab';
 import { SocialTab, tierLabel } from '../ui/tabs/SocialTab';
 import { openModal } from '../ui/Modal';
+import { Social } from '../net/social';
 import { SIDEBAR_W, TOP_BAR, playerName, runAction, type MenuScene, type Tab, type TabKey } from '../ui/tabs/Tab';
 import { shortAddress } from '../net/wallet';
 import { BaseScene } from './BaseScene';
+
+/** Invitaciones ya enseñadas (no se repiten al volver al menú). */
+const shownInvites = new Set<string>();
 
 export const TOP = TOP_BAR; // alto de la barra superior
 export const NAV_Y = 1136; // inicio de la barra de pestañas (móvil)
@@ -82,6 +86,17 @@ export class LobbyScene extends BaseScene implements MenuScene {
       this.drawBadges();
     });
     this.events.once('shutdown', off);
+    // amigos y clan: el resumen se refresca solo mientras se está en el menú
+    Social.start();
+    const offSocial = Social.onChange(() => {
+      if (!this.sys.isActive()) return;
+      this.drawBadges();
+      this.maybeInvite();
+    });
+    this.events.once('shutdown', () => {
+      offSocial();
+      Social.stop();
+    });
     Music.play('lobby');
     kit.menuBackground(this, L.w, L.h);
     this.buildTopBar();
@@ -265,7 +280,7 @@ export class LobbyScene extends BaseScene implements MenuScene {
     dot('road', RoadTab.claimable());
     // el servidor renueva la tienda cada día: basta con mirar si el regalo está sin cobrar
     dot('shop', !Profile.d.shop.freeClaimed);
-    dot('social', !!Profile.d.pendingSeason);
+    dot('social', !!Profile.d.pendingSeason || Social.pending > 0);
   }
 
   showTab(key: TabKey, instant = false): void {
@@ -279,6 +294,31 @@ export class LobbyScene extends BaseScene implements MenuScene {
       this.tweens.add({ targets: this.tab.root, alpha: 1, y: 0, duration: 180, ease: 'Cubic.easeOut' });
     }
     this.drawNav();
+  }
+
+  /** Invitación nueva de un amigo a una amistosa: ventana para entrar (una vez por invitación). */
+  maybeInvite(): void {
+    const inv = Social.summary?.invites.find((i) => !shownInvites.has(i.id));
+    if (!inv || this.modalOpen) return;
+    shownInvites.add(inv.id);
+    Sfx.play('select');
+    openModal(this, 600, 400, t('friends.inviteTitle'), (box, close) => {
+      box.add(kit.text(this, 0, -80, t('friends.inviteFrom', { name: inv.from.name }), 'h3', '#ffffff', { size: 26 }));
+      box.add(kit.text(this, 0, -30, t('friends.inviteHint'), 'body', '#aab3e8', { size: 19 }));
+      box.add(
+        kit.button(this, -130, 90, 220, 72, t('friends.decline'), 'neutral', () => {
+          close();
+          void Social.dismissInvite(inv.id);
+        }),
+      );
+      box.add(
+        kit.button(this, 130, 90, 220, 72, t('friends.join'), 'primary', () => {
+          close();
+          void Social.dismissInvite(inv.id);
+          kit.goTo(this, 'Online', { mode: 'join', code: inv.code });
+        }),
+      );
+    });
   }
 
   /** Si ha terminado una temporada con recompensa sin cobrar, la enseña. */

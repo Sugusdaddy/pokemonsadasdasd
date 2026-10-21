@@ -1,6 +1,22 @@
 import crypto from 'node:crypto';
-import type { ProfileState } from '@arena/shared';
-import type { AccountRow, MatchRecord, MatchSummary, RankEntry, RankRange, SeasonResultRow, Store } from './types';
+import { ROLE_RANK, type ClanInput, type ClanRole, type DonationState, type ProfileState } from '@arena/shared';
+import type {
+  AccountRow,
+  ClanMessageRow,
+  ClanRow,
+  FriendLink,
+  GameInviteRow,
+  MatchRecord,
+  MatchSummary,
+  MemberRow,
+  NewClanMessage,
+  PublicProfile,
+  RankEntry,
+  RankRange,
+  ReportRow,
+  SeasonResultRow,
+  Store,
+} from './types';
 
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -12,6 +28,15 @@ export class MemoryStore implements Store {
   private nonces = new Map<string, { address: string; message: string; expiresAt: Date }>();
   private matches: MatchRecord[] = [];
   private seasons = new Map<string, { closed: boolean; top: SeasonResultRow[] }>();
+  private seen = new Map<string, Date>();
+  private codes = new Map<string, string>(); // código → cuenta
+  private muted = new Map<string, Date>();
+  private links = new Map<string, { a: string; b: string; requester: string; accepted: boolean; createdAt: Date }>();
+  private invites: GameInviteRow[] = [];
+  private clans = new Map<string, Omit<ClanRow, 'members' | 'trophies'>>();
+  private members = new Map<string, MemberRow>();
+  private msgs: ClanMessageRow[] = [];
+  private reports: ReportRow[] = [];
 
   private ranked(range: RankRange): AccountRow[] {
     return [...this.accounts.values()]
@@ -85,6 +110,7 @@ export class MemoryStore implements Store {
   async mutate<T>(id: string, fn: (s: ProfileState) => T): Promise<{ result: T; state: ProfileState }> {
     const row = this.accounts.get(id);
     if (!row) throw new Error('err.account.notFound');
+    this.seen.set(id, new Date());
     const draft = clone(row.state);
     const result = fn(draft); // si lanza, el estado no cambia
     row.state = draft;
@@ -92,7 +118,9 @@ export class MemoryStore implements Store {
     return { result, state: clone(draft) };
   }
 
-  async touch(): Promise<void> {}
+  async touch(id: string): Promise<void> {
+    this.seen.set(id, new Date());
+  }
 
   async findWalletAccount(address: string): Promise<string | null> {
     return this.wallets.get(address) ?? null;
@@ -128,6 +156,256 @@ export class MemoryStore implements Store {
 
   async listMatches(limit: number): Promise<MatchSummary[]> {
     return this.matches.slice(0, limit).map(({ replay: _r, ...rest }) => clone(rest));
+  }
+
+  // ───────────────────────── Social ─────────────────────────
+
+  async ensureCode(id: string, gen: () => string): Promise<string> {
+    for (const [c, a] of this.codes) if (a === id) return c;
+    let c = gen();
+    while (this.codes.has(c)) c = gen();
+    this.codes.set(c, id);
+    return c;
+  }
+
+  async accountByCode(code: string): Promise<string | null> {
+    return this.codes.get(code) ?? null;
+  }
+
+  async profiles(ids: string[]): Promise<PublicProfile[]> {
+    return ids
+      .map((id) => this.accounts.get(id))
+      .filter((a): a is AccountRow => !!a)
+      .map((a) => ({
+        accountId: a.id,
+        name: a.state.name,
+        trophies: a.state.trophies,
+        kingLevel: a.state.kingLevel,
+        lastSeenAt: this.seen.get(a.id) ?? a.createdAt,
+        wallet: a.wallets[0] ?? null,
+      }));
+  }
+
+  async mutedUntil(id: string): Promise<Date | null> {
+    return this.muted.get(id) ?? null;
+  }
+
+  async setMuted(id: string, until: Date | null): Promise<void> {
+    if (until) this.muted.set(id, until);
+    else this.muted.delete(id);
+  }
+
+  private linkKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+  async friendLinks(id: string): Promise<FriendLink[]> {
+    return [...this.links.values()]
+      .filter((l) => l.a === id || l.b === id)
+      .map((l) => ({
+        other: l.a === id ? l.b : l.a,
+        requester: l.requester,
+        accepted: l.accepted,
+        createdAt: l.createdAt,
+      }));
+  }
+
+  async putFriendLink(a: string, b: string, requester: string, accepted: boolean): Promise<void> {
+    const k = this.linkKey(a, b);
+    const [x, y] = a < b ? [a, b] : [b, a];
+    this.links.set(k, { a: x, b: y, requester, accepted, createdAt: this.links.get(k)?.createdAt ?? new Date() });
+  }
+
+  async deleteFriendLink(a: string, b: string): Promise<void> {
+    this.links.delete(this.linkKey(a, b));
+  }
+
+  async addInvite(fromId: string, toId: string, code: string): Promise<GameInviteRow> {
+    this.invites = this.invites.filter((i) => !(i.fromId === fromId && i.toId === toId));
+    const row = { id: crypto.randomUUID(), fromId, toId, code, createdAt: new Date() };
+    this.invites.push(row);
+    return clone(row);
+  }
+
+  async invitesFor(toId: string, since: Date): Promise<GameInviteRow[]> {
+    return clone(this.invites.filter((i) => i.toId === toId && i.createdAt >= since));
+  }
+
+  async deleteInvite(id: string, toId: string): Promise<void> {
+    this.invites = this.invites.filter((i) => !(i.id === id && i.toId === toId));
+  }
+
+  private clanRow(id: string): ClanRow | null {
+    const c = this.clans.get(id);
+    if (!c) return null;
+    const ms = [...this.members.values()].filter((m) => m.clanId === id);
+    const trophies = ms.reduce((t, m) => t + (this.accounts.get(m.accountId)?.state.trophies ?? 0), 0);
+    return { ...clone(c), members: ms.length, trophies };
+  }
+
+  private nameTaken(name: string, except?: string): boolean {
+    const key = name.toLowerCase();
+    return [...this.clans.values()].some((c) => c.id !== except && c.name.toLowerCase() === key);
+  }
+
+  async createClan(accountId: string, input: ClanInput, charge: (s: ProfileState) => void): Promise<ClanRow> {
+    if (this.members.has(accountId)) throw new Error('err.clan.already');
+    if (this.nameTaken(input.name)) throw new Error('err.clan.nameTaken');
+    await this.mutate(accountId, charge);
+    const id = crypto.randomUUID();
+    this.clans.set(id, { id, ...input, createdAt: new Date() });
+    this.members.set(accountId, {
+      accountId,
+      clanId: id,
+      role: 'leader',
+      joinedAt: new Date(),
+      lastRequestAt: null,
+      donations: 0,
+    });
+    return this.clanRow(id)!;
+  }
+
+  async getClan(id: string): Promise<ClanRow | null> {
+    return this.clanRow(id);
+  }
+
+  async searchClans(q: string, limit: number): Promise<ClanRow[]> {
+    const needle = q.toLowerCase();
+    return [...this.clans.keys()]
+      .map((id) => this.clanRow(id)!)
+      .filter((c) => (needle ? c.name.toLowerCase().includes(needle) : c.type === 'open'))
+      .sort((a, b) => b.trophies - a.trophies)
+      .slice(0, limit);
+  }
+
+  async updateClan(id: string, input: ClanInput): Promise<void> {
+    if (this.nameTaken(input.name, id)) throw new Error('err.clan.nameTaken');
+    const c = this.clans.get(id);
+    if (c) Object.assign(c, input);
+  }
+
+  async memberOf(accountId: string): Promise<MemberRow | null> {
+    const m = this.members.get(accountId);
+    return m ? clone(m) : null;
+  }
+
+  async clanMembers(clanId: string): Promise<MemberRow[]> {
+    return clone([...this.members.values()].filter((m) => m.clanId === clanId));
+  }
+
+  async joinClan(accountId: string, clanId: string, trophies: number, maxMembers: number): Promise<void> {
+    if (this.members.has(accountId)) throw new Error('err.clan.already');
+    const c = this.clanRow(clanId);
+    if (!c) throw new Error('err.clan.notFound');
+    if (c.type === 'closed') throw new Error('err.clan.closed');
+    if (c.members >= maxMembers) throw new Error('err.clan.full');
+    if (trophies < c.minTrophies) throw new Error('err.clan.trophies');
+    this.members.set(accountId, {
+      accountId,
+      clanId,
+      role: 'member',
+      joinedAt: new Date(),
+      lastRequestAt: null,
+      donations: 0,
+    });
+  }
+
+  async leaveClan(accountId: string) {
+    const m = this.members.get(accountId);
+    if (!m) return null;
+    this.members.delete(accountId);
+    const rest = [...this.members.values()]
+      .filter((x) => x.clanId === m.clanId)
+      .sort((a, b) => ROLE_RANK[b.role] - ROLE_RANK[a.role] || +a.joinedAt - +b.joinedAt);
+    if (!rest.length) {
+      this.clans.delete(m.clanId);
+      this.msgs = this.msgs.filter((x) => x.clanId !== m.clanId);
+      return { clanId: m.clanId, deleted: true, newLeader: null };
+    }
+    let newLeader: string | null = null;
+    if (m.role === 'leader') {
+      rest[0].role = 'leader';
+      newLeader = rest[0].accountId;
+    }
+    return { clanId: m.clanId, deleted: false, newLeader };
+  }
+
+  async setRole(accountId: string, role: ClanRole): Promise<void> {
+    const m = this.members.get(accountId);
+    if (m) m.role = role;
+  }
+
+  async addMessage(m: NewClanMessage): Promise<ClanMessageRow> {
+    const row: ClanMessageRow = {
+      id: crypto.randomUUID(),
+      card: null,
+      want: 0,
+      ...m,
+      got: 0,
+      donors: {},
+      hidden: false,
+      createdAt: new Date(),
+    };
+    this.msgs.push(row);
+    return clone(row);
+  }
+
+  async messages(clanId: string, limit: number): Promise<ClanMessageRow[]> {
+    return clone(this.msgs.filter((m) => m.clanId === clanId).slice(-limit));
+  }
+
+  async getMessage(id: string): Promise<ClanMessageRow | null> {
+    const m = this.msgs.find((x) => x.id === id);
+    return m ? clone(m) : null;
+  }
+
+  async createRequest(m: NewClanMessage, now: Date, cooldownSince: Date): Promise<ClanMessageRow> {
+    const mem = m.accountId ? this.members.get(m.accountId) : undefined;
+    if (!mem || mem.clanId !== m.clanId) throw new Error('err.clan.notMember');
+    if (mem.lastRequestAt && mem.lastRequestAt > cooldownSince) throw new Error('err.clan.cooldown');
+    mem.lastRequestAt = now;
+    return this.addMessage(m);
+  }
+
+  async donate<T>(
+    messageId: string,
+    donorId: string,
+    fn: (req: DonationState, donor: ProfileState, receiver: ProfileState) => T,
+  ) {
+    const msg = this.msgs.find((x) => x.id === messageId);
+    if (!msg || msg.kind !== 'request' || !msg.card || !msg.accountId) throw new Error('err.clan.notFound');
+    const mem = this.members.get(donorId);
+    if (!mem || mem.clanId !== msg.clanId) throw new Error('err.clan.notMember');
+    const donorRow = this.accounts.get(donorId),
+      recRow = this.accounts.get(msg.accountId);
+    if (!donorRow || !recRow) throw new Error('err.clan.notFound');
+    const req: DonationState = {
+      card: msg.card,
+      want: msg.want,
+      got: msg.got,
+      donors: clone(msg.donors),
+      requesterId: msg.accountId,
+      createdAt: +msg.createdAt,
+    };
+    const donor = clone(donorRow.state),
+      receiver = clone(recRow.state);
+    const result = fn(req, donor, receiver); // si lanza, nada cambia
+    donorRow.state = donor;
+    recRow.state = receiver;
+    msg.got = req.got;
+    msg.donors = req.donors;
+    mem.donations += 1;
+    return { result, message: clone(msg), donor: clone(donor) };
+  }
+
+  async report(r: Omit<ReportRow, 'id' | 'createdAt'>): Promise<number> {
+    if (this.reports.some((x) => x.reporterId === r.reporterId && x.messageId === r.messageId))
+      throw new Error('err.report.dupe');
+    this.reports.push({ ...r, id: crypto.randomUUID(), createdAt: new Date() });
+    return this.reports.filter((x) => x.messageId === r.messageId).length;
+  }
+
+  async hideMessage(id: string): Promise<void> {
+    const m = this.msgs.find((x) => x.id === id);
+    if (m) m.hidden = true;
   }
 
   async close(): Promise<void> {}

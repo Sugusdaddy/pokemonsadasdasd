@@ -1,4 +1,15 @@
-import type { MatchMode, PlayerInfo, ProfileState, Replay, Team, Winner } from '@arena/shared';
+import type {
+  ClanInput,
+  ClanRole,
+  ClanType,
+  DonationState,
+  MatchMode,
+  PlayerInfo,
+  ProfileState,
+  Replay,
+  Team,
+  Winner,
+} from '@arena/shared';
 
 export interface AccountRow {
   id: string;
@@ -50,11 +61,145 @@ export interface SeasonResultRow {
   best: number;
 }
 
+// ───────────────────────── Social ─────────────────────────
+
+/** Lo que se puede enseñar de otro jugador. */
+export interface PublicProfile {
+  accountId: string;
+  name: string;
+  trophies: number;
+  kingLevel: number;
+  lastSeenAt: Date;
+  wallet: string | null;
+}
+
+export interface FriendLink {
+  /** La otra cuenta. */
+  other: string;
+  requester: string;
+  accepted: boolean;
+  createdAt: Date;
+}
+
+export interface GameInviteRow {
+  id: string;
+  fromId: string;
+  toId: string;
+  code: string;
+  createdAt: Date;
+}
+
+export interface ClanRow {
+  id: string;
+  name: string;
+  description: string;
+  badge: number;
+  type: ClanType;
+  minTrophies: number;
+  createdAt: Date;
+  members: number;
+  /** Suma de los trofeos de sus miembros. */
+  trophies: number;
+}
+
+export interface MemberRow {
+  accountId: string;
+  clanId: string;
+  role: ClanRole;
+  joinedAt: Date;
+  lastRequestAt: Date | null;
+  donations: number;
+}
+
+export type ClanMessageKind = 'text' | 'request' | 'system';
+
+export interface ClanMessageRow {
+  id: string;
+  clanId: string;
+  accountId: string | null;
+  name: string;
+  kind: ClanMessageKind;
+  body: string;
+  card: string | null;
+  want: number;
+  got: number;
+  donors: Record<string, number>;
+  hidden: boolean;
+  createdAt: Date;
+}
+
+export type NewClanMessage = Pick<ClanMessageRow, 'clanId' | 'accountId' | 'name' | 'kind' | 'body'> &
+  Partial<Pick<ClanMessageRow, 'card' | 'want'>>;
+
+export interface ReportRow {
+  id: string;
+  reporterId: string;
+  targetId: string;
+  messageId: string | null;
+  reason: string;
+  text: string;
+  createdAt: Date;
+}
+
+/** Social: amigos, invitaciones, clanes, chat y denuncias. */
+export interface SocialStore {
+  /** Código de amigo de la cuenta (lo crea con `gen` si no tiene). */
+  ensureCode(id: string, gen: () => string): Promise<string>;
+  accountByCode(code: string): Promise<string | null>;
+  profiles(ids: string[]): Promise<PublicProfile[]>;
+  mutedUntil(id: string): Promise<Date | null>;
+  setMuted(id: string, until: Date | null): Promise<void>;
+
+  friendLinks(id: string): Promise<FriendLink[]>;
+  putFriendLink(a: string, b: string, requester: string, accepted: boolean): Promise<void>;
+  deleteFriendLink(a: string, b: string): Promise<void>;
+
+  addInvite(fromId: string, toId: string, code: string): Promise<GameInviteRow>;
+  invitesFor(toId: string, since: Date): Promise<GameInviteRow[]>;
+  deleteInvite(id: string, toId: string): Promise<void>;
+
+  /**
+   * Crea el clan con `accountId` de líder, cobrando con `charge` en la misma transacción.
+   * Errores: err.clan.already (ya está en uno), err.clan.nameTaken.
+   */
+  createClan(accountId: string, input: ClanInput, charge: (s: ProfileState) => void): Promise<ClanRow>;
+  getClan(id: string): Promise<ClanRow | null>;
+  /** Clanes abiertos por nombre (o los más fuertes si no hay búsqueda). */
+  searchClans(q: string, limit: number): Promise<ClanRow[]>;
+  updateClan(id: string, input: ClanInput): Promise<void>;
+  memberOf(accountId: string): Promise<MemberRow | null>;
+  clanMembers(clanId: string): Promise<MemberRow[]>;
+  /** Errores: err.clan.already, err.clan.notFound, err.clan.closed, err.clan.full, err.clan.trophies. */
+  joinClan(accountId: string, clanId: string, trophies: number, maxMembers: number): Promise<void>;
+  /** Sale del clan. Si era líder, hereda el miembro de más rango y antigüedad; si era el último, el clan se borra. */
+  leaveClan(accountId: string): Promise<{ clanId: string; deleted: boolean; newLeader: string | null } | null>;
+  setRole(accountId: string, role: ClanRole): Promise<void>;
+
+  addMessage(m: NewClanMessage): Promise<ClanMessageRow>;
+  messages(clanId: string, limit: number): Promise<ClanMessageRow[]>;
+  getMessage(id: string): Promise<ClanMessageRow | null>;
+  /** Publica una petición de cartas si la última es anterior a `cooldownSince` (si no, err.clan.cooldown). */
+  createRequest(m: NewClanMessage, now: Date, cooldownSince: Date): Promise<ClanMessageRow>;
+  /**
+   * Donación atómica: bloquea la petición y las dos cuentas, aplica `fn` y lo guarda todo.
+   * El donante tiene que estar en el clan de la petición (err.clan.notMember).
+   */
+  donate<T>(
+    messageId: string,
+    donorId: string,
+    fn: (req: DonationState, donor: ProfileState, receiver: ProfileState) => T,
+  ): Promise<{ result: T; message: ClanMessageRow; donor: ProfileState }>;
+
+  /** Guarda una denuncia y devuelve cuántas tiene ese mensaje (err.report.dupe si ya lo denunciaste). */
+  report(r: Omit<ReportRow, 'id' | 'createdAt'>): Promise<number>;
+  hideMessage(id: string): Promise<void>;
+}
+
 /**
  * Acceso a datos. Hay dos implementaciones con el mismo comportamiento:
  * PrismaStore (PostgreSQL) y MemoryStore (tests y arranque sin base de datos).
  */
-export interface Store {
+export interface Store extends SocialStore {
   readonly kind: 'postgres' | 'memory';
 
   createAccount(state: ProfileState, isGuest: boolean, wallet?: string): Promise<AccountRow>;

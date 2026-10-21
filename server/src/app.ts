@@ -13,8 +13,10 @@ import {
 import { ctx, type ServerSettings } from './context';
 import { MatchRoom } from './rooms/MatchRoom';
 import { QueueRoom } from './rooms/QueueRoom';
+import { ClanRoom } from './rooms/ClanRoom';
 import { accountRoutes } from './routes/account';
 import { leaderboardRoutes } from './routes/leaderboard';
+import { socialRoutes } from './routes/social';
 import { startSeasonJob } from './seasons';
 import { MemoryStore } from './store/memory';
 import { PrismaStore } from './store/prisma';
@@ -83,6 +85,7 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     }),
   );
   app.use('/api', leaderboardRoutes(store));
+  app.use('/api', socialRoutes(store));
   app.get('/api/replays', async (req, res) => {
     const list = await store.listMatches(Math.max(1, Math.min(100, Number(req.query.limit) || 20)));
     res.json(list.map((m) => ({ ...m, endedAt: m.endedAt.toISOString() })));
@@ -119,6 +122,7 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   const gameServer = new Server({ transport: new WebSocketTransport({ server: httpServer }), greet: false });
   gameServer.define('match', MatchRoom);
   gameServer.define('queue', QueueRoom);
+  gameServer.define('clan', ClanRoom).filterBy(['clanId']);
   await gameServer.listen(opts.port ?? DEFAULT_PORT);
   const address = httpServer.address();
   const port = typeof address === 'object' && address ? address.port : (opts.port ?? DEFAULT_PORT);

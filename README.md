@@ -155,6 +155,55 @@ Pestaña **Social** del menú (la 5.ª): clasificación y temporada.
 
 Ahora va sobre PostgreSQL; cuando haya muchos jugadores pasará a Redis (sorted sets) sin cambiar la API.
 
+## Amigos y clanes (Fase 2B)
+
+La pestaña **Social** tiene tres secciones: **Rankings**, **Amigos** y **Clan**.
+
+**Amigos**
+
+- Cada jugador tiene un **código de 8 caracteres** (botón _Copiar_). Con _Añadir amigo_ se manda una solicitud; si los
+  dos se la piden, queda aceptada sola. Máximo 100 amigos.
+- Se ve quién está **conectado** (ha estado en el menú en los últimos 90 s).
+- **Retar** a un amigo conectado crea una sala amistosa y le llega la invitación en su menú (ventana con _Entrar_).
+  Caduca en 2 minutos. Las amistosas no dan ni quitan trofeos.
+- Ranking **de amigos** en Rankings.
+
+**Clanes**
+
+- Crear uno cuesta **1000 de oro**: nombre único (3-20 caracteres), descripción, escudo (12), abierto o cerrado y
+  trofeos mínimos. Hasta 50 miembros. Un jugador solo puede estar en un clan.
+- **Rangos**: líder, colíder, veterano y miembro. Nadie asciende a otro a su propio rango ni toca a los de arriba; el
+  líder puede ceder el liderazgo (pasa a colíder). Veterano o más puede expulsar a los de rango inferior. Si el líder
+  se va, hereda el de más rango y antigüedad; si se va el último, el clan se borra.
+- **Pedir cartas** (una vez cada 7 horas): hasta 10 comunes o 1 rara. Cada miembro puede donar hasta 4 comunes o 1 rara
+  por petición y gana 5 o 50 de oro y experiencia. Las peticiones caducan en 24 h. Todo se valida en el servidor y la
+  donación mueve la carta entre las dos cuentas en una sola transacción (con las filas bloqueadas).
+- **Chat en vivo** (sala `clan` de Colyseus, una por clan) con historial de 60 mensajes. Avisos del sistema al entrar,
+  salir, cambiar de rango, etc.
+
+**Moderación**
+
+- **Filtro de palabras** en inglés y español (`shared/src/social/filter.ts`): tapa con asteriscos en el chat y rechaza
+  nombres de jugador y de clan malsonantes. Detecta acentos, "leet" (`sh1t`), letras repetidas, plurales y letras
+  separadas (`p u t a`, `f.u.c.k`). Para ampliar la lista, añade la palabra en `WORDS`.
+- **Límite de mensajes**: 5 cada 15 s y al menos 0,8 s entre uno y otro.
+- **Denunciar** (tocar un mensaje): con 3 denuncias de jugadores distintos el mensaje se oculta y su autor queda
+  **silenciado 24 h**. Las denuncias se guardan (tabla `Report`) para el panel de admin.
+- **Silenciar** a un jugador: solo para ti, en este navegador (no ves sus mensajes).
+
+| Ruta                                                      | Qué hace                                                              |
+| --------------------------------------------------------- | --------------------------------------------------------------------- |
+| `GET /api/social`                                         | Tu código, amigos, solicitudes, invitaciones y clan (marca conectado) |
+| `POST /api/friends/{add,accept,remove}`                   | Añadir por código, aceptar, rechazar/cancelar/quitar                  |
+| `POST /api/friends/invite`, `/api/friends/invite/dismiss` | Invitar a tu sala amistosa / descartar una invitación                 |
+| `GET /api/leaderboard?scope=friends`                      | Ranking tuyo y de tus amigos                                          |
+| `GET /api/clans?q=`, `GET /api/clans/:id`                 | Buscar clanes / ver uno con sus miembros                              |
+| `POST /api/clans`                                         | Crear clan (cobra el oro en la misma transacción)                     |
+| `POST /api/clan/{join,leave,edit,role,kick}`              | Entrar, salir, editar, cambiar rango, expulsar                        |
+| `POST /api/clan/request`, `/api/clan/donate`              | Pedir cartas / donar una                                              |
+| `POST /api/social/report`                                 | Denunciar un mensaje del chat                                         |
+| Sala `clan` (`joinOrCreate('clan', {token, clanId})`)     | Chat: `say` para escribir; llegan `history`, `msg`, `update`…         |
+
 ## Online (Fase 1)
 
 ```

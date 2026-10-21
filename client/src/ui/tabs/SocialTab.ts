@@ -3,13 +3,19 @@ import { ARENAS, arenaFor, type SeasonTier } from '@arena/shared';
 import { Profile } from '../../meta/Profile';
 import { api, type LeaderboardPage, type RankRow, type SeasonOverview } from '../../net/api';
 import { fmtNum } from '../style';
+import { toast } from '../Modal';
 import * as kit from '../kit';
 import { t, arenaName, ballLabel } from '../../i18n';
 import type { ScrollPanel } from '../ScrollPanel';
-import { Tab, sectionHeader } from './Tab';
+import { Tab, sectionHeader, type Area } from './Tab';
 import { L } from '../../layout';
+import { ClanChat, Social } from '../../net/social';
+import { FriendsView } from './social/FriendsView';
+import { ClanView } from './social/ClanView';
 
-type Scope = 'global' | 'arena';
+type Scope = 'global' | 'arena' | 'friends';
+type Section = 'rankings' | 'friends' | 'clan';
+const BAR_H = 76;
 const ROW = 76;
 
 /** Cuenta atrás hasta el fin de temporada ("3d 4h" o "5h 12min"). */
@@ -30,10 +36,13 @@ export function tierLabel(tr: SeasonTier): string {
 }
 
 /**
- * Pestaña Social: clasificación global o por arena y la temporada en curso
- * (cuenta atrás, tramos de recompensa y top de la anterior).
+ * Pestaña Social, con tres secciones:
+ * - Clasificación (global, por arena o de amigos) y la temporada en curso.
+ * - Amigos (FriendsView).
+ * - Clan con su chat (ClanView).
  */
 export class SocialTab extends Tab {
+  static section: Section = 'rankings';
   // se conservan entre aperturas para no parpadear al volver
   private static scope: Scope = 'global';
   private static arena = -1;
@@ -41,17 +50,39 @@ export class SocialTab extends Tab {
   private static season: SeasonOverview | null = null;
   private static failed = false;
 
-  private countdown: Phaser.GameObjects.Text | null = null;
+  // `declare`: sin inicializador, porque build() ya corre dentro del constructor de Tab
+  //  y un `= null` aquí borraría lo que ese primer build creó
+  declare private countdown: Phaser.GameObjects.Text | null;
   private alive = true;
+  declare private view: FriendsView | ClanView | null;
+  /** Chat del clan: dura mientras la pestaña está abierta (sobrevive a los redibujados). */
+  declare private chat: ClanChat | null;
+  /** Lo que se pintó la última vez (para no redibujar si el resumen no cambió). */
+  declare private drawnSig: string;
+  private offSocial: () => void;
 
   constructor(scene: ConstructorParameters<typeof Tab>[0]) {
-    super(scene);
     if (SocialTab.arena < 0) SocialTab.arena = arenaFor(Profile.d.trophies);
-    void this.load();
+    super(scene);
+    if (SocialTab.section === 'rankings') void this.load();
+    this.offSocial = Social.onChange(() => {
+      if (this.alive && this.sig() !== this.drawnSig) this.rebuild();
+    });
+    void Social.refresh();
+  }
+
+  /** Lo que importa del resumen social para la sección abierta. */
+  private sig(): string {
+    const s = Social.summary;
+    const sec = SocialTab.section;
+    const base = `${sec}|${Social.pending}|${s ? 1 : 0}`;
+    if (!s || sec === 'rankings') return base;
+    if (sec === 'friends') return `${base}|${JSON.stringify([s.code, s.friends, s.incoming, s.outgoing, s.invites])}`;
+    return `${base}|${JSON.stringify(s.clan)}|${s.mutedUntil}|${Social.blocked.size}`;
   }
 
   private get boardKey(): string {
-    return SocialTab.scope === 'global' ? 'global' : `arena:${SocialTab.arena}`;
+    return SocialTab.scope === 'arena' ? `arena:${SocialTab.arena}` : SocialTab.scope;
   }
 
   async load(): Promise<void> {
@@ -72,8 +103,86 @@ export class SocialTab extends Tab {
   }
 
   override build(): void {
-    const A = this.area;
+    this.view?.destroy();
+    this.view = null;
     this.countdown = null;
+    this.drawnSig = this.sig();
+    const full = this.area;
+    this.sectionBar(full);
+    const A: Area = { x: full.x, y: full.y + BAR_H, w: full.w, h: full.h - BAR_H };
+    const sec = SocialTab.section;
+    if (sec === 'friends') {
+      this.view = new FriendsView(this, A);
+      return;
+    }
+    if (sec === 'clan') {
+      const clanId = Social.summary?.clan?.id ?? null;
+      if (this.chat && this.chat.clanId !== clanId) {
+        this.chat.close();
+        this.chat = null;
+      }
+      if (clanId && !this.chat) this.openChat(clanId);
+      this.view = new ClanView(this, A, this.chat);
+      return;
+    }
+    this.buildRankings(A);
+  }
+
+  private openChat(clanId: string): void {
+    const chat = new ClanChat(clanId);
+    chat.onChange = () => {
+      if (this.view instanceof ClanView) this.view.drawChat();
+    };
+    chat.onMembers = () => {
+      if (this.view instanceof ClanView) this.view.membersChanged();
+      void Social.refresh();
+    };
+    chat.onError = (code) => {
+      if (this.alive) toast(this.scene, t(code), '#ff9a9a');
+    };
+    this.chat = chat;
+  }
+
+  /** Botones de sección arriba (con aviso de solicitudes pendientes en Amigos). */
+  private sectionBar(A: Area): void {
+    const s = this.scene;
+    const pad = L.pc ? 0 : 20;
+    const w = Math.min(L.pc ? 760 : A.w, A.w) - pad * 2;
+    const x0 = A.x + pad;
+    const items: Array<[Section, string, string]> = [
+      ['rankings', t('social.secRankings'), 'ic_trophy'],
+      ['friends', t('social.secFriends'), 'ic_profile'],
+      ['clan', t('social.secClan'), 'ic_social'],
+    ];
+    const bw = (w - 2 * 12) / 3;
+    items.forEach(([key, label, icon], i) => {
+      const on = SocialTab.section === key;
+      const x = x0 + bw / 2 + i * (bw + 12);
+      const b = kit.button(s, x, A.y + 32, bw, 60, label, on ? 'primary' : 'dark', () => this.setSection(key), {
+        icon,
+        size: L.pc ? 22 : 19,
+      });
+      this.root.add(b);
+      const n = key === 'friends' ? Social.pending : 0;
+      if (n) {
+        const g = s.add.graphics();
+        g.fillStyle(kit.C.ink).fillCircle(x + bw / 2 - 10, A.y + 6, 15);
+        g.fillStyle(0xe0454f).fillCircle(x + bw / 2 - 10, A.y + 4, 13);
+        this.root.add(g);
+        this.root.add(kit.text(s, x + bw / 2 - 10, A.y + 4, String(n), 'label', '#ffffff', { size: 15 }));
+      }
+    });
+  }
+
+  setSection(sec: Section): void {
+    if (SocialTab.section === sec) return;
+    SocialTab.section = sec;
+    this.rebuild();
+    if (sec === 'rankings') void this.load();
+    else void Social.refresh();
+  }
+
+  private buildRankings(A: Area): void {
     if (L.pc) {
       const gap = 32;
       const right = Math.min(560, Math.round(A.w * 0.4));
@@ -83,7 +192,7 @@ export class SocialTab extends Tab {
       const S = this.scroll(A.x + left + gap, A.y, right, A.h);
       S.setContentHeight(this.buildSeason(S, 0, right) + 20);
     } else {
-      const P = this.scroll();
+      const P = this.scroll(A.x, A.y, A.w, A.h);
       let y = this.buildSeason(P, 0, P.w, true);
       y = this.buildBoard(P, y + 10, P.w);
       P.setContentHeight(y + 20);
@@ -107,17 +216,19 @@ export class SocialTab extends Tab {
     ).forEach((o) => P.add(o));
     y += 58;
 
-    // selector Global / Arena
-    const half = (w - 16) / 2;
-    const tabBtn = (x: number, label: string, scope: Scope) => {
+    // selector Global / Arena / Amigos
+    const third = (w - 32) / 3;
+    const tabBtn = (i: number, label: string, scope: Scope) => {
       const on = SocialTab.scope === scope;
-      const b = kit.button(s, x + half / 2, y + 30, half, 56, label, on ? 'info' : 'dark', () => {}, { size: 22 });
+      const x = pad + i * (third + 16);
+      const b = kit.button(s, x + third / 2, y + 30, third, 56, label, on ? 'info' : 'dark', () => {}, { size: 21 });
       b.disableInteractive();
       P.add(b);
-      P.addTap(x + half / 2, y + 30, half, 60, () => this.setScope(scope), b);
+      P.addTap(x + third / 2, y + 30, third, 60, () => this.setScope(scope), b);
     };
-    tabBtn(pad, t('social.global'), 'global');
-    tabBtn(pad + half + 16, t('social.arena'), 'arena');
+    tabBtn(0, t('social.global'), 'global');
+    tabBtn(1, t('social.arena'), 'arena');
+    tabBtn(2, t('social.friends'), 'friends');
     y += 78;
 
     // flechas para cambiar de arena
@@ -291,12 +402,16 @@ export class SocialTab extends Tab {
   }
 
   override tick(): void {
+    this.view?.tick();
     const end = SocialTab.season?.current.endsAt;
     if (this.countdown && end) this.countdown.setText(t('season.endsIn', { t: seasonCountdown(end) }));
   }
 
   override destroy(): void {
     this.alive = false;
+    this.offSocial();
+    this.view?.destroy();
+    this.chat?.close();
     super.destroy();
   }
 }

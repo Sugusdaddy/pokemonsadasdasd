@@ -44,7 +44,8 @@ describe('temporadas', () => {
     expect(s.season).toEqual({ id: '2026-11', best: s.trophies, battles: 0 });
     expect(rollSeason(s, NOV)).toBe(false);
 
-    const gold = s.gold, gems = s.gems;
+    const gold = s.gold,
+      gems = s.gems;
     const r = claimSeasonReward(s, rnd());
     expect(s.gold).toBeGreaterThanOrEqual(gold + 2000);
     expect(s.gems).toBeGreaterThanOrEqual(gems + 80);
@@ -64,7 +65,7 @@ describe('temporadas', () => {
     const s = freshProfile(OCT);
     delete s.season;
     expect(rollSeason(s, OCT)).toBe(true);
-    expect(s.season?.id).toBe('2026-10');
+    expect((s as { season?: { id: string } }).season?.id).toBe('2026-10');
     expect(s.pendingSeason ?? null).toBeNull();
   });
 });

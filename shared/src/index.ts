@@ -13,3 +13,5 @@ export * from './net/lockstep';
 export * from './net/view';
 export * from './meta/economy';
 export * from './meta/season';
+export * from './meta/clan';
+export * from './social/filter';

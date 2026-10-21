@@ -7,10 +7,11 @@ import { sy } from '../ui/style';
 import * as kit from '../ui/kit';
 import { t } from '../i18n';
 import { BaseScene } from './BaseScene';
+import { Social } from '../net/social';
 
 export type OnlineData =
   | { mode: 'ranked' }
-  | { mode: 'create' }
+  | { mode: 'create'; inviteTo?: { accountId: string; name: string } }
   | { mode: 'join'; code: string }
   | { mode: 'spectate'; roomId: string }
   | { mode: 'resume' };
@@ -163,11 +164,20 @@ export class OnlineScene extends BaseScene {
   }
 
   private showCode(code: string): void {
+    const d = this.data_;
+    // invitación a un amigo: le llega el código en su menú
+    if (d.mode === 'create' && d.inviteTo) {
+      const to = d.inviteTo;
+      void Social.invite(to.accountId, code).then(
+        () => this.sys.isActive() && this.detail.setText(t('friends.invited', { name: to.name })),
+        () => this.sys.isActive() && this.detail.setText(t('friends.inviteFailed')),
+      );
+    }
     this.codeT.setText(code);
     this.codeBox.setVisible(true).setScale(0.6);
     this.tweens.add({ targets: this.codeBox, scale: 1, duration: 260, ease: 'Back.easeOut' });
     this.status.setText(t('online.waitingFriend'));
-    this.detail.setText(t('online.shareCode'));
+    if (!(d.mode === 'create' && d.inviteTo)) this.detail.setText(t('online.shareCode'));
   }
 
   private go(): void {

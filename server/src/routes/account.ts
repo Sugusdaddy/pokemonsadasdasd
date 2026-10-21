@@ -53,7 +53,7 @@ export interface AccountView {
 
 type Authed = Request & { accountId?: string; guest?: boolean };
 
-const view = (id: string, guest: boolean, wallets: string[], state: ProfileState): AccountView => {
+export const view = (id: string, guest: boolean, wallets: string[], state: ProfileState): AccountView => {
   const now = Date.now();
   return {
     id,

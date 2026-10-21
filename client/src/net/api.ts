@@ -49,7 +49,7 @@ export interface RankRow {
 }
 
 export interface LeaderboardPage {
-  scope: 'global' | 'arena';
+  scope: 'global' | 'arena' | 'friends';
   arena: number | null;
   total: number;
   offset: number;
@@ -85,7 +85,10 @@ export const api = {
   replay: (id: string) => get<StoredReplay>(`/api/replays/${encodeURIComponent(id)}`),
   friendly: (code: string) => get<{ roomId: string }>(`/api/friendly/${encodeURIComponent(code)}`),
   /** Ranking global o de una arena (con tu puesto si hay sesión). */
-  leaderboard: (scope: 'global' | 'arena', opts: { arena?: number; limit?: number; offset?: number } = {}) =>
+  leaderboard: (
+    scope: 'global' | 'arena' | 'friends',
+    opts: { arena?: number; limit?: number; offset?: number } = {},
+  ) =>
     get<LeaderboardPage>(
       `/api/leaderboard?scope=${scope}&limit=${opts.limit ?? 50}&offset=${opts.offset ?? 0}${scope === 'arena' ? `&arena=${opts.arena ?? 0}` : ''}`,
     ),

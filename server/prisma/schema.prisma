@@ -26,7 +26,12 @@ model Account {
   rev         Int      @default(0)
   createdAt   DateTime @default(now())
   lastSeenAt  DateTime @default(now())
+  /// Código para añadir amigos (se asigna la primera vez que hace falta).
+  code        String?   @unique
+  /// Silenciado en el chat hasta esta fecha (por denuncias o por un admin).
+  mutedUntil  DateTime?
   wallets     Wallet[]
+  clan        ClanMember?
 
   @@index([trophies])
 }
@@ -90,4 +95,94 @@ model SeasonResult {
 
   @@id([seasonId, accountId])
   @@index([seasonId, rank])
+}
+
+/// Amistad entre dos cuentas (a < b). Pendiente hasta que la acepta quien no la pidió.
+model Friendship {
+  a         String
+  b         String
+  requester String
+  accepted  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@id([a, b])
+  @@index([b])
+}
+
+/// Invitación a una amistosa (código de sala) de un amigo a otro. Caduca en unos minutos.
+model GameInvite {
+  id        String   @id @default(cuid())
+  fromId    String
+  toId      String
+  code      String
+  createdAt DateTime @default(now())
+
+  @@index([toId, createdAt])
+}
+
+model Clan {
+  id          String        @id @default(cuid())
+  name        String
+  /// Nombre en minúsculas: dos clanes no pueden llamarse igual.
+  nameKey     String        @unique
+  description String        @default("")
+  badge       Int           @default(0)
+  /// open: cualquiera con los trofeos mínimos; closed: no entra nadie.
+  type        String        @default("open")
+  minTrophies Int           @default(0)
+  createdAt   DateTime      @default(now())
+  members     ClanMember[]
+  messages    ClanMessage[]
+}
+
+/// Pertenencia a un clan (una cuenta solo puede estar en uno).
+model ClanMember {
+  accountId     String    @id
+  account       Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  clanId        String
+  clan          Clan      @relation(fields: [clanId], references: [id], onDelete: Cascade)
+  /// leader | coLeader | elder | member
+  role          String    @default("member")
+  joinedAt      DateTime  @default(now())
+  lastRequestAt DateTime?
+  donations     Int       @default(0)
+
+  @@index([clanId])
+}
+
+/// Mensaje del chat de clan: texto, petición de cartas o aviso del sistema.
+model ClanMessage {
+  id        String   @id @default(cuid())
+  clanId    String
+  clan      Clan     @relation(fields: [clanId], references: [id], onDelete: Cascade)
+  accountId String?
+  name      String
+  /// text | request | system
+  kind      String
+  body      String
+  card      String?
+  want      Int      @default(0)
+  got       Int      @default(0)
+  donors    Json     @default("{}")
+  hidden    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  reports   Report[]
+
+  @@index([clanId, createdAt])
+}
+
+/// Denuncia de un mensaje (una por jugador y mensaje).
+model Report {
+  id         String       @id @default(cuid())
+  reporterId String
+  targetId   String
+  messageId  String?
+  message    ClanMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  reason     String
+  text       String
+  createdAt  DateTime     @default(now())
+
+  @@unique([reporterId, messageId])
+  @@index([targetId])
+  @@index([createdAt])
 }

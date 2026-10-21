@@ -1,6 +1,11 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import {
+  ROLE_RANK,
   sanitize,
+  type ClanInput,
+  type ClanRole,
+  type ClanType,
+  type DonationState,
   type MatchMode,
   type PlayerInfo,
   type ProfileState,
@@ -8,7 +13,24 @@ import {
   type Team,
   type Winner,
 } from '@arena/shared';
-import type { AccountRow, MatchRecord, MatchSummary, RankEntry, RankRange, SeasonResultRow, Store } from './types';
+import type {
+  AccountRow,
+  ClanMessageKind,
+  ClanMessageRow,
+  ClanRow,
+  FriendLink,
+  GameInviteRow,
+  MatchRecord,
+  MatchSummary,
+  MemberRow,
+  NewClanMessage,
+  PublicProfile,
+  RankEntry,
+  RankRange,
+  ReportRow,
+  SeasonResultRow,
+  Store,
+} from './types';
 
 type DbAccount = Prisma.AccountGetPayload<{ include: { wallets: true } }>;
 
@@ -246,6 +268,349 @@ export class PrismaStore implements Store {
       take: limit,
     });
     return rows.map(({ seasonId: _s, ...r }) => r);
+  }
+
+  // ───────────────────────── Social ─────────────────────────
+
+  async ensureCode(id: string, gen: () => string): Promise<string> {
+    const a = await this.db.account.findUnique({ where: { id }, select: { code: true } });
+    if (!a) throw new Error('err.account.notFound');
+    if (a.code) return a.code;
+    for (let i = 0; i < 10; i++) {
+      const code = gen();
+      try {
+        // solo si sigue sin código (dos peticiones a la vez no se pisan)
+        const r = await this.db.account.updateMany({ where: { id, code: null }, data: { code } });
+        if (r.count) return code;
+        return (await this.db.account.findUnique({ where: { id }, select: { code: true } }))!.code!;
+      } catch (e) {
+        if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')) throw e;
+      }
+    }
+    throw new Error('err.server');
+  }
+
+  async accountByCode(code: string): Promise<string | null> {
+    const a = await this.db.account.findUnique({ where: { code }, select: { id: true } });
+    return a?.id ?? null;
+  }
+
+  async profiles(ids: string[]): Promise<PublicProfile[]> {
+    if (!ids.length) return [];
+    const rows = await this.db.account.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        name: true,
+        trophies: true,
+        kingLevel: true,
+        lastSeenAt: true,
+        wallets: { select: { address: true }, take: 1 },
+      },
+    });
+    return rows.map((r) => ({
+      accountId: r.id,
+      name: r.name,
+      trophies: r.trophies,
+      kingLevel: r.kingLevel,
+      lastSeenAt: r.lastSeenAt,
+      wallet: r.wallets[0]?.address ?? null,
+    }));
+  }
+
+  async mutedUntil(id: string): Promise<Date | null> {
+    const a = await this.db.account.findUnique({ where: { id }, select: { mutedUntil: true } });
+    return a?.mutedUntil ?? null;
+  }
+
+  async setMuted(id: string, until: Date | null): Promise<void> {
+    await this.db.account.update({ where: { id }, data: { mutedUntil: until } });
+  }
+
+  async friendLinks(id: string): Promise<FriendLink[]> {
+    const rows = await this.db.friendship.findMany({ where: { OR: [{ a: id }, { b: id }] } });
+    return rows.map((l) => ({
+      other: l.a === id ? l.b : l.a,
+      requester: l.requester,
+      accepted: l.accepted,
+      createdAt: l.createdAt,
+    }));
+  }
+
+  async putFriendLink(a: string, b: string, requester: string, accepted: boolean): Promise<void> {
+    const [x, y] = a < b ? [a, b] : [b, a];
+    await this.db.friendship.upsert({
+      where: { a_b: { a: x, b: y } },
+      create: { a: x, b: y, requester, accepted },
+      update: { requester, accepted },
+    });
+  }
+
+  async deleteFriendLink(a: string, b: string): Promise<void> {
+    const [x, y] = a < b ? [a, b] : [b, a];
+    await this.db.friendship.deleteMany({ where: { a: x, b: y } });
+  }
+
+  async addInvite(fromId: string, toId: string, code: string): Promise<GameInviteRow> {
+    const [, row] = await this.db.$transaction([
+      this.db.gameInvite.deleteMany({ where: { fromId, toId } }),
+      this.db.gameInvite.create({ data: { fromId, toId, code } }),
+    ]);
+    // limpieza de caducadas (barata, de vez en cuando)
+    if (Math.random() < 0.05)
+      await this.db.gameInvite.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 3600_000) } } });
+    return row;
+  }
+
+  async invitesFor(toId: string, since: Date): Promise<GameInviteRow[]> {
+    return this.db.gameInvite.findMany({ where: { toId, createdAt: { gte: since } }, orderBy: { createdAt: 'desc' } });
+  }
+
+  async deleteInvite(id: string, toId: string): Promise<void> {
+    await this.db.gameInvite.deleteMany({ where: { id, toId } });
+  }
+
+  /** Clanes con número de miembros y suma de trofeos. */
+  private async clanRows(where: Prisma.ClanWhereInput, take?: number): Promise<ClanRow[]> {
+    const clans = await this.db.clan.findMany({ where, take: take ? take * 4 : undefined });
+    if (!clans.length) return [];
+    const stats = await this.db.$queryRaw<Array<{ clanId: string; members: bigint; trophies: bigint | null }>>`
+      SELECT m."clanId", COUNT(*) AS members, SUM(a.trophies) AS trophies
+      FROM "ClanMember" m JOIN "Account" a ON a.id = m."accountId"
+      WHERE m."clanId" IN (${Prisma.join(clans.map((c) => c.id))})
+      GROUP BY m."clanId"`;
+    const by = new Map(stats.map((s) => [s.clanId, s]));
+    return clans
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        badge: c.badge,
+        type: c.type as ClanType,
+        minTrophies: c.minTrophies,
+        createdAt: c.createdAt,
+        members: Number(by.get(c.id)?.members ?? 0),
+        trophies: Number(by.get(c.id)?.trophies ?? 0),
+      }))
+      .sort((a, b) => b.trophies - a.trophies)
+      .slice(0, take);
+  }
+
+  async createClan(accountId: string, input: ClanInput, charge: (s: ProfileState) => void): Promise<ClanRow> {
+    try {
+      const id = await this.db.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "Account" WHERE id = ${accountId} FOR UPDATE`;
+          if (await tx.clanMember.findUnique({ where: { accountId } })) throw new Error('err.clan.already');
+          const a = await tx.account.findUnique({ where: { id: accountId }, include: { wallets: true } });
+          if (!a) throw new Error('err.account.notFound');
+          const row = toRow(a);
+          charge(row.state);
+          await tx.account.update({ where: { id: accountId }, data: { ...columns(row.state), rev: { increment: 1 } } });
+          const c = await tx.clan.create({ data: { ...input, nameKey: input.name.toLowerCase() } });
+          await tx.clanMember.create({ data: { accountId, clanId: c.id, role: 'leader' } });
+          return c.id;
+        },
+        { maxWait: 10_000, timeout: 10_000 },
+      );
+      return (await this.getClan(id))!;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
+        throw new Error('err.clan.nameTaken');
+      throw e;
+    }
+  }
+
+  async getClan(id: string): Promise<ClanRow | null> {
+    return (await this.clanRows({ id }))[0] ?? null;
+  }
+
+  async searchClans(q: string, limit: number): Promise<ClanRow[]> {
+    return this.clanRows(q ? { nameKey: { contains: q.toLowerCase() } } : { type: 'open' }, limit);
+  }
+
+  async updateClan(id: string, input: ClanInput): Promise<void> {
+    try {
+      await this.db.clan.update({ where: { id }, data: { ...input, nameKey: input.name.toLowerCase() } });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
+        throw new Error('err.clan.nameTaken');
+      throw e;
+    }
+  }
+
+  private toMember = (m: Prisma.ClanMemberGetPayload<object>): MemberRow => ({
+    accountId: m.accountId,
+    clanId: m.clanId,
+    role: m.role as ClanRole,
+    joinedAt: m.joinedAt,
+    lastRequestAt: m.lastRequestAt,
+    donations: m.donations,
+  });
+
+  async memberOf(accountId: string): Promise<MemberRow | null> {
+    const m = await this.db.clanMember.findUnique({ where: { accountId } });
+    return m ? this.toMember(m) : null;
+  }
+
+  async clanMembers(clanId: string): Promise<MemberRow[]> {
+    return (await this.db.clanMember.findMany({ where: { clanId } })).map(this.toMember);
+  }
+
+  async joinClan(accountId: string, clanId: string, trophies: number, maxMembers: number): Promise<void> {
+    await this.db.$transaction(
+      async (tx) => {
+        // el clan bloqueado: dos que entran a la vez no pueden pasarse del máximo
+        const c = await tx.$queryRaw<Array<{ type: string; minTrophies: number }>>`
+          SELECT type, "minTrophies" FROM "Clan" WHERE id = ${clanId} FOR UPDATE`;
+        if (!c.length) throw new Error('err.clan.notFound');
+        if (await tx.clanMember.findUnique({ where: { accountId } })) throw new Error('err.clan.already');
+        if (c[0].type === 'closed') throw new Error('err.clan.closed');
+        if ((await tx.clanMember.count({ where: { clanId } })) >= maxMembers) throw new Error('err.clan.full');
+        if (trophies < c[0].minTrophies) throw new Error('err.clan.trophies');
+        await tx.clanMember.create({ data: { accountId, clanId } });
+      },
+      { maxWait: 10_000, timeout: 10_000 },
+    );
+  }
+
+  async leaveClan(accountId: string) {
+    return this.db.$transaction(
+      async (tx) => {
+        const m = await tx.clanMember.findUnique({ where: { accountId } });
+        if (!m) return null;
+        await tx.$queryRaw`SELECT id FROM "Clan" WHERE id = ${m.clanId} FOR UPDATE`;
+        await tx.clanMember.delete({ where: { accountId } });
+        const rest = (await tx.clanMember.findMany({ where: { clanId: m.clanId } }))
+          .map(this.toMember)
+          .sort((a, b) => ROLE_RANK[b.role] - ROLE_RANK[a.role] || +a.joinedAt - +b.joinedAt);
+        if (!rest.length) {
+          await tx.clan.delete({ where: { id: m.clanId } });
+          return { clanId: m.clanId, deleted: true, newLeader: null };
+        }
+        let newLeader: string | null = null;
+        if (m.role === 'leader') {
+          newLeader = rest[0].accountId;
+          await tx.clanMember.update({ where: { accountId: newLeader }, data: { role: 'leader' } });
+        }
+        return { clanId: m.clanId, deleted: false, newLeader };
+      },
+      { maxWait: 10_000, timeout: 10_000 },
+    );
+  }
+
+  async setRole(accountId: string, role: ClanRole): Promise<void> {
+    await this.db.clanMember.update({ where: { accountId }, data: { role } });
+  }
+
+  private toMessage = (m: Prisma.ClanMessageGetPayload<object>): ClanMessageRow => ({
+    id: m.id,
+    clanId: m.clanId,
+    accountId: m.accountId,
+    name: m.name,
+    kind: m.kind as ClanMessageKind,
+    body: m.body,
+    card: m.card,
+    want: m.want,
+    got: m.got,
+    donors: (m.donors ?? {}) as Record<string, number>,
+    hidden: m.hidden,
+    createdAt: m.createdAt,
+  });
+
+  async addMessage(m: NewClanMessage): Promise<ClanMessageRow> {
+    return this.toMessage(await this.db.clanMessage.create({ data: { ...m } }));
+  }
+
+  async messages(clanId: string, limit: number): Promise<ClanMessageRow[]> {
+    const rows = await this.db.clanMessage.findMany({ where: { clanId }, orderBy: { createdAt: 'desc' }, take: limit });
+    return rows.reverse().map(this.toMessage);
+  }
+
+  async getMessage(id: string): Promise<ClanMessageRow | null> {
+    const m = await this.db.clanMessage.findUnique({ where: { id } });
+    return m ? this.toMessage(m) : null;
+  }
+
+  async createRequest(m: NewClanMessage, now: Date, cooldownSince: Date): Promise<ClanMessageRow> {
+    return this.db.$transaction(async (tx) => {
+      // solo pasa si sigue en el clan y su última petición es lo bastante antigua
+      const r = await tx.clanMember.updateMany({
+        where: {
+          accountId: m.accountId!,
+          clanId: m.clanId,
+          OR: [{ lastRequestAt: null }, { lastRequestAt: { lte: cooldownSince } }],
+        },
+        data: { lastRequestAt: now },
+      });
+      if (!r.count) {
+        const mem = await tx.clanMember.findUnique({ where: { accountId: m.accountId! } });
+        throw new Error(mem?.clanId === m.clanId ? 'err.clan.cooldown' : 'err.clan.notMember');
+      }
+      return this.toMessage(await tx.clanMessage.create({ data: { ...m } }));
+    });
+  }
+
+  async donate<T>(
+    messageId: string,
+    donorId: string,
+    fn: (req: DonationState, donor: ProfileState, receiver: ProfileState) => T,
+  ) {
+    return this.db.$transaction(
+      async (tx) => {
+        // orden fijo de bloqueo (petición y luego cuentas por id) para no interbloquearse
+        const locked = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM "ClanMessage" WHERE id = ${messageId} FOR UPDATE`;
+        if (!locked.length) throw new Error('err.clan.notFound');
+        const msg = this.toMessage((await tx.clanMessage.findUnique({ where: { id: messageId } }))!);
+        if (msg.kind !== 'request' || !msg.card || !msg.accountId) throw new Error('err.clan.notFound');
+        const mem = await tx.clanMember.findUnique({ where: { accountId: donorId } });
+        if (!mem || mem.clanId !== msg.clanId) throw new Error('err.clan.notMember');
+        const ids = [donorId, msg.accountId].sort();
+        await tx.$queryRaw`SELECT id FROM "Account" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
+        const accs = await tx.account.findMany({ where: { id: { in: ids } }, include: { wallets: true } });
+        const donorA = accs.find((a) => a.id === donorId),
+          recA = accs.find((a) => a.id === msg.accountId);
+        if (!donorA || !recA) throw new Error('err.clan.notFound');
+        const donor = toRow(donorA).state,
+          receiver = toRow(recA).state;
+        const req: DonationState = {
+          card: msg.card,
+          want: msg.want,
+          got: msg.got,
+          donors: { ...msg.donors },
+          requesterId: msg.accountId,
+          createdAt: +msg.createdAt,
+        };
+        const result = fn(req, donor, receiver); // si lanza, la transacción se deshace
+        await tx.account.update({ where: { id: donorId }, data: { ...columns(donor), rev: { increment: 1 } } });
+        await tx.account.update({
+          where: { id: msg.accountId },
+          data: { ...columns(receiver), rev: { increment: 1 } },
+        });
+        await tx.clanMember.update({ where: { accountId: donorId }, data: { donations: { increment: 1 } } });
+        const updated = await tx.clanMessage.update({
+          where: { id: messageId },
+          data: { got: req.got, donors: req.donors },
+        });
+        return { result, message: this.toMessage(updated), donor };
+      },
+      { maxWait: 10_000, timeout: 10_000 },
+    );
+  }
+
+  async report(r: Omit<ReportRow, 'id' | 'createdAt'>): Promise<number> {
+    try {
+      await this.db.report.create({ data: r });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new Error('err.report.dupe');
+      throw e;
+    }
+    return this.db.report.count({ where: { messageId: r.messageId } });
+  }
+
+  async hideMessage(id: string): Promise<void> {
+    await this.db.clanMessage.update({ where: { id }, data: { hidden: true } });
   }
 
   async close(): Promise<void> {

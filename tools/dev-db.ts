@@ -49,6 +49,9 @@ async function main() {
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
+  // sigue vivo aunque se haya reutilizado otro PostgreSQL: si este proceso acabara,
+  // `concurrently -k` cerraría también el servidor y el cliente
+  setInterval(() => {}, 1 << 30);
 }
 
 main().catch((err) => {

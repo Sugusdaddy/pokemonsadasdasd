@@ -19,8 +19,9 @@ function arenaRange(i: number): RankRange | null {
 export function leaderboardRoutes(store: Store): express.Router {
   const r = express.Router();
 
-  /** GET /api/leaderboard?scope=global|arena&arena=N&limit=50&offset=0 */
+  /** GET /api/leaderboard?scope=global|arena|friends&arena=N&limit=50&offset=0 */
   r.get('/leaderboard', async (req, res) => {
+    if (req.query.scope === 'friends') return void (await friendsBoard(req, res));
     const scope = req.query.scope === 'arena' ? 'arena' : 'global';
     const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 50));
     const offset = Math.max(0, Math.min(10_000, Number(req.query.offset) || 0));
@@ -59,6 +60,37 @@ export function leaderboardRoutes(store: Store): express.Router {
     }
     res.json({ scope, arena, total, offset, entries, me, season: seasonAt(Date.now()) });
   });
+
+  /** Tú y tus amigos, de más a menos trofeos (hace falta la sesión). */
+  async function friendsBoard(req: express.Request, res: express.Response): Promise<void> {
+    const session = await verifySession(bearer(req.headers.authorization));
+    if (!session) return void res.status(401).json({ error: 'err.session' });
+    const me = session.accountId;
+    const ids = [me, ...(await store.friendLinks(me)).filter((l) => l.accepted).map((l) => l.other)];
+    const rows = (await store.profiles(ids)).sort((a, b) => b.trophies - a.trophies || b.kingLevel - a.kingLevel);
+    let rank = 0;
+    const entries = rows.map((p, i) => {
+      if (i === 0 || rows[i - 1].trophies !== p.trophies) rank = i + 1;
+      return {
+        rank,
+        accountId: p.accountId,
+        name: p.name,
+        trophies: p.trophies,
+        kingLevel: p.kingLevel,
+        wallet: shortWallet(p.wallet),
+      };
+    });
+    const mine = entries.find((e) => e.accountId === me);
+    res.json({
+      scope: 'friends',
+      arena: null,
+      total: entries.length,
+      offset: 0,
+      entries,
+      me: mine ? { rank: mine.rank, trophies: mine.trophies } : null,
+      season: seasonAt(Date.now()),
+    });
+  }
 
   /** GET /api/season: temporada actual, tramos de recompensa y el top de la anterior. */
   r.get('/season', async (_req, res) => {
