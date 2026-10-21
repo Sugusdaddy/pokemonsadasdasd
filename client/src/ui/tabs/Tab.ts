@@ -5,13 +5,51 @@ import { ScrollPanel } from '../ScrollPanel';
 import { L } from '../../layout';
 import { Profile } from '../../meta/Profile';
 import { t } from '../../i18n';
+import { ApiError } from '../../net/session';
+import { Sfx } from '../../systems/Sfx';
+import { toast } from '../Modal';
 import * as kit from '../kit';
 
 /** Nombre del jugador (el nombre por defecto se traduce). */
 export function playerName(): string {
-  const n = Profile.d.name;
-  return !n || n === 'Entrenador' ? t('profile.defaultName') : n;
+  return Profile.displayName;
 }
+
+/** Texto de un error del servidor (o de red) para mostrarlo al jugador. */
+export function errorMessage(e: unknown): string {
+  return e instanceof ApiError ? t(e.code) : t('err.server');
+}
+
+const busy = new Set<string>();
+
+/**
+ * Ejecuta una acción contra el servidor: ignora clics repetidos mientras la petición
+ * está en marcha, muestra el error como aviso y llama a onOk si va bien.
+ */
+export async function runAction<T>(
+  scene: Phaser.Scene,
+  key: string,
+  fn: () => Promise<T>,
+  onOk?: (r: T) => void,
+): Promise<T | undefined> {
+  if (busy.has(key)) return undefined;
+  busy.add(key);
+  try {
+    const r = await fn();
+    if (scene.sys.isActive()) onOk?.(r);
+    return r;
+  } catch (e) {
+    if (scene.sys.isActive()) {
+      Sfx.play('noElixir');
+      toast(scene, errorMessage(e), '#ff9a9a');
+    }
+    return undefined;
+  } finally {
+    busy.delete(key);
+  }
+}
+
+export const isBusy = (key: string): boolean => busy.has(key);
 
 /**
  * Cabecera de sección: título grande, texto secundario opcional a la derecha y una

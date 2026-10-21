@@ -9,6 +9,7 @@ import {
   type QueueStatusMsg,
   type RejectMsg,
   type StartMsg,
+  type RewardsMsg,
   type TickMsg,
 } from '@arena/shared';
 import { SERVER_URL, api, joinOptions } from './api';
@@ -29,6 +30,8 @@ export class OnlineSession {
   start: StartMsg | null = null;
   ls: Lockstep | null = null;
   end: EndMsg | null = null;
+  /** Recompensas que calcula el servidor al acabar (no llegan en amistosas ni a espectadores). */
+  rewards: RewardsMsg | null = null;
   code: string | null = null;
   state: SessionState = 'waiting';
   /** Se activa cuando la partida se ha reconstruido (reconexión/resync): hay que redibujar todo. */
@@ -69,6 +72,7 @@ export class OnlineSession {
       this.code = m.code;
       this.onCode?.(m.code);
     });
+    room.onMessage('rewards', (m: RewardsMsg) => (this.rewards = m));
     room.onMessage('end', (m: EndMsg) => {
       this.end = m;
       forget();

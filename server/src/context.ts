@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { FRIENDLY_CODE_ALPHABET } from '@arena/shared';
-import type { ReplayStore } from './replays';
+import type { Store } from './store/types';
 
 /** Ajustes del servidor (los tests los acortan). */
 export interface ServerSettings {
@@ -14,11 +14,16 @@ export interface ServerSettings {
 
 /** Estado compartido por las salas de este proceso. */
 export const ctx = {
-  replays: null as ReplayStore | null,
+  store: null as Store | null,
   settings: null as ServerSettings | null,
   /** Código amistoso → id de sala. */
   friendly: new Map<string, string>(),
 };
+
+export function store(): Store {
+  if (!ctx.store) throw new Error('Servidor sin almacén de datos');
+  return ctx.store;
+}
 
 export function settings(): ServerSettings {
   if (!ctx.settings) throw new Error('Servidor sin configurar');
@@ -32,5 +37,3 @@ export function newFriendlyCode(): string {
     if (!ctx.friendly.has(code)) return code;
   }
 }
-
-export const newTicket = (): string => crypto.randomBytes(12).toString('hex');

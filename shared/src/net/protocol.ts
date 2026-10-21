@@ -10,6 +10,7 @@
 import { MAX_LEVEL, RARITIES } from '../config';
 import { getCard, isCardKey } from '../data/cards';
 import type { Input, MatchSetup, PlayCheck, Team, TimedInput, Winner } from '../sim/types';
+import type { BattleResult, ProfileState } from '../meta/economy';
 
 export const PROTOCOL_VERSION = 1;
 export const DEFAULT_PORT = 2567;
@@ -44,7 +45,18 @@ export interface PlayerInfo {
   bot: boolean;
 }
 
-/** Opciones con las que un jugador entra en la cola o en una sala. (Fase 2: saldrán de su cuenta.) */
+/**
+ * Lo que manda el cliente al entrar en la cola o en una sala: solo su sesión.
+ * Nombre, mazo, niveles y trofeos los saca el servidor de la cuenta (no se fía del navegador).
+ */
+export interface ClientJoin {
+  token?: string;
+  /** Solo para mirar una partida (no necesita sesión). */
+  spectate?: boolean;
+  protocol?: number;
+}
+
+/** Datos de juego de un jugador al entrar (los construye el servidor a partir de su cuenta). */
 export interface JoinOptions {
   name: string;
   trophies: number;
@@ -105,6 +117,12 @@ export interface EndMsg {
   reason: string;
   crowns: Record<Team, number>;
   replayId: string | null;
+}
+
+/** Servidor → cada jugador: sus recompensas (calculadas por el servidor) y su estado nuevo. */
+export interface RewardsMsg {
+  result: BattleResult;
+  state: ProfileState;
 }
 
 export interface QueueStatusMsg {

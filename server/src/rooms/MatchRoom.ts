@@ -15,7 +15,10 @@ import {
   arenaFor,
   startLevel,
   getCard,
-  validateJoin,
+  applyBattle,
+  deckOf,
+  levelsOf,
+  DEFAULT_NAME,
   parsePlay,
   other,
   type Bot,
@@ -31,18 +34,48 @@ import {
   type RejectMsg,
   type EndMsg,
   type EmoteMsg,
+  type ClientJoin,
+  type ProfileState,
+  type RewardsMsg,
 } from '@arena/shared';
-import { ctx, newFriendlyCode, settings } from '../context';
-import { ReplayStore } from '../replays';
+import { ctx, newFriendlyCode, settings, store } from '../context';
+import { verifySession } from '../auth';
 
 export interface MatchRoomOptions {
   mode: MatchMode;
-  /** Partidas igualadas: solo pueden entrar como jugadores quienes traigan uno de estos tickets. */
-  tickets?: string[];
+}
+
+/** Quién es el jugador (lo comprueba onAuth o lo pasa la cola al reservar el sitio). */
+export interface SeatAuth {
+  accountId: string;
+  join: JoinOptions;
+}
+
+/** Datos de juego de una cuenta (el servidor no se fía de lo que diga el navegador). */
+export function joinFromState(s: ProfileState): JoinOptions {
+  const deck = [...deckOf(s)];
+  return {
+    name: s.name || DEFAULT_NAME,
+    trophies: s.trophies,
+    kingLevel: s.kingLevel,
+    deck,
+    levels: levelsOf(s, deck),
+  };
+}
+
+/** Comprueba la sesión y carga la cuenta. */
+export async function authAccount(token: unknown): Promise<SeatAuth> {
+  const session = await verifySession(token);
+  if (!session) throw new Error('err.session');
+  const acc = await store().getAccount(session.accountId);
+  if (!acc) throw new Error('err.session');
+  return { accountId: acc.id, join: joinFromState(acc.state) };
 }
 
 interface Seat {
   team: Team;
+  /** null = bot. */
+  accountId: string | null;
   join: JoinOptions;
   info: PlayerInfo;
   client: Client | null;
@@ -52,7 +85,7 @@ interface Seat {
   lastEmote: number;
 }
 
-type JoinPayload = Partial<JoinOptions> & { ticket?: string };
+type JoinPayload = ClientJoin & { mode?: MatchMode };
 
 /**
  * Sala de una partida. El servidor es la autoridad: ejecuta Match, valida cada
@@ -63,7 +96,6 @@ export class MatchRoom extends Room {
   mode: MatchMode = 'ranked';
   code: string | null = null;
   match: Match | null = null;
-  private tickets = new Set<string>();
   private seats = new Map<Team, Seat>();
   private bySession = new Map<string, Team>();
   private spectators = new Set<string>();
@@ -76,7 +108,6 @@ export class MatchRoom extends Room {
   override onCreate(options: MatchRoomOptions): void {
     this.mode = options.mode ?? 'ranked';
     this.maxClients = 2 + 30; // jugadores + espectadores
-    for (const t of options.tickets ?? []) this.tickets.add(t);
     if (this.mode === 'friendly') {
       this.code = newFriendlyCode();
       ctx.friendly.set(this.code, this.roomId);
@@ -93,18 +124,18 @@ export class MatchRoom extends Room {
     }
   }
 
-  override onAuth(_client: Client, options: JoinPayload): boolean {
+  override async onAuth(_client: Client, options: JoinPayload): Promise<SeatAuth | true> {
     if (options?.protocol !== undefined && options.protocol !== PROTOCOL_VERSION) throw new Error('err.version');
     if (options?.spectate) return true;
-    const err = validateJoin(options);
-    if (err) throw new Error(err);
-    if (this.mode === 'ranked' && (!options.ticket || !this.tickets.has(options.ticket)))
-      throw new Error('err.room.reserved');
+    // a las igualadas solo se entra con el sitio que reserva la cola (sin pasar por aquí)
+    if (this.mode === 'ranked') throw new Error('err.room.reserved');
     if (this.seats.size >= 2 || this.match) throw new Error('err.room.full');
-    return true;
+    const auth = await authAccount(options?.token);
+    if ([...this.seats.values()].some((s) => s.accountId === auth.accountId)) throw new Error('err.room.self');
+    return auth;
   }
 
-  override onJoin(client: Client, options: JoinPayload): void {
+  override onJoin(client: Client, options: JoinPayload, auth?: SeatAuth | true): void {
     if (options.spectate) {
       this.spectators.add(client.sessionId);
       if (this.match) {
@@ -113,11 +144,15 @@ export class MatchRoom extends Room {
       }
       return;
     }
-    if (options.ticket) this.tickets.delete(options.ticket);
+    if (!auth || auth === true) {
+      client.leave(4003);
+      return;
+    }
     const team: Team = this.seats.has('blue') ? 'red' : 'blue';
-    const join = options as JoinOptions;
+    const join = auth.join;
     this.seats.set(team, {
       team,
+      accountId: auth.accountId,
       join,
       client,
       info: { name: join.name.trim(), trophies: join.trophies, kingLevel: join.kingLevel, bot: false },
@@ -184,6 +219,7 @@ export class MatchRoom extends Room {
       team,
       join: { name: opp.name, trophies: opp.trophies, kingLevel: opp.kingLevel, deck: opp.deck, levels: opp.levels },
       info: { name: opp.name, trophies: opp.trophies, kingLevel: opp.kingLevel, bot: true },
+      accountId: null,
       client: null,
       tokens: 0,
       lastRefill: 0,
@@ -337,35 +373,57 @@ export class MatchRoom extends Room {
     if (this.finished) return;
     this.finished = true;
     this.setSimulationInterval(undefined);
+    void this.settle();
+  }
+
+  /** Guarda la partida, reparte recompensas (calculadas aquí, nunca en el cliente) y avisa. */
+  private async settle(): Promise<void> {
     const m = this.match!;
+    const blue = this.seats.get('blue')!,
+      red = this.seats.get('red')!;
+    const players = { blue: blue.info, red: red.info };
+    const reason = m.over ? 'end' : 'timeout';
     let replayId: string | null = null;
-    const store = ctx.replays;
-    if (store) {
-      replayId = ReplayStore.newId();
-      const players = { blue: this.seats.get('blue')!.info, red: this.seats.get('red')!.info };
-      store.save(
-        { version: 1, setup: m.setup, inputs: [...m.log] },
-        {
-          id: replayId,
-          mode: this.mode,
-          players,
-          winner: m.winner,
-          reason: m.over ? 'end' : 'timeout',
-          crowns: { ...m.crowns },
-          ticks: m.tick,
-          hash: m.hash(),
-          endedAt: new Date().toISOString(),
-        },
-      );
+    try {
+      replayId = `${Date.now().toString(36)}-${crypto.randomBytes(4).toString('hex')}`;
+      await store().saveMatch({
+        id: replayId,
+        mode: this.mode,
+        blueId: blue.accountId,
+        redId: red.accountId,
+        winner: m.winner,
+        reason,
+        players,
+        crowns: { ...m.crowns },
+        ticks: m.tick,
+        hash: m.hash(),
+        replay: { version: 1, setup: m.setup, inputs: [...m.log] },
+        endedAt: new Date(),
+      });
+    } catch (e) {
+      console.error('[match] no se pudo guardar la partida', e);
+      replayId = null;
     }
-    const end: EndMsg = {
-      winner: m.winner ?? 'draw',
-      reason: m.over ? 'end' : 'timeout',
-      crowns: { ...m.crowns },
-      replayId,
-    };
+    const end: EndMsg = { winner: m.winner ?? 'draw', reason, crowns: { ...m.crowns }, replayId };
     this.broadcast('end', end);
+    // recompensas: las amistosas no dan ni quitan nada
+    if (this.mode !== 'friendly') {
+      for (const seat of [blue, red]) {
+        if (!seat.accountId) continue;
+        const outcome = m.winner === 'draw' || !m.winner ? 'draw' : m.winner === seat.team ? 'win' : 'loss';
+        try {
+          const { result, state } = await store().mutate(seat.accountId, (s) =>
+            applyBattle(s, outcome, m.crowns[seat.team], rewardRand),
+          );
+          seat.client?.send('rewards', { result, state } satisfies RewardsMsg);
+        } catch (e) {
+          console.error('[match] no se pudieron dar las recompensas', e);
+        }
+      }
+    }
     void this.setMetadata({ finished: true });
     this.clock.setTimeout(() => void this.disconnect(), settings().linger * 1000);
   }
 }
+
+const rewardRand = (): number => crypto.randomInt(0, 2 ** 32) / 2 ** 32;

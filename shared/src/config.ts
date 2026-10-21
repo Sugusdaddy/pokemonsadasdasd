@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────
 
 export const TITLE = 'Arena Royale';
-export const VERSION = '3.0-phase1';
+export const VERSION = '3.0-phase2a';
 
 // ─────────────────────────── Arte ───────────────────────────
 // `npm run assets` lee el pack de `root` y genera los atlas del cliente.

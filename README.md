@@ -6,7 +6,7 @@ Fan game para navegador al estilo de Clash Royale, con sprites de Pokémon del p
 > Clash Royale © Supercell. Este proyecto no está autorizado por ninguna de ellas y pueden pedir que se retire.
 > Mira [Licencias y créditos](#licencias-y-créditos).
 
-Versión 3 (en desarrollo, **Fase 1: online**). Juego para navegador de **PC** (horizontal, ratón y teclado) que
+Versión 3 (en desarrollo, **Fase 2A: cuentas y economía en el servidor**). Juego para navegador de **PC** (horizontal, ratón y teclado) que
 también se adapta a **móvil** (vertical, táctil). Phaser 3 + TypeScript estricto + Vite en un monorepo, con la
 simulación de batalla en `/shared` y un servidor autoritativo con Colyseus.
 
@@ -18,11 +18,13 @@ Necesitas **Node 18.18 o superior** (recomendado Node 22 LTS).
 2. `npm install`
 3. `npm run dev` → abre `http://localhost:5173`
 
-`npm run dev` arranca a la vez el **servidor de juego** (`ws://localhost:2567`) y el **cliente** (Vite, puerto 5173).
+`npm run dev` arranca a la vez un **PostgreSQL local** (puerto 54329, sin Docker; datos en `server/.pgdata`), el
+**servidor de juego** (`ws://localhost:2567`) y el **cliente** (Vite, puerto 5173). Antes, copia
+`server/.env.example` a `server/.env`.
 La primera vez genera además los atlas de sprites en `client/public/gen/` (unos 5 s).
 
 Para probar una partida online entre dos jugadores, abre el juego en dos pestañas y pulsa BATALLA en las dos.
-Si el servidor no está en marcha, BATALLA ofrece **jugar sin conexión** contra el bot.
+Sin servidor, la pantalla de carga ofrece reintentar o jugar una **práctica** contra el bot (sin recompensas).
 
 > Para probar rápido: en **Perfil → Modo prueba** tienes +5000 oro, +500 gemas y +300 trofeos.
 
@@ -30,6 +32,10 @@ Si el servidor no está en marcha, BATALLA ofrece **jugar sin conexión** contra
 | ------------------------- | ------------------------------------------------------------------------------------ |
 | `npm run dev`             | Servidor de juego + cliente con recarga en caliente                                  |
 | `npm run dev:server`      | Solo el servidor de juego (puerto 2567, `ARENA_PORT` para cambiarlo)                 |
+| `npm run dev:db`          | Solo el PostgreSQL local                                                             |
+| `npm run db:migrate`      | Crea una migración nueva tras cambiar `server/prisma/schema.prisma`                  |
+| `npm run db:deploy`       | Aplica las migraciones pendientes (producción)                                       |
+| `npm run db:studio`       | Explorador de la base de datos (Prisma Studio)                                       |
 | `npm run start:server`    | Servidor sin recarga (producción: usa `PORT`)                                        |
 | `npm run build`           | Build de producción en `client/dist/` (estático, se puede subir a cualquier hosting) |
 | `npm run assets`          | Regenera atlas y `pack.json` desde el pack de sprites                                |
@@ -85,6 +91,44 @@ Toda la interfaz sale de `client/src/ui/kit/`:
 `ui/style.ts` mantiene las funciones de siempre (`txt`, `button`, `panel`) dibujadas con el kit. Los sprites de Pokémon
 se escalan como pixel art nítido; la interfaz y los textos se suavizan.
 
+## Cuentas y economía (Fase 2A)
+
+**El progreso vive en el servidor** (PostgreSQL + Prisma). El navegador solo guarda una copia para pintar.
+
+- **Invitado**: al abrir el juego por primera vez se crea una cuenta de invitado y su sesión (un token firmado) se
+  guarda en el navegador. Se juega al momento, sin registrarse.
+- **Wallet de Solana** (Perfil → Cuenta → _Connect wallet_): se detectan las wallets instaladas con Wallet Standard
+  (Phantom, Solflare, Backpack…). El servidor da un mensaje con un código de un solo uso que caduca en 5 minutos, la
+  wallet lo firma (ed25519) y el servidor comprueba la firma. **Nunca se firma una transacción ni se mueven fondos.**
+  - Si la wallet es nueva, se queda con tu cuenta de invitado (y su progreso).
+  - Si la wallet ya tenía cuenta, entras en ella desde cualquier dispositivo.
+  - _Sign out_ cierra la sesión (la cuenta sigue en el servidor) y empieza un invitado nuevo.
+- **Economía autoritativa**: abrir Pokéballs (temporizadores con la hora del servidor), saltarlas con gemas, mejorar
+  cartas, mazos, tienda diaria (igual para todos, cambia a las 00:00 UTC), regalo diario y camino de trofeos se
+  validan y calculan en el servidor con las reglas de `shared/src/meta/economy.ts`.
+- **Recompensas de partida**: las calcula el servidor con el resultado de SU simulación y las manda al jugador
+  (mensaje `rewards`). Las amistosas no dan ni quitan nada.
+- **Sin dobles cobros**: cada cambio de una cuenta bloquea su fila (`SELECT … FOR UPDATE`), así que peticiones
+  simultáneas no pueden gastar dos veces el mismo oro.
+- **Límites por IP** en la creación de invitados y en el login.
+- **Modo prueba** de Perfil (+oro, +trofeos): solo si el servidor tiene `ALLOW_DEV_CHEATS=1`.
+- **Partidas y repeticiones** en la tabla `Match` (antes, ficheros en disco).
+
+API (además de la de la Fase 1):
+
+| Ruta                                                            | Qué hace                                       |
+| --------------------------------------------------------------- | ---------------------------------------------- |
+| `POST /api/auth/guest`                                          | Crea un invitado y devuelve su sesión          |
+| `GET /api/auth/nonce?address=`                                  | Mensaje para firmar con la wallet              |
+| `POST /api/auth/wallet`                                         | Comprueba la firma y devuelve la sesión        |
+| `GET /api/me`                                                   | Tu cuenta (estado, ofertas, hora del servidor) |
+| `POST /api/me/{name,deck/active,deck/card,cards/upgrade}`       | Perfil, mazos y mejoras                        |
+| `POST /api/me/balls/{unlock,skip,open,free,crown}`              | Pokéballs                                      |
+| `POST /api/me/shop/{gift,card,ball,gold}`, `/api/me/road/claim` | Tienda y camino de trofeos                     |
+
+**Base de datos**: mientras Railway esté disponible se usará su PostgreSQL. En desarrollo hay uno local que arranca
+solo. Sin `DATABASE_URL` el servidor guarda todo en memoria (y lo avisa), útil para probar rápido.
+
 ## Online (Fase 1)
 
 ```
@@ -111,8 +155,8 @@ se escalan como pixel art nítido; la interfaz y los textos se suavizan.
   con pausa y velocidad. La huella final se comprueba al reproducirlas.
 - **Espectador**: en **TV** aparecen las partidas en directo; se entra con _Mirar_.
 - **API HTTP** (mismo puerto): `/api/health`, `/api/live`, `/api/replays`, `/api/replays/:id`, `/api/friendly/:code`.
-- **Hasta la Fase 2** (cuentas) el mazo, los niveles y los trofeos los manda el cliente y el servidor solo comprueba
-  que sean válidos; las recompensas se siguen calculando en el navegador.
+- Al entrar en la cola o en una sala, el cliente solo manda su **sesión**: el nombre, el mazo, los niveles y los
+  trofeos los saca el servidor de la cuenta.
 - Colyseus **0.16** porque la 0.18 exige Node 22. Al pasar a Node 22 se puede actualizar sin cambiar el diseño.
 
 ## Estructura
@@ -128,7 +172,7 @@ shared/   TypeScript puro, sin Phaser. Lo usan el cliente, el servidor y los tes
     bot.ts             IA del rival: lee el estado y genera inputs, como un jugador
     rng.ts / math.ts   RNG con semilla y matemáticas deterministas
     replay.ts          Repeticiones (semilla + inputs) y partidas bot contra bot
-  src/meta/            Pokéballs, camino de trofeos y generación de rivales
+  src/meta/            Economía (reglas del progreso), Pokéballs, camino de trofeos y rivales
   src/net/             Protocolo cliente-servidor, validación y Lockstep
   test/                Tests de Vitest
 client/   El juego en Phaser (solo dibuja e interpola)
@@ -139,10 +183,13 @@ client/   El juego en Phaser (solo dibuja e interpola)
   src/ui/              Mano, cartas, modales, pestañas del menú
   src/meta/Profile.ts  Progreso del jugador (localStorage hasta la Fase 2)
   src/net/             Conexión con el servidor (OnlineSession), API HTTP y rewards.ts
-server/   Servidor de juego (Colyseus + Express)
+server/   Servidor de juego (Colyseus + Express + Prisma)
+  prisma/schema.prisma    Base de datos: Account, Wallet, AuthNonce, Match (+ migraciones)
+  src/auth.ts             Sesiones (JWT) y verificación de firmas de wallet
+  src/routes/account.ts   API de cuenta y economía
+  src/store/              Acceso a datos: PostgreSQL (Prisma) y memoria (tests)
   src/rooms/MatchRoom.ts  Partida autoritativa (validación, retardo, reconexión, espectadores)
   src/rooms/QueueRoom.ts  Cola de emparejamiento por trofeos
-  src/replays.ts          Repeticiones en disco
   test/                   Tests de integración (servidor real + clientes)
 tools/    build-assets.ts (atlas + pack.json), ensure-assets.ts
 ```

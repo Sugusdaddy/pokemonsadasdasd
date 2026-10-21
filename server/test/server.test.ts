@@ -1,6 +1,3 @@
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Client, type Room } from 'colyseus.js';
 import {
@@ -10,7 +7,9 @@ import {
   Lockstep,
   runReplay,
   mirrorPoint,
-  type JoinOptions,
+  type ClientJoin,
+  type Replay,
+  type RewardsMsg,
   type StartMsg,
   type CatchupMsg,
   type TickMsg,
@@ -19,17 +18,22 @@ import {
   type MatchedMsg,
 } from '@arena/shared';
 import { startServer, type RunningServer } from '../src/app';
-import type { StoredReplay } from '../src/replays';
+import nacl from 'tweetnacl';
+import bs58 from 'bs58';
+import { MemoryStore } from '../src/store/memory';
+
+type StoredReplay = Replay & { meta: { hash: number; ticks: number } };
 
 let server: RunningServer;
 let endpoint: string;
 let http: string;
-const replayDir = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-replays-'));
 
 beforeAll(async () => {
   server = await startServer({
     port: 0,
-    replayDir,
+    store: new MemoryStore(),
+    allowCheats: true,
+    rateLimits: false,
     queueBotAfterMs: 1200,
     matchFillBotAfterMs: 1500,
     matchStartDelayMs: 150,
@@ -42,23 +46,26 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await server.close();
-  fs.rmSync(replayDir, { recursive: true, force: true });
 });
 
-const opts = (trophies = 100, name = 'Tester'): JoinOptions => ({
-  name,
-  trophies,
-  kingLevel: 1,
-  deck: [...STARTER_DECK],
-  levels: {},
-  protocol: PROTOCOL_VERSION,
-});
+/** Crea una cuenta de invitado con esos trofeos y nombre, y devuelve con qué entrar. */
+async function opts(trophies = 100, name = 'Tester'): Promise<ClientJoin & { accountId: string }> {
+  const r = await fetch(`${http}/api/auth/guest`, { method: 'POST' });
+  const { token, account } = (await r.json()) as { token: string; account: { id: string } };
+  await server.store.mutate(account.id, (s) => {
+    s.trophies = trophies;
+    s.maxTrophies = trophies;
+    s.name = name;
+  });
+  return { token, protocol: PROTOCOL_VERSION, accountId: account.id };
+}
 
 /** Cliente de prueba: guarda los mensajes y mantiene su copia lockstep de la partida. */
 class Player {
   start: StartMsg | null = null;
   ls: Lockstep | null = null;
   ends: EndMsg[] = [];
+  rewards: RewardsMsg[] = [];
   rejects: RejectMsg[] = [];
   ticks: TickMsg[] = [];
   code: string | null = null;
@@ -80,6 +87,7 @@ class Player {
       this.ls?.drain();
     });
     room.onMessage('end', (m: EndMsg) => this.ends.push(m));
+    room.onMessage('rewards', (m: RewardsMsg) => this.rewards.push(m));
     room.onMessage('reject', (m: RejectMsg) => this.rejects.push(m));
     room.onMessage('code', (m: { code: string }) => (this.code = m.code));
     room.onMessage('queue', () => {});
@@ -99,8 +107,9 @@ const until = async (cond: () => boolean, ms = 5000, what = 'condición'): Promi
 };
 
 /** Entra en la cola y devuelve la sala de partida cuando la encuentra. */
-async function queue(client: Client, o: JoinOptions): Promise<{ room: Room; matched: MatchedMsg }> {
+async function queue(client: Client, o: ClientJoin): Promise<{ room: Room; matched: MatchedMsg }> {
   const q = await client.joinOrCreate('queue', o);
+  q.onMessage('queue', () => {});
   const matched = await new Promise<MatchedMsg>((resolve) => q.onMessage('matched', resolve));
   const room = await client.consumeSeatReservation(
     matched.reservation as Parameters<Client['consumeSeatReservation']>[0],
@@ -112,12 +121,12 @@ async function queue(client: Client, o: JoinOptions): Promise<{ room: Room; matc
 describe('servidor', () => {
   it('API de salud', async () => {
     const r = await fetch(`${http}/api/health`);
-    expect(await r.json()).toEqual({ ok: true });
+    expect(await r.json()).toEqual({ ok: true, db: 'memory' });
   });
 
   it('sin rival en la cola → partida contra bot; las cartas llegan con retardo y la repetición se guarda', async () => {
     const client = new Client(endpoint);
-    const { room, matched } = await queue(client, opts(50));
+    const { room, matched } = await queue(client, await opts(50));
     expect(matched.mode).toBe('bot');
     const p = new Player(room);
     await until(() => !!p.start && p.ticks.length > 5, 5000, 'inicio');
@@ -160,7 +169,7 @@ describe('servidor', () => {
 
   it('empareja a dos jugadores con trofeos parecidos y los dos ven la misma partida', async () => {
     const [ca, cb] = [new Client(endpoint), new Client(endpoint)];
-    const [ra, rb] = await Promise.all([queue(ca, opts(400, 'Ana')), queue(cb, opts(460, 'Beto'))]);
+    const [ra, rb] = await Promise.all([queue(ca, await opts(400, 'Ana')), queue(cb, await opts(460, 'Beto'))]);
     expect(ra.matched.mode).toBe('ranked');
     expect(ra.room.roomId).toBe(rb.room.roomId);
     const [a, b] = [new Player(ra.room), new Player(rb.room)];
@@ -186,8 +195,8 @@ describe('servidor', () => {
 
   it('no empareja trofeos muy distintos mientras la ventana es pequeña', async () => {
     const [ca, cb] = [new Client(endpoint), new Client(endpoint)];
-    const qa = await ca.joinOrCreate('queue', opts(0, 'Novato'));
-    const qb = await cb.joinOrCreate('queue', opts(3000, 'Experto'));
+    const qa = await ca.joinOrCreate('queue', await opts(0, 'Novato'));
+    const qb = await cb.joinOrCreate('queue', await opts(3000, 'Experto'));
     let matched = 0;
     const status: number[] = [];
     for (const q of [qa, qb]) {
@@ -204,7 +213,7 @@ describe('servidor', () => {
 
   it('rechaza cartas que no están en la mano, fuera de zona o a demasiado ritmo', async () => {
     const client = new Client(endpoint);
-    const { room } = await queue(client, opts(10));
+    const { room } = await queue(client, await opts(10));
     const p = new Player(room);
     await until(() => p.ticks.length > 3, 5000, 'inicio');
     const notInHand = STARTER_DECK.find((k) => !p.hand.includes(k))!;
@@ -223,11 +232,11 @@ describe('servidor', () => {
 
   it('una partida igualada no admite jugadores sin ticket, pero sí espectadores', async () => {
     const client = new Client(endpoint);
-    const { room } = await queue(client, opts(20));
+    const { room } = await queue(client, await opts(20));
     const p = new Player(room);
     await until(() => p.ticks.length > 30, 5000, 'partida en marcha');
     const intruder = new Client(endpoint);
-    await expect(intruder.joinById(room.roomId, opts(20, 'Intruso'))).rejects.toThrow();
+    await expect(intruder.joinById(room.roomId, await opts(20, 'Intruso'))).rejects.toThrow();
 
     const live = (await (await fetch(`${http}/api/live`)).json()) as Array<{ roomId: string }>;
     expect(live.some((l) => l.roomId === room.roomId)).toBe(true);
@@ -242,14 +251,14 @@ describe('servidor', () => {
 
   it('sala amistosa por código', async () => {
     const [ca, cb] = [new Client(endpoint), new Client(endpoint)];
-    const ra = await ca.create('match', { ...opts(100, 'Host'), mode: 'friendly' });
+    const ra = await ca.create('match', { ...(await opts(100, 'Host')), mode: 'friendly' });
     const a = new Player(ra);
     await until(() => !!a.code, 2000, 'código');
     const r = await fetch(`${http}/api/friendly/${a.code}`);
     const { roomId } = (await r.json()) as { roomId: string };
     expect(roomId).toBe(ra.roomId);
     expect((await fetch(`${http}/api/friendly/ZZZZZ`)).status).toBe(404);
-    const b = new Player(await cb.joinById(roomId, opts(900, 'Invitado')));
+    const b = new Player(await cb.joinById(roomId, await opts(900, 'Invitado')));
     await until(() => !!a.start && !!b.start, 3000, 'inicio amistosa');
     expect(a.start!.mode).toBe('friendly');
     expect(a.start!.players.red.name).toBe('Invitado');
@@ -259,7 +268,7 @@ describe('servidor', () => {
 
   it('reconexión: tras cortarse, el jugador vuelve y se pone al día', async () => {
     const client = new Client(endpoint);
-    const { room } = await queue(client, opts(30));
+    const { room } = await queue(client, await opts(30));
     const p = new Player(room);
     await until(() => p.ticks.length > 20, 5000, 'partida en marcha');
     p.room.send('play', { card: p.hand.find((k) => k !== 'rockslide'), x: 360, y: 900 });
@@ -279,5 +288,160 @@ describe('servidor', () => {
     expect(p.ls!.desyncs).toBe(0);
     back.send('surrender');
     await until(() => p.ends.length > 0, 3000, 'fin');
+  });
+});
+
+// ───────────────────────── Cuentas, wallet y economía ─────────────────────────
+
+interface AccountView {
+  id: string;
+  guest: boolean;
+  wallets: string[];
+  state: {
+    gold: number;
+    gems: number;
+    trophies: number;
+    name: string;
+    stats: { battles: number; losses: number };
+    shop: { freeClaimed: boolean };
+  };
+  shop: { offers: Array<{ id: string; price: number }> };
+}
+
+async function api<T = { result: unknown; account: AccountView }>(
+  path: string,
+  token?: string,
+  body?: unknown,
+): Promise<{ status: number; json: T & { error?: string } }> {
+  const r = await fetch(`${http}/api${path}`, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  return { status: r.status, json: (await r.json()) as T & { error?: string } };
+}
+
+/** Wallet de prueba: firma de verdad el mensaje del servidor. */
+function testWallet() {
+  const kp = nacl.sign.keyPair();
+  const address = bs58.encode(kp.publicKey);
+  const sign = (message: string) => bs58.encode(nacl.sign.detached(new TextEncoder().encode(message), kp.secretKey));
+  return { address, sign };
+}
+
+async function walletLogin(w: ReturnType<typeof testWallet>, guestToken?: string) {
+  const n = await api<{ nonce: string; message: string }>(`/auth/nonce?address=${w.address}`);
+  return api<{ token: string; account: AccountView }>('/auth/wallet', guestToken, {
+    address: w.address,
+    nonce: n.json.nonce,
+    signature: w.sign(n.json.message),
+  });
+}
+
+describe('cuentas y economía', () => {
+  it('un invitado recibe el progreso inicial y sin sesión no hay acceso', async () => {
+    const g = await api<{ token: string; account: AccountView }>('/auth/guest', undefined, {});
+    expect(g.status).toBe(200);
+    expect(g.json.account.guest).toBe(true);
+    expect(g.json.account.state.gold).toBe(300);
+    expect((await api('/me')).status).toBe(401);
+    expect((await api('/me', 'token-falso')).status).toBe(401);
+    expect((await api('/me', g.json.token)).json.account.id).toBe(g.json.account.id);
+  });
+
+  it('login con wallet: la firma convierte al invitado en cuenta con wallet y conserva su progreso', async () => {
+    const g = await api<{ token: string; account: AccountView }>('/auth/guest', undefined, {});
+    await server.store.mutate(g.json.account.id, (s) => void (s.gold = 777));
+    const w = testWallet();
+    const n = await api<{ nonce: string; message: string }>(`/auth/nonce?address=${w.address}`);
+    expect(n.json.message).toContain(w.address);
+    expect(n.json.message).toContain('will not trigger a blockchain transaction');
+    const login = await api<{ token: string; account: AccountView }>('/auth/wallet', g.json.token, {
+      address: w.address,
+      nonce: n.json.nonce,
+      signature: w.sign(n.json.message),
+    });
+    expect(login.status).toBe(200);
+    expect(login.json.account.id).toBe(g.json.account.id);
+    expect(login.json.account.guest).toBe(false);
+    expect(login.json.account.wallets).toEqual([w.address]);
+    expect(login.json.account.state.gold).toBe(777);
+    // otra vez con la misma wallet desde otro dispositivo: misma cuenta
+    const again = await walletLogin(w);
+    expect(again.json.account.id).toBe(g.json.account.id);
+  });
+
+  it('rechaza firmas falsas, nonces reutilizados y direcciones inválidas', async () => {
+    const w = testWallet(),
+      other = testWallet();
+    const n = await api<{ nonce: string; message: string }>(`/auth/nonce?address=${w.address}`);
+    const bad = await api('/auth/wallet', undefined, {
+      address: w.address,
+      nonce: n.json.nonce,
+      signature: other.sign(n.json.message),
+    });
+    expect(bad.status).toBe(401);
+    expect(bad.json.error).toBe('err.wallet.signature');
+    // el nonce ya se gastó con el intento fallido
+    const reuse = await api('/auth/wallet', undefined, {
+      address: w.address,
+      nonce: n.json.nonce,
+      signature: w.sign(n.json.message),
+    });
+    expect(reuse.json.error).toBe('err.wallet.nonce');
+    // nonce de otra dirección
+    const n2 = await api<{ nonce: string; message: string }>(`/auth/nonce?address=${other.address}`);
+    const swap = await api('/auth/wallet', undefined, {
+      address: w.address,
+      nonce: n2.json.nonce,
+      signature: w.sign(n2.json.message),
+    });
+    expect(swap.json.error).toBe('err.wallet.nonce');
+    expect((await api(`/auth/nonce?address=no-es-una-wallet`)).status).toBe(400);
+  });
+
+  it('la economía la decide el servidor: sin oro no se compra y no se cobra dos veces', async () => {
+    const g = await api<{ token: string; account: AccountView }>('/auth/guest', undefined, {});
+    const tok = g.json.token;
+    // regalo diario: una sola vez, aunque se pida a la vez
+    const both = await Promise.all([api('/me/shop/gift', tok, {}), api('/me/shop/gift', tok, {})]);
+    expect(both.map((r) => r.status).sort()).toEqual([200, 400]);
+    const me = await api('/me', tok);
+    expect(me.json.account.state.gold).toBe(400);
+    expect(me.json.account.state.shop.freeClaimed).toBe(true);
+    // una oferta de cartas cara sin oro suficiente
+    const offer = me.json.account.shop.offers.find((o) => o.price > 400)!;
+    const fail = await api('/me/shop/card', tok, { id: offer.id });
+    expect(fail.status).toBe(400);
+    expect(fail.json.error).toBe('err.econ.gold'.replace('err.', ''));
+    // abrir la Super Ball inicial (lista desde el principio)
+    const open = await api<{ result: { gold: number; cards: unknown[] }; account: AccountView }>(
+      '/me/balls/open',
+      tok,
+      { slot: 0 },
+    );
+    expect(open.status).toBe(200);
+    expect(open.json.result.cards.length).toBeGreaterThan(0);
+    // ya no hay ball en ese hueco
+    expect((await api('/me/balls/open', tok, { slot: 0 })).json.error).toBe('econ.slot');
+    // datos basura
+    expect((await api('/me/name', tok, { name: '<script>' })).json.error).toBe('econ.name');
+    expect((await api('/me/deck/card', tok, { slot: 0, key: 'mewtwo' })).json.error).toBe('econ.notOwned');
+  });
+
+  it('al acabar una partida el servidor da las recompensas y las guarda', async () => {
+    const client = new Client(endpoint);
+    const o = await opts(120, 'Premio');
+    const { room } = await queue(client, o);
+    const p = new Player(room);
+    await until(() => p.ticks.length > 5, 5000, 'inicio');
+    room.send('surrender');
+    await until(() => p.rewards.length > 0, 4000, 'recompensas');
+    const r = p.rewards[0];
+    expect(r.result.trophies).toBeLessThan(0); // derrota
+    expect(r.state.stats.battles).toBe(1);
+    const saved = (await server.store.getAccount(o.accountId))!;
+    expect(saved.state.trophies).toBe(120 + r.result.trophies);
+    expect(saved.state.stats.losses).toBe(1);
   });
 });

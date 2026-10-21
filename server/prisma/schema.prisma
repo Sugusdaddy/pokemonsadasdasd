@@ -1,0 +1,71 @@
+// Base de datos de Arena Royale (PostgreSQL).
+// Desarrollo: `npm run dev` arranca un PostgreSQL local (embedded-postgres).
+// Producción: DATABASE_URL apunta al PostgreSQL de Railway.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Una cuenta de jugador. Las de invitado no tienen wallet hasta que la conectan.
+model Account {
+  id          String   @id @default(cuid())
+  isGuest     Boolean  @default(true)
+  /// Copias de campos del estado para poder consultar y ordenar (rankings, admin).
+  name        String
+  trophies    Int      @default(0)
+  maxTrophies Int      @default(0)
+  kingLevel   Int      @default(1)
+  /// Progreso completo (ProfileState de @arena/shared): cartas, mazos, balls, tienda…
+  state       Json
+  /// Versión del estado: cada cambio la sube (control de concurrencia optimista).
+  rev         Int      @default(0)
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  wallets     Wallet[]
+
+  @@index([trophies])
+}
+
+/// Wallet de Solana vinculada a una cuenta (login firmando un mensaje, sin transacciones).
+model Wallet {
+  address   String   @id
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+}
+
+/// Código de un solo uso para el mensaje que firma la wallet.
+model AuthNonce {
+  nonce     String   @id
+  address   String
+  message   String
+  expiresAt DateTime
+}
+
+/// Partida terminada con su repetición (semilla + inputs).
+model Match {
+  id      String   @id
+  mode    String
+  blueId  String?
+  redId   String?
+  winner  String?
+  reason  String
+  players Json
+  crowns  Json
+  ticks   Int
+  /// Huella final del estado (uint32): re-ejecutar la repetición debe dar la misma.
+  hash    BigInt
+  replay  Json
+  endedAt DateTime @default(now())
+
+  @@index([endedAt])
+  @@index([blueId])
+  @@index([redId])
+}

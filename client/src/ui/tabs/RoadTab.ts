@@ -6,7 +6,7 @@ import * as kit from '../kit';
 import { t, arenaName, ballLabel } from '../../i18n';
 import { toast } from '../Modal';
 import type { ScrollPanel } from '../ScrollPanel';
-import { Tab } from './Tab';
+import { Tab, runAction } from './Tab';
 import { L } from '../../layout';
 
 const ROW = 116;
@@ -162,24 +162,20 @@ export class RoadTab extends Tab {
   claim(m: RoadStep): void {
     const s = this.scene;
     if (Profile.d.roadClaimed.includes(m.trophies)) return;
-    Profile.d.roadClaimed.push(m.trophies);
-    const r = m.reward;
-    if ('gold' in r) {
-      Profile.d.gold += r.gold;
-      Sfx.play('coin');
-      toast(s, t('common.plusGold', { n: r.gold }), '#ffd84a');
-    }
-    if ('gems' in r) {
-      Profile.d.gems += r.gems;
-      Sfx.play('coin');
-      toast(s, t('common.plusGems', { n: r.gems }), '#7dff8a');
-    }
-    Profile.save();
-    if ('ball' in r) {
-      const reward = Profile.openBall(r.ball, Profile.arena);
-      s.openBallScene(reward, 'road');
-      return;
-    }
-    this.rebuild();
+    void runAction(
+      s,
+      `road:${m.trophies}`,
+      () => Profile.claimRoad(m.trophies),
+      (r) => {
+        if (r.ball) {
+          s.openBallScene(r.ball, 'road');
+          return;
+        }
+        Sfx.play('coin');
+        if (r.gold) toast(s, t('common.plusGold', { n: r.gold }), '#ffd84a');
+        if (r.gems) toast(s, t('common.plusGems', { n: r.gems }), '#7dff8a');
+        this.rebuild();
+      },
+    );
   }
 }

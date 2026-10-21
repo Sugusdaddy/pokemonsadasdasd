@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BALLS, getCard, cardsUpToArena, type BallType, type Rarity } from '@arena/shared';
+import { BALLS, BALL_OFFERS, GOLD_OFFERS, DAILY_GIFT, getCard, type BallType, type CardOffer } from '@arena/shared';
 import { Profile } from '../../meta/Profile';
 import { Sfx } from '../../systems/Sfx';
 import { makeCardView } from '../CardView';
@@ -7,87 +7,17 @@ import { fmtTime, fmtNum } from '../style';
 import * as kit from '../kit';
 import { t, cardName, ballLabel } from '../../i18n';
 import { toast, openModal } from '../Modal';
-import { Tab, sectionHeader } from './Tab';
+import { Tab, sectionHeader, runAction } from './Tab';
 import { L } from '../../layout';
 
-// Precios de la tienda (en el juego no hay dinero real: todo se gana jugando)
-const CARD_OFFERS: Record<Rarity, { count: number; price: number }> = {
-  common: { count: 20, price: 200 },
-  rare: { count: 5, price: 500 },
-  epic: { count: 1, price: 1000 },
-  legendary: { count: 1, price: 20000 },
-};
-const BALL_OFFERS: Array<{ type: BallType; gems: number }> = [
-  { type: 'super', gems: 120 },
-  { type: 'ultra', gems: 350 },
-  { type: 'master', gems: 900 },
-];
-const GOLD_OFFERS = [
-  { gold: 1000, gems: 60 },
-  { gold: 10000, gems: 500 },
-];
-const DAILY_GIFT = 100;
-
-export interface CardOffer {
-  id: string;
-  key: string;
-  rarity: Rarity;
-  count: number;
-  price: number;
-}
-
-function seeded(seed: string): () => number {
-  let a = 0;
-  for (const ch of seed) a = (a * 31 + ch.charCodeAt(0)) >>> 0;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-const msToMidnight = (): number => {
-  const midnight = new Date();
-  midnight.setHours(24, 0, 0, 0);
-  return midnight.getTime() - Date.now();
-};
-
-export function dailyOffers(): CardOffer[] {
-  const day = new Date().toDateString();
-  const rnd = seeded(day + Profile.arena);
-  const pool = cardsUpToArena(Profile.arena);
-  const byR = (r: Rarity) => pool.filter((k) => getCard(k).rarity === r);
-  const wants: Rarity[] = ['common', 'common', 'common', 'rare', 'rare', rnd() < 0.12 ? 'legendary' : 'epic'];
-  const used = new Set<string>();
-  return wants.map((want, i) => {
-    let r = want;
-    let list = byR(r).filter((k) => !used.has(k));
-    if (!list.length) {
-      r = 'common';
-      list = byR('common').filter((k) => !used.has(k));
-    }
-    if (!list.length) list = pool;
-    const key = list[Math.floor(rnd() * list.length)];
-    used.add(key);
-    return { id: `${day}-${i}`, key, rarity: r, ...CARD_OFFERS[r] };
-  });
-}
-
+// Precios de la tienda: los define @arena/shared y los cobra el servidor (no hay dinero real).
 export class ShopTab extends Tab {
   declare refreshT: Phaser.GameObjects.Text | undefined;
 
   override build(): void {
     const s = this.scene;
+    // el servidor renueva la tienda cada día (UTC) y manda las ofertas con la cuenta
     const shop = Profile.d.shop;
-    const day = new Date().toDateString();
-    if (shop.day !== day) {
-      shop.day = day;
-      shop.bought = [];
-      shop.freeClaimed = false;
-      Profile.save();
-    }
     const P = this.scroll();
     const W = P.w;
     let y = 16;
@@ -123,12 +53,16 @@ export class ShopTab extends Tab {
         W - 40,
         120,
         () => {
-          shop.freeClaimed = true;
-          Profile.d.gold += DAILY_GIFT;
-          Profile.save();
-          Sfx.play('coin');
-          toast(s, t('common.plusGold', { n: DAILY_GIFT }), '#ffd84a');
-          this.rebuild();
+          void runAction(
+            s,
+            'shop:gift',
+            () => Profile.claimShopGift(),
+            (n) => {
+              Sfx.play('coin');
+              toast(s, t('common.plusGold', { n }), '#ffd84a');
+              this.rebuild();
+            },
+          );
         },
         gift,
       );
@@ -141,7 +75,7 @@ export class ShopTab extends Tab {
       s,
       W - 30,
       y + 14,
-      t('shop.newIn', { time: fmtTime(msToMidnight() / 1000) }),
+      t('shop.newIn', { time: fmtTime(Profile.msToShopReset() / 1000) }),
       'body',
       '#aab3e8',
       { originX: 1, size: 19 },
@@ -149,7 +83,7 @@ export class ShopTab extends Tab {
     P.add(this.refreshT);
     y += 50;
     // ofertas: 3 por fila en móvil; en PC, las que quepan
-    const offers = dailyOffers();
+    const offers = Profile.shop.offers;
     const cols = L.pc ? Math.max(3, Math.floor((W - 20) / 230)) : 3;
     const ox = Math.round((W - cols * 230) / 2) + 115;
     offers.forEach((o, i) => {
@@ -222,12 +156,16 @@ export class ShopTab extends Tab {
             toast(s, t('common.noGems'), '#ff9a9a');
             return;
           }
-          Profile.d.gems -= o.gems;
-          Profile.d.gold += o.gold;
-          Profile.save();
-          Sfx.play('coin');
-          toast(s, t('common.plusGold', { n: fmtNum(o.gold) }), '#ffd84a');
-          this.rebuild();
+          void runAction(
+            s,
+            'shop:gold',
+            () => Profile.buyGold(i),
+            (gold) => {
+              Sfx.play('coin');
+              toast(s, t('common.plusGold', { n: fmtNum(gold) }), '#ffd84a');
+              this.rebuild();
+            },
+          );
         },
         c,
       );
@@ -276,14 +214,17 @@ export class ShopTab extends Tab {
               toast(s, t('common.noGold'), '#ff9a9a');
               return;
             }
-            Profile.d.gold -= o.price;
-            const isNew = Profile.addCards(o.key, o.count);
-            Profile.d.shop.bought.push(o.id);
-            Profile.save();
-            Sfx.play(isNew ? 'rare' : 'coin');
-            toast(s, isNew ? t('shop.newCard', { name: cardName(c) }) : `+${o.count} ${cardName(c)}`, '#7dff8a');
-            close();
-            this.rebuild();
+            void runAction(
+              s,
+              `shop:${o.id}`,
+              () => Profile.buyCardOffer(o.id),
+              (r) => {
+                Sfx.play(r.isNew ? 'rare' : 'coin');
+                toast(s, r.isNew ? t('shop.newCard', { name: cardName(c) }) : `+${r.count} ${cardName(c)}`, '#7dff8a');
+                close();
+                this.rebuild();
+              },
+            );
           },
           { size: 32, icon: 'ic_gold' },
         ),
@@ -329,11 +270,15 @@ export class ShopTab extends Tab {
           String(o.gems),
           'success',
           () => {
-            if (Profile.d.gems < o.gems) return;
-            Profile.d.gems -= o.gems;
-            const reward = Profile.openBall(o.type, Profile.arena);
-            close();
-            s.openBallScene(reward, 'shop');
+            void runAction(
+              s,
+              `shop:${o.type}`,
+              () => Profile.buyBall(o.type),
+              (reward) => {
+                close();
+                s.openBallScene(reward, 'shop');
+              },
+            );
           },
           { size: 32, icon: 'ic_gem' },
         ),
@@ -342,6 +287,6 @@ export class ShopTab extends Tab {
   }
 
   override tick(): void {
-    this.refreshT?.setText(t('shop.newIn', { time: fmtTime(msToMidnight() / 1000) }));
+    this.refreshT?.setText(t('shop.newIn', { time: fmtTime(Profile.msToShopReset() / 1000) }));
   }
 }

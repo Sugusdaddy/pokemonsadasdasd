@@ -2,18 +2,17 @@ import { Room, matchMaker, type Client } from '@colyseus/core';
 import {
   PROTOCOL_VERSION,
   trophyWindow,
-  validateJoin,
-  type JoinOptions,
+  type ClientJoin,
   type MatchMode,
   type MatchedMsg,
   type QueueStatusMsg,
 } from '@arena/shared';
-import { newTicket, settings } from '../context';
-import type { MatchRoomOptions } from './MatchRoom';
+import { settings } from '../context';
+import { authAccount, type MatchRoomOptions, type SeatAuth } from './MatchRoom';
 
 interface Waiting {
   client: Client;
-  join: JoinOptions;
+  auth: SeatAuth;
   since: number;
   busy: boolean;
 }
@@ -31,15 +30,16 @@ export class QueueRoom extends Room {
     this.clock.setInterval(() => void this.matchmake(), 500);
   }
 
-  override onAuth(_client: Client, options: Partial<JoinOptions>): boolean {
+  override async onAuth(_client: Client, options: ClientJoin): Promise<SeatAuth> {
     if (options?.protocol !== undefined && options.protocol !== PROTOCOL_VERSION) throw new Error('err.version');
-    const err = validateJoin(options);
-    if (err) throw new Error(err);
-    return true;
+    const auth = await authAccount(options?.token);
+    // una cuenta solo puede estar una vez en la cola
+    for (const w of this.waiting.values()) if (w.auth.accountId === auth.accountId) throw new Error('err.queue.twice');
+    return auth;
   }
 
-  override onJoin(client: Client, options: JoinOptions): void {
-    this.waiting.set(client.sessionId, { client, join: options, since: Date.now(), busy: false });
+  override onJoin(client: Client, _options: ClientJoin, auth: SeatAuth): void {
+    this.waiting.set(client.sessionId, { client, auth, since: Date.now(), busy: false });
   }
 
   override onLeave(client: Client): void {
@@ -56,9 +56,9 @@ export class QueueRoom extends Room {
       let best: Waiting | null = null;
       for (const b of list) {
         if (b === a || used.has(b)) continue;
-        const diff = Math.abs(a.join.trophies - b.join.trophies);
+        const diff = Math.abs(a.auth.join.trophies - b.auth.join.trophies);
         if (diff > Math.min(winA, trophyWindow(now - b.since))) continue;
-        if (!best || diff < Math.abs(a.join.trophies - best.join.trophies)) best = b;
+        if (!best || diff < Math.abs(a.auth.join.trophies - best.auth.join.trophies)) best = b;
       }
       if (best) {
         used.add(a).add(best);
@@ -78,13 +78,12 @@ export class QueueRoom extends Room {
   private async createMatch(mode: MatchMode, players: Waiting[]): Promise<void> {
     players.forEach((p) => (p.busy = true));
     try {
-      const tickets = players.map(() => newTicket());
-      const options: MatchRoomOptions = { mode, tickets };
+      const options: MatchRoomOptions = { mode };
       const room = await matchMaker.createRoom('match', options);
-      for (let i = 0; i < players.length; i++) {
-        const p = players[i];
+      for (const p of players) {
         if (!this.waiting.has(p.client.sessionId)) continue; // se fue mientras tanto
-        const reservation = await matchMaker.reserveSeatFor(room, { ...p.join, ticket: tickets[i] });
+        // la cuenta ya está comprobada: se pasa como datos de autenticación del sitio reservado
+        const reservation = await matchMaker.reserveSeatFor(room, {}, p.auth);
         const msg: MatchedMsg = { reservation, mode };
         p.client.send('matched', msg);
         this.waiting.delete(p.client.sessionId);

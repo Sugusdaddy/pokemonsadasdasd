@@ -7,7 +7,7 @@ import { openCardPopup } from '../CardPopup';
 import * as kit from '../kit';
 import { t, cardName, arenaName } from '../../i18n';
 import { toast } from '../Modal';
-import { Tab, sectionHeader } from './Tab';
+import { Tab, sectionHeader, runAction } from './Tab';
 
 const COLS = [98, 272, 448, 622];
 const CW = 150,
@@ -56,11 +56,17 @@ export class CardsTab extends Tab {
         60,
         60,
         () => {
-          Sfx.play('select');
-          Profile.d.activeDeck = i;
-          Profile.save();
-          this.swapKey = null;
-          this.rebuild();
+          if (Profile.d.activeDeck === i) return;
+          void runAction(
+            s,
+            'deck',
+            () => Profile.setActiveDeck(i),
+            () => {
+              Sfx.play('select');
+              this.swapKey = null;
+              this.rebuild();
+            },
+          );
         },
         c,
       );
@@ -95,10 +101,17 @@ export class CardsTab extends Tab {
         CH,
         () => {
           if (this.swapKey) {
-            Profile.setDeckCard(i, this.swapKey);
-            Sfx.play('deploy');
-            this.swapKey = null;
-            this.rebuild();
+            const key = this.swapKey;
+            void runAction(
+              s,
+              'deck',
+              () => Profile.setDeckCard(i, key),
+              () => {
+                Sfx.play('deploy');
+                this.swapKey = null;
+                this.rebuild();
+              },
+            );
           } else {
             Sfx.play('click');
             openCardPopup(s, k, { onChange: () => this.rebuild() });

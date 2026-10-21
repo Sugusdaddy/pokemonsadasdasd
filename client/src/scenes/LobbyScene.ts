@@ -12,6 +12,7 @@ import { ShopTab } from '../ui/tabs/ShopTab';
 import { RoadTab } from '../ui/tabs/RoadTab';
 import { ProfileTab } from '../ui/tabs/ProfileTab';
 import { SIDEBAR_W, TOP_BAR, playerName, type MenuScene, type Tab, type TabKey } from '../ui/tabs/Tab';
+import { shortAddress } from '../net/wallet';
 import { BaseScene } from './BaseScene';
 
 export const TOP = TOP_BAR; // alto de la barra superior
@@ -47,6 +48,9 @@ export class LobbyScene extends BaseScene implements MenuScene {
   private levelBadgeObjs: Array<Phaser.GameObjects.Graphics | Phaser.GameObjects.Text> | null = null;
   private badgeLevel = -1;
   private nameT!: Phaser.GameObjects.Text;
+  /** Chip junto al nombre: invitado o wallet conectada. */
+  private accountChip: Phaser.GameObjects.Container | null = null;
+  private chipSig = '';
   private xpBar!: kit.Bar;
   private gold!: ReturnType<typeof kit.pill>;
   private gems!: ReturnType<typeof kit.pill>;
@@ -64,7 +68,16 @@ export class LobbyScene extends BaseScene implements MenuScene {
     this.current = null;
     this.badgeLevel = -1;
     this.levelBadgeObjs = null;
+    this.accountChip = null;
+    this.chipSig = '';
     Profile.tickSlots();
+    // lo que cambie en la cuenta (respuestas del servidor) se refleja en la barra y los avisos
+    const off = Profile.onChange(() => {
+      if (!this.sys.isActive()) return;
+      this.refreshTop();
+      this.drawBadges();
+    });
+    this.events.once('shutdown', off);
     Music.play('lobby');
     kit.menuBackground(this, L.w, L.h);
     this.buildTopBar();
@@ -124,9 +137,27 @@ export class LobbyScene extends BaseScene implements MenuScene {
       this.badgeLevel = d.kingLevel;
     }
     this.nameT.setText(playerName());
+    this.drawAccountChip();
     this.xpBar.set(d.xp / need, `${d.xp}/${need}`);
     this.gold.set(fmtNum(d.gold));
     this.gems.set(fmtNum(d.gems));
+  }
+
+  /** "Invitado" o la wallet (abreviada) al lado del nombre. */
+  drawAccountChip(): void {
+    const wallet = Profile.wallet;
+    const sig = `${wallet ?? ''}|${this.nameT.width}`;
+    if (sig === this.chipSig && this.accountChip) return;
+    this.chipSig = sig;
+    this.accountChip?.destroy();
+    const label = wallet ? shortAddress(wallet) : t('account.chipGuest');
+    const c = this.add.container(this.nameT.x + this.nameT.width + 12, this.nameT.y).setDepth(102);
+    const tt = kit.text(this, 0, 0, label, 'label', '#ffffff', { size: 14 });
+    const w = tt.width + 22;
+    c.add(kit.panel(this, 0, -14, w, 26, wallet ? 'green' : 'dark'));
+    tt.setPosition(w / 2, -1);
+    c.add(tt);
+    this.accountChip = c;
   }
 
   // ───────── Navegación (inferior en móvil, lateral en PC) ─────────
@@ -227,7 +258,8 @@ export class LobbyScene extends BaseScene implements MenuScene {
       Object.keys(Profile.d.cards).some((k) => Profile.canUpgrade(k) && Profile.d.gold >= Profile.goldNeeded(k)),
     );
     dot('road', RoadTab.claimable());
-    dot('shop', !Profile.d.shop.freeClaimed || Profile.d.shop.day !== new Date().toDateString());
+    // el servidor renueva la tienda cada día: basta con mirar si el regalo está sin cobrar
+    dot('shop', !Profile.d.shop.freeClaimed);
   }
 
   showTab(key: TabKey, instant = false): void {

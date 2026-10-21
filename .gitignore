@@ -10,3 +10,6 @@ assets/SpritesPokemon/
 assets/custom/
 client/public/gen/
 server/data/
+server/.pgdata/
+server/.env
+!.env.example

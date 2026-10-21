@@ -1,14 +1,14 @@
 import {
   DEFAULT_PORT,
   PROTOCOL_VERSION,
-  type JoinOptions,
+  type ClientJoin,
   type MatchMode,
   type PlayerInfo,
   type Replay,
   type Team,
   type Winner,
 } from '@arena/shared';
-import { Profile } from '../meta/Profile';
+import { sessionToken } from './session';
 
 /** Servidor de juego. En producción se fija con VITE_SERVER_URL (p. ej. wss://arena.midominio.com). */
 export const SERVER_URL: string =
@@ -51,15 +51,7 @@ export const api = {
   friendly: (code: string) => get<{ roomId: string }>(`/api/friendly/${encodeURIComponent(code)}`),
 };
 
-/** Lo que el jugador manda al servidor al unirse. (Fase 2: lo sabrá el servidor por su cuenta.) */
-export function joinOptions(): JoinOptions {
-  const deck = [...Profile.deck];
-  return {
-    name: Profile.displayName.slice(0, 24),
-    trophies: Profile.d.trophies,
-    kingLevel: Profile.d.kingLevel,
-    deck,
-    levels: Profile.levelsOf(deck),
-    protocol: PROTOCOL_VERSION,
-  };
+/** Lo que el jugador manda al servidor al unirse: solo su sesión (el resto lo sabe el servidor). */
+export function joinOptions(): ClientJoin {
+  return { token: sessionToken() ?? undefined, protocol: PROTOCOL_VERSION };
 }

@@ -1,378 +1,195 @@
 import {
-  ARENAS,
-  RARITIES,
-  MAX_LEVEL,
-  UPGRADE_CARDS,
-  UPGRADE_GOLD,
-  UPGRADE_XP,
-  KING_XP,
-  BALLS,
-  BALL_CYCLE,
-  FREE_BALL_EVERY,
-  CROWNS_FOR_CROWN_BALL,
-  GEMS_PER_MINUTE_SKIP,
-  ECONOMY,
-  STARTER_DECK,
-  getCard,
-  startLevel,
-  isCardKey,
-  rollBall,
+  arenaOf,
+  deckOf,
+  levelOf,
+  levelsOf,
+  avgDeckLevel,
+  cardsNeeded,
+  goldNeeded,
+  canUpgrade,
+  remaining,
+  skipCost,
+  freeBallRemaining,
+  tickSlots,
+  freshProfile,
+  DEFAULT_NAME,
+  type BallSlot,
   type BallType,
   type BallReward,
+  type BattleResult,
+  type CardOffer,
+  type ProfileState,
 } from '@arena/shared';
 import { t } from '../i18n';
+import { ensureSession, request, signOut, type AccountView } from '../net/session';
 
-// ─────────────────────────────────────────────────────────────
-//  PERFIL DEL JUGADOR (guardado en el navegador con localStorage)
-//  Todo el progreso vive aquí: oro, gemas, trofeos, cartas, mazos y Pokéballs.
-//  En la Fase 2 este módulo pasa a ser una caché de lo que diga el servidor.
-// ─────────────────────────────────────────────────────────────
-
-const KEY = 'arenaRoyale.profile.v2';
-const now = () => Date.now();
-const rand = (a: number, b: number) => a + Math.floor(Math.random() * (b - a + 1));
-
-export type SlotState = 'locked' | 'unlocking' | 'ready';
-export interface BallSlot {
-  type: BallType;
-  arena: number;
-  state: SlotState;
-  readyAt?: number;
-}
-
-export interface OwnedCard {
-  level: number;
-  count: number;
-}
-
-export interface ProfileData {
-  name: string;
-  gold: number;
-  gems: number;
-  trophies: number;
-  maxTrophies: number;
-  kingLevel: number;
-  xp: number;
-  cards: Record<string, OwnedCard>;
-  decks: string[][];
-  activeDeck: number;
-  slots: Array<BallSlot | null>;
-  ballCycle: number;
-  freeBallAt: number;
-  crowns: number;
-  crownBallReady: boolean;
-  roadClaimed: number[];
-  shop: { day: string; bought: string[]; freeClaimed: boolean };
-  stats: { wins: number; losses: number; draws: number; threeCrowns: number; battles: number; cardsFound: number };
-  settings: { sfx: boolean; music: boolean };
-  created: number;
-}
-
+export type { BallSlot, BattleResult, ProfileState };
+export type ProfileData = ProfileState;
 export type BattleOutcome = 'win' | 'loss' | 'draw';
 
-export interface BattleResult {
-  trophies: number;
-  gold: number;
-  ball: BallType | null;
-  xp: number;
-  arenaUp: boolean;
-  crowns: number;
-  kingLevelUp: boolean;
-}
+// ─────────────────────────────────────────────────────────────
+//  PERFIL DEL JUGADOR: copia local de la cuenta del servidor.
+//  El servidor es quien decide (oro, gemas, cartas, balls, trofeos). Aquí solo se
+//  lee para pintar, y cada acción se pide al servidor y se guarda lo que devuelve.
+//  Los ajustes de sonido sí son locales (del navegador).
+// ─────────────────────────────────────────────────────────────
 
-function fresh(): ProfileData {
-  const cards: Record<string, OwnedCard> = {};
-  for (const k of STARTER_DECK) cards[k] = { level: startLevel(getCard(k)), count: 0 };
-  return {
-    name: 'Entrenador',
-    gold: ECONOMY.startGold,
-    gems: ECONOMY.startGems,
-    trophies: 0,
-    maxTrophies: 0,
-    kingLevel: 1,
-    xp: 0,
-    cards,
-    decks: [[...STARTER_DECK], [...STARTER_DECK], [...STARTER_DECK]],
-    activeDeck: 0,
-    // primera ball lista para abrir (tutorial)
-    slots: [{ type: 'super', arena: 0, state: 'ready' }, null, null, null],
-    ballCycle: 0,
-    freeBallAt: now(),
-    crowns: 0,
-    crownBallReady: false,
-    roadClaimed: [],
-    shop: { day: '', bought: [], freeClaimed: false },
-    stats: { wins: 0, losses: 0, draws: 0, threeCrowns: 0, battles: 0, cardsFound: STARTER_DECK.length },
-    settings: { sfx: true, music: true },
-    created: now(),
-  };
-}
-
-/** Nombre con el que se crea el perfil; se muestra traducido mientras no se cambie. */
-export const DEFAULT_NAME = 'Entrenador';
+const SETTINGS_KEY = 'arenaRoyale.settings';
+type Listener = () => void;
 
 class ProfileStore {
-  d: ProfileData = fresh();
+  /** Estado de la cuenta (lo último que mandó el servidor). */
+  d: ProfileState = freshProfile(Date.now());
+  account: { id: string; guest: boolean; wallets: string[] } = { id: '', guest: true, wallets: [] };
+  settings = { sfx: true, music: true };
+  shop: { offers: CardOffer[]; resetAt: number } = { offers: [], resetAt: 0 };
+  /** Diferencia entre la hora del servidor y la de este equipo (los temporizadores usan la del servidor). */
+  private offset = 0;
+  private listeners = new Set<Listener>();
+  loaded = false;
 
-  /** Nombre para mostrar (el por defecto, en el idioma actual). */
+  /** Conecta con el servidor (crea un invitado si es la primera vez). */
+  async init(): Promise<void> {
+    this.loadSettings();
+    this.apply(await ensureSession());
+    this.loaded = true;
+  }
+
+  /** Vuelve a pedir la cuenta al servidor. */
+  async refresh(): Promise<void> {
+    this.apply((await request<{ account: AccountView }>('/me')).account);
+  }
+
+  /** Guarda lo que devuelve el servidor. */
+  apply(a: AccountView): void {
+    this.d = a.state;
+    this.account = { id: a.id, guest: a.guest, wallets: a.wallets };
+    this.offset = a.serverNow - Date.now();
+    this.shop = { offers: a.shop.offers, resetAt: Date.now() + a.shop.msToReset };
+    this.emit();
+  }
+
+  /** Estado nuevo que llega al acabar una partida (mensaje 'rewards'). */
+  applyState(s: ProfileState): void {
+    this.d = s;
+    this.emit();
+  }
+
+  onChange(fn: Listener): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  private emit(): void {
+    this.listeners.forEach((fn) => fn());
+  }
+
+  /** Hora del servidor. */
+  now(): number {
+    return Date.now() + this.offset;
+  }
+
+  // ───────── Ajustes locales ─────────
+  private loadSettings(): void {
+    try {
+      Object.assign(this.settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'));
+    } catch {
+      /* sin almacenamiento */
+    }
+  }
+
+  saveSettings(): void {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings));
+    } catch {
+      /* sin almacenamiento */
+    }
+  }
+
+  // ───────── Lecturas (síncronas) ─────────
+  get arena(): number {
+    return arenaOf(this.d);
+  }
+  get deck(): string[] {
+    return deckOf(this.d);
+  }
   get displayName(): string {
     return !this.d.name || this.d.name === DEFAULT_NAME ? t('player.defaultName') : this.d.name;
   }
-
-  /** Se llama en BootScene. */
-  init(): void {
-    this.load();
+  get wallet(): string | null {
+    return this.account.wallets[0] ?? null;
   }
-
-  load(): void {
-    let data: Partial<ProfileData> | null = null;
-    try {
-      data = JSON.parse(localStorage.getItem(KEY) || 'null') as Partial<ProfileData> | null;
-    } catch {
-      data = null;
-    }
-    const base = fresh();
-    this.d = data
-      ? {
-          ...base,
-          ...data,
-          stats: { ...base.stats, ...data.stats },
-          settings: { ...base.settings, ...data.settings },
-          shop: { ...base.shop, ...data.shop },
-        }
-      : base;
-    // limpia cartas que ya no existan
-    for (const k of Object.keys(this.d.cards)) if (!isCardKey(k)) delete this.d.cards[k];
-    this.d.decks = this.d.decks.map((deck) => {
-      const ok = deck.filter((k) => this.d.cards[k]);
-      for (const k of STARTER_DECK) if (ok.length < 8 && !ok.includes(k)) ok.push(k);
-      return ok.slice(0, 8);
-    });
-  }
-
-  save(): void {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(this.d));
-    } catch {
-      /* almacenamiento no disponible */
-    }
-  }
-
-  reset(): void {
-    this.d = fresh();
-    this.save();
-  }
-
-  // ───────── Arena y trofeos ─────────
-  get arena(): number {
-    let a = 0;
-    ARENAS.forEach((ar, i) => {
-      if (this.d.trophies >= ar.trophies) a = i;
-    });
-    return a;
-  }
-
-  get deck(): string[] {
-    return this.d.decks[this.d.activeDeck];
-  }
-
   level(key: string): number {
-    return this.d.cards[key]?.level ?? startLevel(getCard(key));
+    return levelOf(this.d, key);
   }
-
   has(key: string): boolean {
     return !!this.d.cards[key];
   }
-
   levelsOf(keys: readonly string[]): Record<string, number> {
-    return Object.fromEntries(keys.map((k) => [k, this.level(k)]));
+    return levelsOf(this.d, keys);
   }
-
   avgDeckLevel(): number {
-    // nivel "normalizado" (como si todas fueran comunes)
-    const lv = this.deck.map((k) => this.level(k) - startLevel(getCard(k)) + 1);
-    return lv.reduce((a, b) => a + b, 0) / lv.length;
+    return avgDeckLevel(this.d);
   }
-
-  // ───────── Cartas y mejoras ─────────
   cardsNeeded(key: string): number {
-    const c = getCard(key);
-    const step = this.level(key) - RARITIES[c.rarity].start;
-    return this.level(key) >= MAX_LEVEL ? Infinity : (UPGRADE_CARDS[step] ?? Infinity);
+    return cardsNeeded(this.d, key);
   }
-
   goldNeeded(key: string): number {
-    return UPGRADE_GOLD[this.level(key) + 1] ?? Infinity;
+    return goldNeeded(this.d, key);
   }
-
   canUpgrade(key: string): boolean {
-    const c = this.d.cards[key];
-    return !!c && c.level < MAX_LEVEL && c.count >= this.cardsNeeded(key);
+    return canUpgrade(this.d, key);
   }
-
-  upgrade(key: string): { ok: false; reason: 'cards' | 'gold' } | { ok: true; level: number; kingLevelUp: boolean } {
-    if (!this.canUpgrade(key)) return { ok: false, reason: 'cards' };
-    const gold = this.goldNeeded(key);
-    if (this.d.gold < gold) return { ok: false, reason: 'gold' };
-    const c = this.d.cards[key];
-    c.count -= this.cardsNeeded(key);
-    this.d.gold -= gold;
-    c.level += 1;
-    const lvUp = this.addXp(UPGRADE_XP[c.level] || 0);
-    this.save();
-    return { ok: true, level: c.level, kingLevelUp: lvUp };
-  }
-
-  addCards(key: string, n: number): boolean {
-    const isNew = !this.d.cards[key];
-    if (isNew) {
-      this.d.cards[key] = { level: startLevel(getCard(key)), count: n - 1 };
-      this.d.stats.cardsFound += 1;
-    } else {
-      this.d.cards[key].count += n;
-    }
-    return isNew;
-  }
-
-  addXp(xp: number): boolean {
-    this.d.xp += xp;
-    let up = false;
-    while (this.d.xp >= (KING_XP[this.d.kingLevel] ?? Infinity)) {
-      this.d.xp -= KING_XP[this.d.kingLevel];
-      this.d.kingLevel += 1;
-      up = true;
-    }
-    return up;
-  }
-
-  setDeckCard(slot: number, key: string): void {
-    const deck = this.deck;
-    const existing = deck.indexOf(key);
-    if (existing >= 0) [deck[existing], deck[slot]] = [deck[slot], deck[existing]];
-    else deck[slot] = key;
-    this.save();
-  }
-
-  // ───────── Pokéballs ─────────
   get unlocking(): BallSlot | undefined {
     return this.d.slots.find((s): s is BallSlot => !!s && s.state === 'unlocking');
   }
-
-  tickSlots(): void {
-    let changed = false;
-    for (const s of this.d.slots) {
-      if (s && s.state === 'unlocking' && now() >= (s.readyAt ?? 0)) {
-        s.state = 'ready';
-        changed = true;
-      }
-    }
-    if (changed) this.save();
-  }
-
-  startUnlock(i: number): boolean {
-    const s = this.d.slots[i];
-    if (!s || s.state !== 'locked' || this.unlocking) return false;
-    s.state = 'unlocking';
-    s.readyAt = now() + BALLS[s.type].unlock * 1000;
-    this.save();
-    return true;
-  }
-
   remaining(s: BallSlot | null): number {
-    if (!s) return 0;
-    if (s.state === 'locked') return BALLS[s.type].unlock;
-    if (s.state === 'unlocking') return Math.max(0, ((s.readyAt ?? 0) - now()) / 1000);
-    return 0;
+    return remaining(s, this.now());
   }
-
   skipCost(s: BallSlot | null): number {
-    return Math.max(1, Math.ceil(this.remaining(s) / 60) * GEMS_PER_MINUTE_SKIP);
+    return skipCost(s, this.now());
   }
-
-  skip(i: number): boolean {
-    const s = this.d.slots[i];
-    if (!s) return false;
-    const cost = this.skipCost(s);
-    if (this.d.gems < cost) return false;
-    this.d.gems -= cost;
-    s.state = 'ready';
-    this.save();
-    return true;
-  }
-
-  /** Abre la ball del hueco i (o una ball suelta) y aplica la recompensa. */
-  openBall(type: BallType, arena?: number, slotIndex = -1): BallReward {
-    const reward = rollBall(type, arena ?? this.arena);
-    this.d.gold += reward.gold;
-    this.d.gems += reward.gems;
-    for (const it of reward.cards) it.isNew = this.addCards(it.key, it.count);
-    if (slotIndex >= 0) this.d.slots[slotIndex] = null;
-    this.save();
-    return reward;
-  }
-
-  /** Mete una ball ganada en un hueco libre. Devuelve el tipo o null si no hay hueco. */
-  grantBattleBall(): BallType | null {
-    const i = this.d.slots.findIndex((s) => !s);
-    if (i < 0) return null;
-    const type = BALL_CYCLE[this.d.ballCycle % BALL_CYCLE.length];
-    this.d.ballCycle += 1;
-    this.d.slots[i] = { type, arena: this.arena, state: 'locked' };
-    return type;
-  }
-
   freeBallRemaining(): number {
-    return Math.max(0, (this.d.freeBallAt - now()) / 1000);
+    return freeBallRemaining(this.d, this.now());
+  }
+  /** Marca como listas las balls cuyo tiempo ha pasado (solo para pintar; el servidor hace lo mismo). */
+  tickSlots(): void {
+    tickSlots(this.d, this.now());
+  }
+  msToShopReset(): number {
+    return Math.max(0, this.shop.resetAt - Date.now());
   }
 
-  claimFreeBall(): BallReward | null {
-    if (this.freeBallRemaining() > 0) return null;
-    this.d.freeBallAt = now() + FREE_BALL_EVERY * 1000;
-    return this.openBall('free', this.arena);
+  // ───────── Acciones (las valida el servidor) ─────────
+  /** Pide una acción al servidor; si va bien, guarda el estado nuevo y devuelve el resultado. Si no, lanza ApiError. */
+  private async act<T>(path: string, body: object = {}): Promise<T> {
+    const r = await request<{ result: T; account: AccountView }>(path, body);
+    this.apply(r.account);
+    return r.result;
   }
 
-  claimCrownBall(): BallReward | null {
-    if (this.d.crowns < CROWNS_FOR_CROWN_BALL) return null;
-    this.d.crowns = 0;
-    return this.openBall('crown', this.arena);
-  }
+  setName = (name: string) => this.act<void>('/me/name', { name });
+  setActiveDeck = (index: number) => this.act<void>('/me/deck/active', { index });
+  setDeckCard = (slot: number, key: string) => this.act<void>('/me/deck/card', { slot, key });
+  upgrade = (key: string) => this.act<{ level: number; kingLevelUp: boolean }>('/me/cards/upgrade', { key });
+  startUnlock = (slot: number) => this.act<void>('/me/balls/unlock', { slot });
+  skip = (slot: number) => this.act<number>('/me/balls/skip', { slot });
+  openSlot = (slot: number) => this.act<BallReward>('/me/balls/open', { slot });
+  claimFreeBall = () => this.act<BallReward>('/me/balls/free');
+  claimCrownBall = () => this.act<BallReward>('/me/balls/crown');
+  claimRoad = (trophies: number) =>
+    this.act<{ gold?: number; gems?: number; ball?: BallReward }>('/me/road/claim', { trophies });
+  claimShopGift = () => this.act<number>('/me/shop/gift');
+  buyCardOffer = (id: string) => this.act<{ key: string; count: number; isNew: boolean }>('/me/shop/card', { id });
+  buyBall = (type: BallType) => this.act<BallReward>('/me/shop/ball', { type });
+  buyGold = (index: number) => this.act<number>('/me/shop/gold', { index });
+  devCheat = (kind: 'resources' | 'trophies') => this.act<void>('/me/dev', { kind });
+  reset = () => this.act<void>('/me/reset');
 
-  // ───────── Resultado de batalla ─────────
-  applyBattle(outcome: BattleOutcome, myCrowns: number): BattleResult {
-    const s = this.d.stats;
-    s.battles += 1;
-    const arenaBefore = this.arena;
-    const res: BattleResult = {
-      trophies: 0,
-      gold: 0,
-      ball: null,
-      xp: 0,
-      arenaUp: false,
-      crowns: myCrowns,
-      kingLevelUp: false,
-    };
-    if (outcome === 'win') {
-      s.wins += 1;
-      if (myCrowns === 3) s.threeCrowns += 1;
-      res.trophies = rand(...ECONOMY.winTrophies);
-      res.gold = ECONOMY.winGold(arenaBefore);
-      res.ball = this.grantBattleBall();
-      res.xp = ECONOMY.winXp;
-    } else if (outcome === 'loss') {
-      s.losses += 1;
-      const floor = ARENAS[arenaBefore].trophies;
-      res.trophies = -Math.min(rand(...ECONOMY.lossTrophies), Math.max(0, this.d.trophies - floor));
-    } else {
-      s.draws += 1;
-    }
-    this.d.trophies = Math.max(0, this.d.trophies + res.trophies);
-    this.d.maxTrophies = Math.max(this.d.maxTrophies, this.d.trophies);
-    this.d.gold += res.gold;
-    this.d.crowns = Math.min(CROWNS_FOR_CROWN_BALL, this.d.crowns + myCrowns);
-    res.kingLevelUp = this.addXp(res.xp);
-    res.arenaUp = this.arena > arenaBefore;
-    this.save();
-    return res;
+  /** Cierra la sesión y entra como invitado nuevo. */
+  async signOut(): Promise<void> {
+    signOut();
+    await this.init();
   }
 }
 

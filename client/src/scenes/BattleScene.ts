@@ -24,7 +24,7 @@ import {
 } from '@arena/shared';
 import { createAnims, palette, queueBattle, moveFrame } from '../systems/Assets';
 import { Sfx, Music } from '../systems/Sfx';
-import { Profile, type BattleOutcome } from '../meta/Profile';
+import { Profile, type BattleOutcome, type BattleResult } from '../meta/Profile';
 import { Hand } from '../ui/Hand';
 import { txt, button, drawCrown, levelBadge, fmtNum, cssColor } from '../ui/style';
 import { openModal } from '../ui/Modal';
@@ -949,8 +949,6 @@ export class BattleScene extends BaseScene {
     const P = this.source.players;
     const outcome: BattleOutcome = winner === 'draw' ? 'draw' : winner === this.me ? 'win' : 'loss';
     Sfx.play(outcome === 'win' ? 'win' : 'lose');
-    // Fase 2: los trofeos y recompensas los decidirá el servidor
-    const res = Profile.applyBattle(outcome, m.crowns[this.me]);
     const replay: Replay = { version: 1, setup: m.setup, inputs: [...m.log] };
     try {
       localStorage.setItem(LAST_REPLAY_KEY, JSON.stringify({ ...replay, players: P }));
@@ -975,7 +973,27 @@ export class BattleScene extends BaseScene {
     this.resultHeader(c, title, tone, outcome === 'win');
     this.drawScore(c, P);
 
-    // recompensas: entran una a una
+    void this.showRewards(c, outcome);
+  }
+
+  /**
+   * Recompensas: las calcula el servidor con SU partida y llegan en el mensaje 'rewards'.
+   * En práctica sin conexión y en amistosas no hay premios.
+   */
+  private async awaitRewards(): Promise<BattleResult | 'practice' | 'friendly' | null> {
+    const src = this.source;
+    if (!(src instanceof OnlineSource)) return 'practice';
+    if (src.session.start?.mode === 'friendly') return 'friendly';
+    for (let i = 0; i < 50 && !src.session.rewards; i++) await new Promise((r) => setTimeout(r, 100));
+    const r = src.session.rewards;
+    if (!r) return null;
+    Profile.applyState(r.state);
+    return r.result;
+  }
+
+  private async showRewards(c: Phaser.GameObjects.Container, outcome: BattleOutcome): Promise<void> {
+    const res = await this.awaitRewards();
+    if (!this.sys.isActive()) return;
     let y = 640;
     let i = 0;
     const row = (icon: string, label: string, value: string, col: string, count?: number) => {
@@ -988,13 +1006,13 @@ export class BattleScene extends BaseScene {
       r.add(vt);
       c.add(r);
       r.x = 40;
-      this.tweens.add({ targets: r, x: 0, alpha: 1, delay: 650 + i * 160, duration: 260, ease: 'Cubic.easeOut' });
+      this.tweens.add({ targets: r, x: 0, alpha: 1, delay: 250 + i * 160, duration: 260, ease: 'Cubic.easeOut' });
       if (count !== undefined) {
         const o = { v: 0 };
         this.tweens.add({
           targets: o,
           v: count,
-          delay: 750 + i * 160,
+          delay: 350 + i * 160,
           duration: 600,
           ease: 'Cubic.easeOut',
           onUpdate: () => vt.setText(`${count >= 0 ? '+' : ''}${Math.round(o.v)}`),
@@ -1003,31 +1021,40 @@ export class BattleScene extends BaseScene {
       i++;
       y += 100;
     };
-    row(
-      'ic_trophy',
-      t('result.trophies'),
-      `${res.trophies >= 0 ? '+' : ''}0`,
-      res.trophies >= 0 ? '#ffd75a' : '#ff8a92',
-      res.trophies,
-    );
-    if (res.gold) row('ic_gold', t('result.gold'), `+${fmtNum(res.gold)}`, '#ffd75a');
-    row('ic_crown', t('result.crowns'), `${Profile.d.crowns}/${CROWNS_FOR_CROWN_BALL}`, '#ffffff');
-    if (outcome === 'win') {
-      if (res.ball) row(`ball_${res.ball}`, t('result.ball'), ballLabel(res.ball), '#7dff8a');
-      else row('ic_lock', t('result.slotsFull'), '—', '#aab3e8');
-    }
-    const banner = (msg: string) => {
+    const banner = (msg: string, variant: 'gold' | 'dark' = 'gold') => {
       const b = this.add.container(W / 2, y + 6);
-      b.add(kit.panel(this, -280, -32, 560, 64, 'gold'));
-      b.add(kit.text(this, 0, -2, msg, 'h3', '#ffffff', { size: 28 }));
+      b.add(kit.panel(this, -300, -34, 600, 68, variant));
+      b.add(
+        kit.text(this, 0, -2, msg, variant === 'gold' ? 'h3' : 'body', '#ffffff', {
+          size: variant === 'gold' ? 28 : 21,
+        }),
+      );
       b.setScale(0);
       c.add(b);
-      this.tweens.add({ targets: b, scale: 1, delay: 650 + i++ * 160, duration: 320, ease: 'Back.easeOut' });
-      y += 84;
+      this.tweens.add({ targets: b, scale: 1, delay: 250 + i++ * 160, duration: 320, ease: 'Back.easeOut' });
+      y += 88;
     };
-    if (res.arenaUp) banner(t('result.newArena', { name: arenaName(Profile.arena) }));
-    if (res.kingLevelUp) banner(t('result.kingLevel', { n: Profile.d.kingLevel }));
-    const go = () => this.scene.start('Lobby', { tab: 'battle' });
+    if (res === 'practice') banner(t('result.practice'), 'dark');
+    else if (res === 'friendly') banner(t('result.friendly'), 'dark');
+    else if (!res) banner(t('result.rewardsLater'), 'dark');
+    else {
+      row(
+        'ic_trophy',
+        t('result.trophies'),
+        `${res.trophies >= 0 ? '+' : ''}0`,
+        res.trophies >= 0 ? '#ffd75a' : '#ff8a92',
+        res.trophies,
+      );
+      if (res.gold) row('ic_gold', t('result.gold'), `+${fmtNum(res.gold)}`, '#ffd75a');
+      row('ic_crown', t('result.crowns'), `${Profile.d.crowns}/${CROWNS_FOR_CROWN_BALL}`, '#ffffff');
+      if (outcome === 'win') {
+        if (res.ball) row(`ball_${res.ball}`, t('result.ball'), ballLabel(res.ball), '#7dff8a');
+        else row('ic_lock', t('result.slotsFull'), '—', '#aab3e8');
+      }
+      if (res.arenaUp) banner(t('result.newArena', { name: arenaName(Profile.arena) }));
+      if (res.kingLevelUp) banner(t('result.kingLevel', { n: Profile.d.kingLevel }));
+    }
+    const go = () => this.scene.start(Profile.loaded ? 'Lobby' : 'Boot', { tab: 'battle' });
     c.add(
       button(this, W / 2, Math.min(1190, y + 70), 340, 96, t('common.ok'), COLORS.green, go, 42, {
         hotkey: L.pc ? 'Enter' : undefined,

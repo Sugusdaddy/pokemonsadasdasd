@@ -76,8 +76,11 @@ export class BootScene extends BaseScene {
       /* sin fuente */
     }
 
-    Profile.init();
-    Sfx.configure(Profile.d.settings);
+    // la cuenta se pide al servidor mientras se cargan los retratos
+    const session = Profile.init().then(
+      () => null,
+      (e: unknown) => e,
+    );
 
     const ids = new Set<number>(cardPokemonIds());
     guardianIds().forEach((i) => ids.add(i));
@@ -85,16 +88,48 @@ export class BootScene extends BaseScene {
     const portraitIds = [...ids];
     this.label.setText(t('boot.loadingN', { n: portraitIds.length }));
     queuePortraits(this);
-    this.load.once('complete', () => {
+    this.load.once('complete', async () => {
       createPortraitAnims(this, portraitIds);
       createTowerTextures(this);
       createBallTextures(this);
       createIconTextures(this);
       createDecoTextures(this);
-      // si se recargó la página en mitad de una partida online, se vuelve a ella
-      if (OnlineSession.hasActive()) kit.goTo(this, 'Online', { mode: 'resume' });
-      else kit.goTo(this, 'Lobby', { tab: 'battle' });
+      this.label.setText(t('boot.connecting'));
+      if (await session) return this.offline();
+      this.enterGame();
     });
     this.load.start();
+  }
+
+  private enterGame(): void {
+    Sfx.configure(Profile.settings);
+    // si se recargó la página en mitad de una partida online, se vuelve a ella
+    if (OnlineSession.hasActive()) kit.goTo(this, 'Online', { mode: 'resume' });
+    else kit.goTo(this, 'Lobby', { tab: 'battle' });
+  }
+
+  /** Sin servidor: reintentar o jugar una práctica contra el bot (sin recompensas). */
+  private offline(): void {
+    const cy = L.h / 2 + 150;
+    this.label.setText(t('boot.offline')).setColor('#ff9aa2');
+    kit.text(this, L.w / 2, cy - 20, t('boot.offlineBody'), 'body', '#aab3e8', {
+      size: 20,
+      wordWrap: { width: Math.min(640, L.w - 60) },
+    });
+    const retry = kit.button(this, L.w / 2 - 170, cy + 70, 300, 76, t('common.retry'), 'primary', async () => {
+      retry.setDisabled(true);
+      this.label.setText(t('boot.connecting')).setColor('#ffffff');
+      try {
+        await Profile.init();
+        this.enterGame();
+      } catch {
+        this.label.setText(t('boot.offline')).setColor('#ff9aa2');
+        retry.setDisabled(false);
+      }
+    });
+    kit.button(this, L.w / 2 + 170, cy + 70, 300, 76, t('boot.practice'), 'neutral', () => {
+      Sfx.configure(Profile.settings);
+      kit.goTo(this, 'Battle', { kind: 'local' });
+    });
   }
 }

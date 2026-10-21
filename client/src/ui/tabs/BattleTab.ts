@@ -9,7 +9,7 @@ import * as kit from '../kit';
 import { t, arenaName, ballLabel } from '../../i18n';
 import { openModal, toast } from '../Modal';
 import { textPrompt } from '../textPrompt';
-import { Tab } from './Tab';
+import { Tab, runAction } from './Tab';
 
 type Txt = Phaser.GameObjects.Text;
 
@@ -240,9 +240,16 @@ export class BattleTab extends Tab {
         sub: freeLeft > 0 ? fmtTime(freeLeft) : t('lobby.openIt'),
         ready: freeLeft <= 0,
         onTap: () => {
-          const r = Profile.claimFreeBall();
-          if (r) s.openBallScene(r, 'battle');
-          else toast(s, t('lobby.freeIn', { time: fmtTime(Profile.freeBallRemaining()) }));
+          if (Profile.freeBallRemaining() > 0) {
+            toast(s, t('lobby.freeIn', { time: fmtTime(Profile.freeBallRemaining()) }));
+            return;
+          }
+          void runAction(
+            s,
+            'ball:free',
+            () => Profile.claimFreeBall(),
+            (r) => s.openBallScene(r, 'battle'),
+          );
         },
       },
       {
@@ -252,9 +259,16 @@ export class BattleTab extends Tab {
         sub: t('lobby.crowns', { n: crowns, max: CROWNS_FOR_CROWN_BALL }),
         ready: crowns >= CROWNS_FOR_CROWN_BALL,
         onTap: () => {
-          const r = Profile.claimCrownBall();
-          if (r) s.openBallScene(r, 'battle');
-          else toast(s, t('lobby.earnCrowns'));
+          if (Profile.d.crowns < CROWNS_FOR_CROWN_BALL) {
+            toast(s, t('lobby.earnCrowns'));
+            return;
+          }
+          void runAction(
+            s,
+            'ball:crown',
+            () => Profile.claimCrownBall(),
+            (r) => s.openBallScene(r, 'battle'),
+          );
         },
       },
     ];
@@ -364,14 +378,24 @@ export class BattleTab extends Tab {
       return;
     }
     if (slot.state === 'ready') {
-      const reward = Profile.openBall(slot.type, slot.arena, i);
-      s.openBallScene(reward, 'battle');
+      void runAction(
+        s,
+        `slot:${i}`,
+        () => Profile.openSlot(i),
+        (reward) => s.openBallScene(reward, 'battle'),
+      );
       return;
     }
     if (slot.state === 'locked' && !Profile.unlocking) {
-      Profile.startUnlock(i);
-      Sfx.play('select');
-      this.drawSlots();
+      void runAction(
+        s,
+        `slot:${i}`,
+        () => Profile.startUnlock(i),
+        () => {
+          Sfx.play('select');
+          this.drawSlots();
+        },
+      );
       return;
     }
     // abrir ya con gemas
@@ -416,14 +440,20 @@ export class BattleTab extends Tab {
           t('lobby.openNow', { n: cost }),
           'success',
           () => {
-            if (Profile.skip(i)) {
-              Sfx.play('coin');
-              close();
-              const reward = Profile.openBall(slot.type, slot.arena, i);
-              s.openBallScene(reward, 'battle');
-            } else {
-              toast(s, t('common.noGems'), '#ff9a9a');
-            }
+            // pagar con gemas y abrir: dos peticiones seguidas, cada una validada por el servidor
+            void runAction(
+              s,
+              `slot:${i}`,
+              async () => {
+                await Profile.skip(i);
+                return Profile.openSlot(i);
+              },
+              (reward) => {
+                Sfx.play('coin');
+                close();
+                s.openBallScene(reward, 'battle');
+              },
+            );
           },
           { size: 30, icon: 'ic_gem' },
         ),

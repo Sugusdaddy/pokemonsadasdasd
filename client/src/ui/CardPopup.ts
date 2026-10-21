@@ -6,6 +6,7 @@ import { makeCardView, RARITY_COLOR, RARITY_CSS } from './CardView';
 import * as kit from './kit';
 import { t, cardName, cardDesc, arenaName, rarityLabel } from '../i18n';
 import { openModal, toast } from './Modal';
+import { runAction } from './tabs/Tab';
 
 /** Nombre traducido de un tipo elemental. */
 export const typeName = (type: string): string => t(`type.${type}`);
@@ -144,16 +145,19 @@ export function openCardPopup(
           can ? t('popup.upgrade', { n: gold }) : t('popup.missing', { n: need - have }),
           can ? 'success' : 'dark',
           () => {
-            const r = Profile.upgrade(key);
-            if (r.ok) {
-              Sfx.play('upgrade');
-              toast(scene, t('popup.upgraded', { name: cardName(base), n: r.level }), '#7dff8a');
-              if (r.kingLevelUp) toast(scene, t('result.kingLevel', { n: Profile.d.kingLevel }), '#ffd84a', 500);
-              close();
-              onChange?.();
-            } else {
-              toast(scene, r.reason === 'gold' ? t('common.noGold') : t('popup.noCards'), '#ff9a9a');
-            }
+            // el servidor comprueba cartas y oro; si falla, se avisa y la ventana sigue abierta
+            void runAction(
+              scene,
+              `upgrade:${key}`,
+              () => Profile.upgrade(key),
+              (r) => {
+                Sfx.play('upgrade');
+                toast(scene, t('popup.upgraded', { name: cardName(base), n: r.level }), '#7dff8a');
+                if (r.kingLevelUp) toast(scene, t('result.kingLevel', { n: Profile.d.kingLevel }), '#ffd84a', 500);
+                close();
+                onChange?.();
+              },
+            );
           },
           { size: 26, icon: can ? 'ic_gold' : undefined },
         ),
