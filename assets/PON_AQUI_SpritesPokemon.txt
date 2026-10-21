@@ -1,0 +1,1 @@
+Copia aquí tu carpeta SpritesPokemon (la que contiene animations_metadata.json).

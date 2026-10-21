@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+.env
+.env.*
+# Sprite pack (licencias: ver CREDITS.md) y assets generados a partir de él
+assets/SpritesPokemon/
+assets/custom/
+client/public/gen/
