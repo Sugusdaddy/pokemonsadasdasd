@@ -533,6 +533,24 @@ no dan ni quitan trofeos.
   `TournamentPlayer` (migración `tournaments`). API: `POST /api/me/challenge/start`, `GET/POST /api/tournaments`,
   `POST /api/tournaments/join`, `GET /api/tournaments/:id` y `POST /api/tournaments/:id/claim`.
 
+## 2v2 (Fase 4D)
+
+Desde **Modos → 2v2**: dos jugadores por equipo, cada uno con **su mazo, su mano, su elixir y sus niveles**; las
+torres son del equipo. Las tropas de tu compañero llevan el aro azul claro.
+
+- **Buscar**: cola 2v2. En cuanto hay cuatro, partida; si el primero lleva esperando el tiempo de los bots, con los
+  que haya (enfrentados entre sí) y bots en los sitios libres. Sin trofeos; ganar da oro.
+- **Con amigos**: sala con código. El primer amigo que entra va a tu equipo (con cuatro, los dos últimos son el
+  rival). Quien la crea pulsa **Empezar** cuando quiera y los sitios libres los ocupan bots. Como las amistosas, no
+  da ni quita nada. Los amigos entran con **Amistosa → Unirse con código**.
+- **Si alguien se va** (o pulsa "Dejar la partida"), un bot ocupa su sitio y su compañero sigue jugando; el
+  resultado le cuenta igual. En 1v1 rendirse sigue siendo perder.
+- **Simulación**: cada equipo puede tener un segundo asiento (`MatchSetup.partners`, asientos `blue2` y `red2`) y
+  los inputs llevan `seat: 1` cuando son del compañero. Sin compañeros la partida es exactamente la de antes: 30
+  partidas grabadas con el motor anterior se reproducen igual. El protocolo sube a la versión 3 (un cliente
+  anterior no puede conectarse: no sabría dibujar una partida 2v2).
+- Pendiente para más adelante: buscar partida **en pareja** (dos amigos juntos contra otra pareja de la cola).
+
 ## Arte y modo "solo fans"
 
 Ver [ART_PIPELINE.md](ART_PIPELINE.md): cómo se generan los atlas, la opción `ART.spriteSource = 'fan-only'`

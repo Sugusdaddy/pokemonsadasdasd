@@ -34,7 +34,8 @@ interface Waiting {
  *  - clasificatoria: con el rival más cercano en trofeos dentro de su ventana, que se amplía
  *    con la espera; si nadie encaja en QUEUE_BOT_AFTER_MS, contra un bot;
  *  - draft y desafío del día: con el siguiente que espere en la misma cola (o un bot);
- *  - torneo: solo con otro jugador del mismo torneo (nunca con bots).
+ *  - torneo: solo con otro jugador del mismo torneo (nunca con bots);
+ *  - 2v2: grupos de 4; si tardan, los que haya y bots en los sitios libres.
  */
 export class QueueRoom extends Room {
   private waiting = new Map<string, Waiting>();
@@ -54,6 +55,7 @@ export class QueueRoom extends Room {
       : 'ranked';
     if (queue === 'ranked') return { auth, queue, key: 'ranked', rules: 'classic' };
     if (queue === 'draft') return { auth, queue, key: 'draft', rules: 'draft' };
+    if (queue === '2v2') return { auth, queue, key: '2v2', rules: 'classic' };
     if (queue === 'challenge') {
       const c = challengeOfDay(Date.now());
       const run = (await store().getAccount(auth.accountId))?.state.challenge;
@@ -81,8 +83,15 @@ export class QueueRoom extends Room {
     const now = Date.now();
     const list = [...this.waiting.values()].filter((w) => !w.busy).sort((a, b) => a.since - b.since);
     const used = new Set<Waiting>();
+    // 2v2: en cuanto hay cuatro, o cuando el primero lleva esperando el tiempo de los bots
+    const pairs = list.filter((w) => w.queue === '2v2');
+    while (pairs.length >= 4 || (pairs.length && now - pairs[0].since >= settings().queueBotAfterMs)) {
+      const group = pairs.splice(0, 4);
+      group.forEach((g) => used.add(g));
+      void this.createMatch(group, group.length < 4);
+    }
     for (const a of list) {
-      if (used.has(a)) continue;
+      if (used.has(a) || a.queue === '2v2') continue;
       let best: Waiting | null = null;
       if (a.queue === 'ranked') {
         const winA = trophyWindow(now - a.since);
@@ -114,11 +123,14 @@ export class QueueRoom extends Room {
     players.forEach((p) => (p.busy = true));
     try {
       const { rules, draft } = rulesOf(w.rules);
+      const team = w.queue === '2v2';
       const options: MatchRoomOptions = {
         mode,
         rules,
         draft,
-        vsBot,
+        vsBot: team ? false : vsBot,
+        // 2v2: cuando entren los reservados, bots en el resto
+        ...(team ? { teamSize: 2 as const, humans: players.length } : {}),
         tournamentId: w.tournamentId,
         challengePeriod: w.queue === 'challenge' ? w.key.slice('challenge:'.length) : undefined,
       };

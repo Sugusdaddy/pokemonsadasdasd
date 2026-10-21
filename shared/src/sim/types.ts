@@ -7,6 +7,16 @@ export const TEAMS: readonly Team[] = ['blue', 'red'];
 export const other = (t: Team): Team => (t === 'blue' ? 'red' : 'blue');
 
 export type Winner = Team | 'draw';
+
+/**
+ * 2v2: cada equipo puede tener un segundo jugador (asiento 1) con su propio mazo, mano y
+ * elixir; las torres son del equipo. En 1v1 solo existe el asiento 0 de cada equipo.
+ */
+export type SeatIndex = 0 | 1;
+export type SeatKey = Team | 'blue2' | 'red2';
+export const seatKey = (team: Team, seat: SeatIndex = 0): SeatKey => (seat ? (`${team}2` as SeatKey) : team);
+export const seatOf = (k: SeatKey): { team: Team; seat: SeatIndex } =>
+  k.endsWith('2') ? { team: k.slice(0, -1) as Team, seat: 1 } : { team: k as Team, seat: 0 };
 export type TowerSide = 'king' | 'left' | 'right';
 
 export interface PlayerSetup {
@@ -28,6 +38,8 @@ export interface MatchSetup {
   seed: number;
   arena: number;
   players: Record<Team, PlayerSetup>;
+  /** 2v2: el compañero de cada equipo (asiento 1). */
+  partners?: Partial<Record<Team, PlayerSetup>>;
   rules?: MatchRules;
 }
 
@@ -35,7 +47,8 @@ export interface MatchSetup {
 // Lo único que puede hacer un jugador. En la Fase 1 es lo que viaja por la red.
 
 export type Input =
-  | { t: 'play'; team: Team; card: string; x: number; y: number }
+  /** seat: 1 = el compañero en 2v2 (si no está, el jugador principal del equipo). */
+  | { t: 'play'; team: Team; card: string; x: number; y: number; seat?: SeatIndex }
   | { t: 'emote'; team: Team; id: number }
   | { t: 'surrender'; team: Team };
 
@@ -85,6 +98,8 @@ export interface SimUnit extends Body {
   /** Hacia dónde mira (vector sin normalizar). */
   faceX: number;
   faceY: number;
+  /** Asiento del jugador que la jugó (2v2: 1 = el compañero). */
+  seat: SeatIndex;
   /** Edificio: no se mueve y pierde `decay` de vida por segundo. */
   building: boolean;
   decay: number;
@@ -174,7 +189,7 @@ export type Pending =
 // La simulación no dibuja nada: emite eventos que el cliente convierte en efectos.
 
 export type SimEvent =
-  | { e: 'deploy'; team: Team; card: string; x: number; y: number }
+  | { e: 'deploy'; team: Team; card: string; x: number; y: number; seat?: SeatIndex }
   | { e: 'spawn'; id: number }
   | { e: 'attack'; id: number; targetId: number; melee: boolean }
   | { e: 'shoot'; id: number }

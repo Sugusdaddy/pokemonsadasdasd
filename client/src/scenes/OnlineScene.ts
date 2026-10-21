@@ -1,5 +1,12 @@
 import Phaser from 'phaser';
-import { getCard, isFriendlyCode, type ClientJoin, type DraftMsg, type QueueStatusMsg } from '@arena/shared';
+import {
+  getCard,
+  isFriendlyCode,
+  type ClientJoin,
+  type DraftMsg,
+  type LobbyMsg,
+  type QueueStatusMsg,
+} from '@arena/shared';
 import { makeCardView } from '../ui/CardView';
 import { L } from '../layout';
 import { OnlineSession } from '../net/OnlineSession';
@@ -15,6 +22,8 @@ export type OnlineData =
   | { mode: 'draft' }
   | { mode: 'challenge' }
   | { mode: 'tournament'; tournamentId: string; name: string }
+  | { mode: '2v2' }
+  | { mode: 'create2v2' }
   | { mode: 'create'; inviteTo?: { accountId: string; name: string } }
   | { mode: 'join'; code: string }
   | { mode: 'spectate'; roomId: string }
@@ -42,6 +51,8 @@ export class OnlineScene extends BaseScene {
   /** Pantalla de elegir cartas (draft). */
   private draftUi: Phaser.GameObjects.Container | null = null;
   private draftTimer: Phaser.Time.TimerEvent | null = null;
+  /** Sala 2v2 con amigos: quién hay y el botón de empezar. */
+  private lobbyUi: Phaser.GameObjects.Container | null = null;
   private py = 0;
 
   constructor() {
@@ -56,6 +67,7 @@ export class OnlineScene extends BaseScene {
     this.modalOpen = 0;
     this.draftUi = null;
     this.draftTimer = null;
+    this.lobbyUi = null;
   }
 
   create(): void {
@@ -67,6 +79,8 @@ export class OnlineScene extends BaseScene {
       draft: t('online.draft'),
       challenge: t('online.challenge'),
       tournament: this.data_.mode === 'tournament' ? this.data_.name : '',
+      '2v2': t('online.team'),
+      create2v2: t('online.teamRoom'),
       create: t('online.friendly'),
       join: t('online.friendly'),
       spectate: t('online.spectating'),
@@ -77,6 +91,8 @@ export class OnlineScene extends BaseScene {
       draft: [t('online.chipDraft'), 0xc58cff],
       challenge: [t('online.chipChallenge'), 0xff9a3c],
       tournament: [t('online.chipTournament'), 0x44d17a],
+      '2v2': [t('online.chipTeam'), 0x5cc8ff],
+      create2v2: [t('online.chipTeam'), 0x5cc8ff],
       create: [t('online.chipFriendly'), kit.C.info],
       join: [t('online.chipFriendly'), kit.C.info],
       spectate: [t('online.chipLive'), kit.C.bad],
@@ -143,7 +159,13 @@ export class OnlineScene extends BaseScene {
     const d = this.data_;
     try {
       let s: OnlineSession | null;
-      if (d.mode === 'ranked' || d.mode === 'draft' || d.mode === 'challenge' || d.mode === 'tournament') {
+      if (
+        d.mode === 'ranked' ||
+        d.mode === 'draft' ||
+        d.mode === 'challenge' ||
+        d.mode === 'tournament' ||
+        d.mode === '2v2'
+      ) {
         this.status.setText(d.mode === 'tournament' ? t('online.waitTournament') : t('online.inQueue'));
         const queue: Pick<ClientJoin, 'queue' | 'tournamentId'> =
           d.mode === 'ranked'
@@ -154,6 +176,8 @@ export class OnlineScene extends BaseScene {
         s = await OnlineSession.findMatch((q) => this.onQueue(q), this.abort.signal, queue);
       } else if (d.mode === 'create') {
         s = await OnlineSession.createFriendly();
+      } else if (d.mode === 'create2v2') {
+        s = await OnlineSession.createTeam();
       } else if (d.mode === 'join') {
         if (!isFriendlyCode(d.code)) throw new Error('err.friendly.badCode');
         s = await OnlineSession.joinFriendly(d.code);
@@ -172,6 +196,8 @@ export class OnlineScene extends BaseScene {
       s.onCode = (c) => this.showCode(c);
       s.onDraft = (m) => this.showDraft(m);
       if (s.draft) this.showDraft(s.draft);
+      s.onLobby = (m) => this.showLobby(m);
+      if (s.lobby) this.showLobby(s.lobby);
       if (s.start) this.go();
       else {
         this.status.setText(d.mode === 'create' ? t('online.waitingFriend') : t('online.found'));
@@ -193,6 +219,51 @@ export class OnlineScene extends BaseScene {
     }
     this.status.setText(t('online.inQueueSecs', { n: secs }));
     this.detail.setText(mode === 'ranked' ? t('online.queueDetail', { n: q.window }) : t('online.queueDetailMode'));
+  }
+
+  /** Sala 2v2 con amigos: los cuatro sitios (los libres serán bots) y, si eres el anfitrión, empezar. */
+  private showLobby(m: LobbyMsg): void {
+    if (this.left) return;
+    this.spinner.setVisible(false);
+    this.lobbyUi?.destroy();
+    const c = (this.lobbyUi = this.add.container(0, 0));
+    const cx = L.w / 2,
+      py = this.py;
+    const sides: Array<[string, typeof m.seats]> = [
+      [t('online.yourTeam'), m.seats.filter((s) => s.key.startsWith('blue'))],
+      [t('online.rivals'), m.seats.filter((s) => s.key.startsWith('red'))],
+    ];
+    sides.forEach(([title, seats], col) => {
+      const x = cx + (col ? 150 : -150);
+      c.add(kit.text(this, x, py + sy(130), title, 'label', col ? '#ff9aa2' : '#9fd0ff', { size: 20 }));
+      seats.forEach((s, i) => {
+        const y = py + sy(180) + i * 64;
+        c.add(kit.panel(this, x - 135, y - 26, 270, 52, s.name ? (col ? 'red' : 'blue') : 'inset'));
+        c.add(
+          kit.text(this, x, y, s.name ?? t('online.botSeat'), 'label', s.name ? '#ffffff' : '#7480c0', { size: 19 }),
+        );
+      });
+    });
+    const n = m.seats.filter((s) => s.name).length;
+    this.status.setText(t('online.teamWaiting', { n }));
+    this.detail.setText(m.host ? t('online.teamHost') : t('online.teamGuest'));
+    if (m.host)
+      c.add(
+        kit.button(
+          this,
+          cx,
+          // debajo de los equipos (más abajo están el código y "Cancelar")
+          py + sy(362),
+          320,
+          74,
+          t('online.teamStart'),
+          'success',
+          () => {
+            this.session?.startNow();
+          },
+          { size: 30 },
+        ),
+      );
   }
 
   /** Draft: dos cartas para elegir (la otra se la lleva el rival), cuenta atrás y el mazo que se va formando. */
@@ -286,6 +357,7 @@ export class OnlineScene extends BaseScene {
     s.onStart = undefined;
     s.onCode = undefined;
     s.onDraft = undefined;
+    s.onLobby = undefined;
     this.draftTimer?.remove();
     Sfx.play('fight');
     kit.goTo(this, 'Battle', { kind: 'online', session: s });

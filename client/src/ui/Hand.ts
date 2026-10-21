@@ -160,7 +160,7 @@ export class Hand {
   }
 
   private get cycle() {
-    return this.b.match.cycles[this.b.me];
+    return this.b.match.cycles[this.b.mySeatKey];
   }
 
   private build(): void {
@@ -397,7 +397,7 @@ export class Hand {
       this.hideGhost();
       this.build();
     }
-    const e = this.b.match.elixir[this.b.me];
+    const e = this.b.match.elixir[this.b.mySeatKey];
     this.views.forEach((v, i) => {
       const k = this.cycle.hand[i];
       v.dim.setVisible(getCard(k).cost > e || this.b.isPending(k));

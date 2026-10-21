@@ -5,6 +5,7 @@ import {
   type CatchupMsg,
   type ClientJoin,
   type DraftMsg,
+  type LobbyMsg,
   type EndMsg,
   type Input,
   type MatchedMsg,
@@ -37,6 +38,8 @@ export class OnlineSession {
   code: string | null = null;
   /** Última ronda del draft (si la partida empieza eligiendo mazos). */
   draft: DraftMsg | null = null;
+  /** 2v2 con amigos: quién hay en la sala antes de empezar. */
+  lobby: LobbyMsg | null = null;
   state: SessionState = 'waiting';
   /** Se activa cuando la partida se ha reconstruido (reconexión/resync): hay que redibujar todo. */
   resetPending = false;
@@ -46,6 +49,7 @@ export class OnlineSession {
   onEnd?: (e: EndMsg) => void;
   onCode?: (code: string) => void;
   onDraft?: (d: DraftMsg) => void;
+  onLobby?: (l: LobbyMsg) => void;
   onState?: (s: SessionState) => void;
 
   constructor(room: Room) {
@@ -78,6 +82,10 @@ export class OnlineSession {
       this.onCode?.(m.code);
     });
     room.onMessage('rewards', (m: RewardsMsg) => (this.rewards = m));
+    room.onMessage('lobby', (m: LobbyMsg) => {
+      this.lobby = m;
+      this.onLobby?.(m);
+    });
     room.onMessage('draft', (m: DraftMsg) => {
       this.draft = m;
       this.onDraft?.(m);
@@ -124,6 +132,11 @@ export class OnlineSession {
     else this.room.send('surrender');
   }
 
+  /** 2v2 con amigos: empezar ya (quien creó la sala); los sitios libres los ocupan bots. */
+  startNow(): void {
+    this.room.send('startNow');
+  }
+
   /** Draft: elige la carta i (0 o 1) de la pareja de esta ronda. */
   pick(i: number): void {
     this.room.send('pick', { i });
@@ -164,6 +177,11 @@ export class OnlineSession {
 
   static async createFriendly(): Promise<OnlineSession> {
     return new OnlineSession(await net().create('match', { ...joinOptions(), mode: 'friendly' }));
+  }
+
+  /** Sala 2v2 con código: tus amigos entran contigo en tu equipo (o en el rival si sois cuatro). */
+  static async createTeam(): Promise<OnlineSession> {
+    return new OnlineSession(await net().create('match', { ...joinOptions(), mode: 'friendly', teamSize: 2 }));
   }
 
   static async joinFriendly(code: string): Promise<OnlineSession> {

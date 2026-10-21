@@ -37,8 +37,14 @@ import {
   levelsOf,
   DEFAULT_NAME,
   parsePlay,
-  other,
-  type Bot,
+  seatKey,
+  seatOf,
+  AI_BY_ARENA,
+  Bot,
+  Rng,
+  type SeatKey,
+  type SeatIndex,
+  type LobbyMsg,
   type Input,
   type JoinOptions,
   type MatchMode,
@@ -73,6 +79,10 @@ export interface MatchRoomOptions {
   tournamentId?: string;
   /** Desafío (día) con el que empezó la partida. */
   challengePeriod?: string;
+  /** 2 = 2v2 (dos jugadores por equipo). */
+  teamSize?: 1 | 2;
+  /** 2v2 emparejado: cuántos jugadores reservó la cola (cuando han entrado todos, bots en los huecos). */
+  humans?: number;
 }
 
 /** Modos con niveles iguales para todos (sin trofeos). */
@@ -106,7 +116,9 @@ export async function authAccount(token: unknown): Promise<SeatAuth> {
 }
 
 interface Seat {
+  key: SeatKey;
   team: Team;
+  seat: SeatIndex;
   /** null = bot. */
   accountId: string | null;
   join: JoinOptions;
@@ -136,8 +148,8 @@ export class MatchRoom extends Room {
   /** Un bot ocupó el sitio de quien no llegó (en torneos no cuenta para la clasificación). */
   private botFilled = false;
   match: Match | null = null;
-  private seats = new Map<Team, Seat>();
-  private bySession = new Map<string, Team>();
+  private seats = new Map<SeatKey, Seat>();
+  private bySession = new Map<string, SeatKey>();
   private spectators = new Set<string>();
   private bots: Bot[] = [];
   private scheduled = new Map<number, Input[]>();
@@ -147,8 +159,9 @@ export class MatchRoom extends Room {
 
   override onCreate(options: MatchRoomOptions): void {
     this.mode = options.mode ?? 'ranked';
-    this.opts = { ...options, mode: this.mode };
-    this.maxClients = 2 + 30; // jugadores + espectadores
+    // (las amistosas las crea el cliente: solo se acepta 1 o 2 por equipo)
+    this.opts = { ...options, mode: this.mode, teamSize: options.teamSize === 2 ? 2 : 1 };
+    this.maxClients = this.capacity + 30; // jugadores + espectadores
     if (this.mode === 'friendly') {
       this.code = newFriendlyCode();
       ctx.friendly.set(this.code, this.roomId);
@@ -160,6 +173,10 @@ export class MatchRoom extends Room {
     this.onMessage('surrender', (c) => this.onSurrender(c));
     this.onMessage('resync', (c) => this.sendCatchup(c));
     this.onMessage('pick', (c, m: PickMsg) => this.onPick(c, m));
+    // 2v2 con amigos: quien creó la sala empieza cuando quiera (bots en los huecos)
+    this.onMessage('startNow', (c) => {
+      if (this.bySession.get(c.sessionId) === 'blue' && !this.match) this.fillWithBot();
+    });
     // en una partida emparejada, si el rival no llega, entra un bot
     if (this.mode !== 'friendly' && this.mode !== 'bot' && !options.vsBot) {
       this.fillTimer = this.clock.setTimeout(() => this.fillWithBot(), settings().matchFillBotAfterMs);
@@ -171,7 +188,7 @@ export class MatchRoom extends Room {
     if (options?.spectate) return true;
     // a las emparejadas solo se entra con el sitio que reserva la cola (sin pasar por aquí)
     if (this.mode !== 'friendly') throw new Error('err.room.reserved');
-    if (this.seats.size >= 2 || this.match) throw new Error('err.room.full');
+    if (this.seats.size >= this.capacity || this.match) throw new Error('err.room.full');
     const auth = await authAccount(options?.token);
     if ([...this.seats.values()].some((s) => s.accountId === auth.accountId)) throw new Error('err.room.self');
     return auth;
@@ -190,10 +207,13 @@ export class MatchRoom extends Room {
       client.leave(4003);
       return;
     }
-    const team: Team = this.seats.has('blue') ? 'red' : 'blue';
+    const key = this.seatOrder().find((k) => !this.seats.has(k))!;
+    const { team, seat: idx } = seatOf(key);
     const join = this.standard ? { ...auth.join, levels: {}, kingLevel: STANDARD_KING } : auth.join;
-    this.seats.set(team, {
+    this.seats.set(key, {
+      key,
       team,
+      seat: idx,
       accountId: auth.accountId,
       join,
       client,
@@ -202,17 +222,79 @@ export class MatchRoom extends Room {
       lastRefill: Date.now(),
       lastEmote: 0,
     });
-    this.bySession.set(client.sessionId, team);
+    this.bySession.set(client.sessionId, key);
     if (this.mode === 'friendly' && this.code) client.send('code', { code: this.code });
-    if (this.mode === 'bot' || this.opts.vsBot) this.fillWithBot();
-    else if (this.seats.size === 2) this.begin();
+    this.sendLobby();
+    const humans = [...this.seats.values()].filter((s) => !s.info.bot).length;
+    if (this.mode === 'bot' || this.opts.vsBot || (this.opts.humans && humans >= this.opts.humans)) this.fillWithBot();
+    else if (this.seats.size === this.capacity) this.begin();
+  }
+
+  // ───────────────────────── Asientos (1v1 y 2v2) ─────────────────────────
+
+  private get teamSize(): 1 | 2 {
+    return this.opts.teamSize === 2 ? 2 : 1;
+  }
+
+  private get capacity(): number {
+    return this.teamSize * 2;
+  }
+
+  /**
+   * Orden en que se ocupan los sitios. 2v2 con amigos: los dos primeros juntos; emparejado:
+   * los dos primeros enfrentados (y los bots, de compañeros).
+   */
+  private seatOrder(): SeatKey[] {
+    if (this.teamSize === 1) return ['blue', 'red'];
+    return this.mode === 'friendly' ? ['blue', 'blue2', 'red', 'red2'] : ['blue', 'red', 'blue2', 'red2'];
+  }
+
+  /** Lo que se ve de un equipo: en 2v2, los dos nombres juntos. */
+  private teamInfo(team: Team): PlayerInfo {
+    const a = this.seats.get(team)!.info;
+    const b = this.seats.get(seatKey(team, 1))?.info;
+    return b ? { ...a, name: `${a.name} & ${b.name}`, bot: a.bot && b.bot } : a;
+  }
+
+  /** 2v2 con amigos: quién está en cada sitio (antes de empezar). */
+  private sendLobby(): void {
+    if (this.teamSize !== 2 || this.mode !== 'friendly' || this.match) return;
+    for (const c of this.clients) {
+      const k = this.bySession.get(c.sessionId);
+      if (!k) continue;
+      const msg: LobbyMsg = {
+        seats: this.seatOrder().map((key) => ({ key, name: this.seats.get(key)?.info.name ?? null })),
+        host: k === 'blue',
+      };
+      c.send('lobby', msg);
+    }
+  }
+
+  /** 2v2: quien se va deja su sitio a un bot y su compañero sigue jugando. */
+  private botTakeover(key: SeatKey): void {
+    const seat = this.seats.get(key);
+    const m = this.match;
+    if (!seat || !m || seat.info.bot) return;
+    seat.info = { ...seat.info, bot: true };
+    seat.client = null;
+    const salt = { blue: 11, red: 12, blue2: 13, red2: 14 }[key];
+    this.bots.push(
+      new Bot(seat.team, AI_BY_ARENA(m.setup.arena), new Rng((m.setup.seed ^ (salt * 0x9e3779b1)) >>> 0), seat.seat),
+    );
+  }
+
+  /** Alguien se rinde o se va: en 1v1 pierde; en 2v2 lo sustituye un bot. */
+  private quit(key: SeatKey): void {
+    if (!this.match || this.match.over) return;
+    if (this.teamSize === 2) this.botTakeover(key);
+    else this.schedule({ t: 'surrender', team: seatOf(key).team }, 1);
   }
 
   override async onLeave(client: Client, consented: boolean): Promise<void> {
     if (this.spectators.delete(client.sessionId)) return;
-    const team = this.bySession.get(client.sessionId);
-    if (!team) return;
-    const seat = this.seats.get(team)!;
+    const key = this.bySession.get(client.sessionId);
+    if (!key) return;
+    const seat = this.seats.get(key)!;
     seat.client = null;
     if (!this.match && this.draft) {
       // se va durante el draft: su sitio lo ocupa un bot (sin premios para nadie de ese lado)
@@ -224,23 +306,30 @@ export class MatchRoom extends Room {
     }
     if (!this.match) {
       // aún no ha empezado: se libera el sitio
-      this.seats.delete(team);
+      this.seats.delete(key);
       this.bySession.delete(client.sessionId);
+      this.sendLobby();
       return;
     }
     if (this.finished || this.match.over) return;
     if (consented) {
-      this.schedule({ t: 'surrender', team }, 1);
+      this.quit(key);
       return;
     }
     try {
       const back = await this.allowReconnection(client, settings().reconnectSeconds);
+      // en 2v2 un bot pudo coger su sitio mientras tanto: no vuelve a jugar, solo mira
+      if (seat.info.bot) {
+        back.send('start', this.startMsg('spectator'));
+        this.sendCatchup(back);
+        return;
+      }
       seat.client = back;
-      back.send('start', this.startMsg(team));
+      back.send('start', this.startMsg(key));
       this.sendCatchup(back);
     } catch {
-      // no ha vuelto a tiempo: pierde
-      if (!this.match.over) this.schedule({ t: 'surrender', team }, 1);
+      // no ha vuelto a tiempo: pierde (en 2v2, le sustituye un bot)
+      this.quit(key);
     }
   }
 
@@ -250,37 +339,45 @@ export class MatchRoom extends Room {
 
   // ───────────────────────── Inicio ─────────────────────────
 
+  /** Ocupa con bots los sitios libres (rivales parecidos al primer jugador) y empieza. */
   private fillWithBot(): void {
-    if (this.match || this.seats.size !== 1) return;
-    const human = [...this.seats.values()][0];
-    const team = other(human.team);
+    if (this.match) return;
+    const human = [...this.seats.values()].find((s) => !s.info.bot);
+    if (!human) return;
+    const missing = this.seatOrder().filter((k) => !this.seats.has(k));
+    if (!missing.length) return this.begin();
     const avg =
       human.join.deck.reduce(
         (s, k) => s + (human.join.levels[k] ?? startLevel(getCard(k))) - startLevel(getCard(k)) + 1,
         0,
       ) / human.join.deck.length;
-    const opp = makeOpponent({
-      arena: arenaFor(human.join.trophies),
-      trophies: human.join.trophies,
-      kingLevel: human.join.kingLevel,
-      avgDeckLevel: avg,
-    });
-    if (this.standard) {
-      opp.levels = {};
-      opp.kingLevel = STANDARD_KING;
+    for (const key of missing) {
+      const opp = makeOpponent({
+        arena: arenaFor(human.join.trophies),
+        trophies: human.join.trophies,
+        kingLevel: human.join.kingLevel,
+        avgDeckLevel: avg,
+      });
+      if (this.standard) {
+        opp.levels = {};
+        opp.kingLevel = STANDARD_KING;
+      }
+      const { team, seat } = seatOf(key);
+      this.seats.set(key, {
+        key,
+        team,
+        seat,
+        join: { name: opp.name, trophies: opp.trophies, kingLevel: opp.kingLevel, deck: opp.deck, levels: opp.levels },
+        info: { name: opp.name, trophies: opp.trophies, kingLevel: opp.kingLevel, bot: true },
+        accountId: null,
+        client: null,
+        tokens: 0,
+        lastRefill: 0,
+        lastEmote: 0,
+      });
     }
     // si el rival no llegó a una partida emparejada, en torneos ya no cuenta
     if (this.mode !== 'bot' && !this.opts.vsBot) this.botFilled = true;
-    this.seats.set(team, {
-      team,
-      join: { name: opp.name, trophies: opp.trophies, kingLevel: opp.kingLevel, deck: opp.deck, levels: opp.levels },
-      info: { name: opp.name, trophies: opp.trophies, kingLevel: opp.kingLevel, bot: true },
-      accountId: null,
-      client: null,
-      tokens: 0,
-      lastRefill: 0,
-      lastEmote: 0,
-    });
     this.begin();
   }
 
@@ -296,33 +393,33 @@ export class MatchRoom extends Room {
       if (!this.draft) this.startDraft();
       return;
     }
-    const blue = this.seats.get('blue')!,
-      red = this.seats.get('red')!;
     const rules = this.opts.rules;
+    const P = (k: SeatKey) => {
+      const s = this.seats.get(k)!;
+      return { deck: [...s.join.deck], levels: { ...s.join.levels }, kingLevel: s.join.kingLevel };
+    };
     const setup: MatchSetup = {
       seed: crypto.randomInt(0, 2 ** 32),
-      arena: arenaFor(Math.min(blue.join.trophies, red.join.trophies)),
-      players: {
-        blue: { deck: [...blue.join.deck], levels: { ...blue.join.levels }, kingLevel: blue.join.kingLevel },
-        red: { deck: [...red.join.deck], levels: { ...red.join.levels }, kingLevel: red.join.kingLevel },
-      },
+      arena: arenaFor(Math.min(...[...this.seats.values()].map((s) => s.join.trophies))),
+      players: { blue: P('blue'), red: P('red') },
+      ...(this.teamSize === 2 ? { partners: { blue: P('blue2'), red: P('red2') } } : {}),
       // sin reglas especiales, la partida es idéntica a las de siempre (y sus repeticiones)
       ...(rules && Object.keys(rules).length ? { rules } : {}),
     };
     this.match = new Match(setup);
     this.bots = makeBots(
       setup,
-      [...this.seats.values()].filter((s) => s.info.bot).map((s) => s.team),
+      [...this.seats.values()].filter((s) => s.info.bot).map((s) => s.key),
     );
     this.startAt = Date.now() + settings().matchStartDelayMs;
     void this.setMetadata({
       started: true,
-      players: { blue: blue.info, red: red.info },
+      players: { blue: this.teamInfo('blue'), red: this.teamInfo('red') },
       startedAt: new Date(this.startAt).toISOString(),
     });
     for (const c of this.clients) {
-      const team = this.bySession.get(c.sessionId);
-      c.send('start', this.startMsg(team ?? 'spectator'));
+      const key = this.bySession.get(c.sessionId);
+      c.send('start', this.startMsg(key ?? 'spectator'));
     }
     this.clock.setTimeout(() => this.bots.forEach((b) => b.greet()), settings().matchStartDelayMs + 1500);
     this.setSimulationInterval(() => this.pump(), 10);
@@ -372,11 +469,12 @@ export class MatchRoom extends Room {
   }
 
   private onPick(client: Client, m: PickMsg): void {
-    const team = this.bySession.get(client.sessionId);
+    const seat = this.seatOf(client);
     const d = this.draft;
-    if (!team || !d || draftDone(d)) return;
+    // el draft es solo de 1v1: cada equipo tiene un jugador
+    if (!seat || !d || draftDone(d)) return;
     const round = d.round;
-    if (!draftPick(d, team, Number(m?.i))) return;
+    if (!draftPick(d, seat.team, Number(m?.i))) return;
     if (d.round !== round) this.draftRound();
     else this.sendDraft(); // el rival aún está eligiendo
   }
@@ -406,12 +504,14 @@ export class MatchRoom extends Room {
     this.begin();
   }
 
-  private startMsg(you: Team | 'spectator'): StartMsg {
+  private startMsg(key: SeatKey | 'spectator'): StartMsg {
     const m = this.match!;
+    const me = key === 'spectator' ? null : seatOf(key);
     return {
       setup: m.setup,
-      you,
-      players: { blue: this.seats.get('blue')!.info, red: this.seats.get('red')!.info },
+      you: me ? me.team : 'spectator',
+      ...(me?.seat ? { seat: me.seat } : {}),
+      players: { blue: this.teamInfo('blue'), red: this.teamInfo('red') },
       mode: this.mode,
       inputDelay: INPUT_DELAY_TICKS,
       startsIn: Math.max(0, this.startAt - Date.now()),
@@ -453,7 +553,7 @@ export class MatchRoom extends Room {
     const applied = new Set(m.log.slice(logBefore).map((l) => l.input));
     for (const inp of inputs) {
       if (inp.t !== 'play' || applied.has(inp)) continue;
-      const seat = this.seats.get(inp.team);
+      const seat = this.seats.get(seatKey(inp.team, inp.seat ?? 0));
       seat?.client?.send('reject', { card: inp.card, reason: 'late' } satisfies RejectMsg);
     }
   }
@@ -468,14 +568,15 @@ export class MatchRoom extends Room {
   // ───────────────────────── Mensajes ─────────────────────────
 
   private seatOf(client: Client): Seat | null {
-    const team = this.bySession.get(client.sessionId);
-    return team ? (this.seats.get(team) ?? null) : null;
+    const key = this.bySession.get(client.sessionId);
+    return key ? (this.seats.get(key) ?? null) : null;
   }
 
   private onPlay(client: Client, raw: unknown): void {
     const seat = this.seatOf(client);
     const m = this.match;
-    if (!seat || !m || m.over) return;
+    // (en 2v2, si un bot ya ocupa su sitio, ese jugador ya no juega)
+    if (!seat || seat.info.bot || !m || m.over) return;
     const msg = parsePlay(raw);
     if (!msg) {
       client.send('reject', { card: '', reason: 'invalid' } satisfies RejectMsg);
@@ -490,12 +591,14 @@ export class MatchRoom extends Room {
       return;
     }
     seat.tokens -= 1;
-    const check = m.canPlay(seat.team, msg.card, msg.x, msg.y);
+    const check = m.canPlay(seat.team, msg.card, msg.x, msg.y, seat.seat);
     if (check !== 'ok') {
       client.send('reject', { card: msg.card, reason: check } satisfies RejectMsg);
       return;
     }
-    this.schedule({ t: 'play', team: seat.team, card: msg.card, x: msg.x, y: msg.y });
+    const play: Input = { t: 'play', team: seat.team, card: msg.card, x: msg.x, y: msg.y };
+    // el compañero (2v2) juega con su mano y su elixir
+    this.schedule(seat.seat ? { ...play, seat: seat.seat } : play);
   }
 
   private onEmote(client: Client, msg: EmoteMsg): void {
@@ -510,7 +613,7 @@ export class MatchRoom extends Room {
   private onSurrender(client: Client): void {
     const seat = this.seatOf(client);
     if (!seat || !this.match || this.match.over) return;
-    this.schedule({ t: 'surrender', team: seat.team }, 1);
+    this.quit(seat.key);
   }
 
   // ───────────────────────── Final ─────────────────────────
@@ -527,7 +630,7 @@ export class MatchRoom extends Room {
     const m = this.match!;
     const blue = this.seats.get('blue')!,
       red = this.seats.get('red')!;
-    const players = { blue: blue.info, red: red.info };
+    const players = { blue: this.teamInfo('blue'), red: this.teamInfo('red') };
     const reason = m.over ? 'end' : 'timeout';
     let replayId: string | null = null;
     try {
@@ -554,7 +657,7 @@ export class MatchRoom extends Room {
     this.broadcast('end', end);
     // recompensas: las amistosas no dan ni quitan nada
     if (this.mode !== 'friendly') {
-      for (const seat of [blue, red]) {
+      for (const seat of this.seats.values()) {
         if (!seat.accountId) continue;
         const outcome = m.winner === 'draw' || !m.winner ? 'draw' : m.winner === seat.team ? 'win' : 'loss';
         const win = outcome === 'win';
@@ -566,8 +669,13 @@ export class MatchRoom extends Room {
             const res =
               this.mode === 'ranked' || this.mode === 'bot'
                 ? applyBattle(s, outcome, crowns, rewardRand)
-                : // sin trofeos: el draft da oro por ganar; desafíos y torneos, sus propios premios
-                  applyCasual(s, outcome, crowns, this.mode === 'draft' ? ECONOMY.winGold(m.setup.arena) : 0);
+                : // sin trofeos: draft y 2v2 dan oro por ganar; desafíos y torneos, sus propios premios
+                  applyCasual(
+                    s,
+                    outcome,
+                    crowns,
+                    this.mode === 'draft' || this.mode === '2v2' ? ECONOMY.winGold(m.setup.arena) : 0,
+                  );
             if (this.mode === 'challenge' && this.opts.challengePeriod) {
               const c = recordChallenge(s, this.opts.challengePeriod, win, rewardRand);
               if (c) extra.challenge = { wins: c.run.wins, losses: c.run.losses, ended: c.ended, rewards: c.rewards };

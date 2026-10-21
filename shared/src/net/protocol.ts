@@ -9,10 +9,10 @@
 // ─────────────────────────────────────────────────────────────
 import { MAX_LEVEL, RARITIES } from '../config';
 import { getCard, isCardKey } from '../data/cards';
-import type { Input, MatchSetup, PlayCheck, Team, TimedInput, Winner } from '../sim/types';
+import type { Input, MatchSetup, PlayCheck, SeatIndex, SeatKey, Team, TimedInput, Winner } from '../sim/types';
 import type { BattleResult, ChallengeOutcome, ProfileState } from '../meta/economy';
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const DEFAULT_PORT = 2567;
 
 /** Ticks entre que el servidor recibe un input y lo aplica (2 ticks = 100 ms). */
@@ -40,10 +40,10 @@ export function trophyWindow(waitMs: number): number {
  * ranked: por trofeos (y 'bot' si no aparece rival). friendly: por código.
  * draft, challenge (desafío del día) y tournament: niveles iguales para todos, sin trofeos.
  */
-export type MatchMode = 'ranked' | 'friendly' | 'bot' | 'draft' | 'challenge' | 'tournament';
+export type MatchMode = 'ranked' | 'friendly' | 'bot' | 'draft' | 'challenge' | 'tournament' | '2v2';
 /** Colas de emparejamiento. */
-export type QueueKind = 'ranked' | 'draft' | 'challenge' | 'tournament';
-export const QUEUE_KINDS: readonly QueueKind[] = ['ranked', 'draft', 'challenge', 'tournament'];
+export type QueueKind = 'ranked' | 'draft' | 'challenge' | 'tournament' | '2v2';
+export const QUEUE_KINDS: readonly QueueKind[] = ['ranked', 'draft', 'challenge', 'tournament', '2v2'];
 
 export interface PlayerInfo {
   name: string;
@@ -95,6 +95,8 @@ export interface StartMsg {
   setup: MatchSetup;
   /** Tu equipo, o 'spectator'. */
   you: Team | 'spectator';
+  /** 2v2: tu asiento en el equipo (1 = el compañero). */
+  seat?: SeatIndex;
   players: Record<Team, PlayerInfo>;
   mode: MatchMode;
   inputDelay: number;
@@ -153,6 +155,13 @@ export interface DraftMsg {
 /** Jugador → servidor: elige la carta i (0 o 1) de su pareja. */
 export interface PickMsg {
   i: number;
+}
+
+/** Servidor → sala 2v2 con amigos: quién hay en cada sitio (null = libre; lo ocupará un bot). */
+export interface LobbyMsg {
+  seats: Array<{ key: SeatKey; name: string | null }>;
+  /** Puedes empezar (eres quien creó la sala). */
+  host: boolean;
 }
 
 export interface QueueStatusMsg {

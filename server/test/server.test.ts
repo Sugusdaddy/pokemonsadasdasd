@@ -675,3 +675,81 @@ describe('modos', () => {
     );
   });
 });
+
+// ───────────────────────── 2v2 ─────────────────────────
+
+describe('2v2', () => {
+  it('cola 2v2: dos jugadores enfrentados con bots de compañeros; quien se rinde deja su sitio a un bot', async () => {
+    const ca = new Client(endpoint),
+      cb = new Client(endpoint);
+    const oa = await opts(300, 'Uno'),
+      ob = await opts(300, 'Dos');
+    const [ra, rb] = await Promise.all([queue(ca, { ...oa, queue: '2v2' }), queue(cb, { ...ob, queue: '2v2' })]);
+    expect(ra.matched.mode).toBe('2v2');
+    const pa = new Player(ra.room),
+      pb = new Player(rb.room);
+    await until(() => !!pa.start && !!pb.start, 5000, 'inicio');
+    expect(new Set([pa.start!.you, pb.start!.you])).toEqual(new Set(['blue', 'red']));
+    expect(pa.start!.seat ?? 0).toBe(0);
+    expect(pa.start!.setup.partners?.blue?.deck).toHaveLength(8);
+    expect(pa.start!.players.blue.name).toContain(' & ');
+    // los bots compañeros juegan: llegan inputs del asiento 1
+    await until(
+      () => pa.ticks.some((t) => t.i?.some((i) => i.t === 'play' && i.seat === 1)),
+      15000,
+      'jugada de un compañero',
+    );
+    // A se rinde: no se acaba la partida, le sustituye un bot
+    ra.room.send('surrender');
+    await new Promise((r) => setTimeout(r, 600));
+    expect(pa.ends).toHaveLength(0);
+    expect(pa.ticks.some((t) => t.i?.some((i) => i.t === 'surrender'))).toBe(false);
+    void ra.room.leave();
+    void rb.room.leave();
+  });
+
+  it('2v2 con amigos: los dos del mismo equipo, quien crea empieza y bots en los huecos', async () => {
+    const host = await opts(100, 'Anfitrion'),
+      friend = await opts(100, 'Amigo');
+    const ch = new Client(endpoint),
+      cf = new Client(endpoint);
+    const rh = await ch.create('match', { ...host, mode: 'friendly', teamSize: 2 });
+    const ph = new Player(rh);
+    const lobbies: Array<{ seats: Array<{ key: string; name: string | null }>; host: boolean }> = [];
+    rh.onMessage('lobby', (m) => lobbies.push(m));
+    await until(() => !!ph.code, 3000, 'código');
+    const roomId = rh.roomId;
+    const rf = await cf.joinById(roomId, friend);
+    const pf = new Player(rf);
+    rf.onMessage('lobby', () => {});
+    await until(() => lobbies.some((l) => l.seats.filter((s) => s.name).length === 2), 3000, 'sala con dos');
+    const last = lobbies[lobbies.length - 1];
+    expect(last.host).toBe(true);
+    expect(last.seats.map((s) => [s.key, s.name])).toEqual([
+      ['blue', 'Anfitrion'],
+      ['blue2', 'Amigo'],
+      ['red', null],
+      ['red2', null],
+    ]);
+    rf.send('startNow'); // solo puede el anfitrión
+    await new Promise((r) => setTimeout(r, 300));
+    expect(pf.start).toBeNull();
+    rh.send('startNow');
+    await until(() => !!ph.start && !!pf.start, 5000, 'inicio');
+    expect([pf.start!.you, pf.start!.seat]).toEqual(['blue', 1]);
+    expect(pf.start!.players.red.bot).toBe(true);
+    // el amigo juega con SU mano (asiento 1)
+    await until(() => pf.ticks.length > 30, 5000, 'ticks');
+    const hand = pf.ls!.match.cycles.blue2.hand;
+    const card = hand.find((k) => pf.ls!.match.canPlay('blue', k, 140, 900, 1) === 'ok') ?? hand[0];
+    rf.send('play', { card, x: 140, y: 900 });
+    await until(
+      () =>
+        pf.ticks.some((t) => t.i?.some((i) => i.t === 'play' && i.team === 'blue' && i.seat === 1 && i.card === card)),
+      4000,
+      'jugada del amigo',
+    );
+    void rh.leave();
+    void rf.leave();
+  });
+});

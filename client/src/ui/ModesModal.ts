@@ -19,7 +19,7 @@ import { openTournaments } from './TournamentsModal';
 // ─────────────────────────────────────────────────────────────
 
 const W = 660,
-  H = 860;
+  H = 1010;
 
 export function openModes(s: MenuScene, onFriendly: () => void): void {
   if (s.modalOpen) return;
@@ -110,6 +110,24 @@ export function openModes(s: MenuScene, onFriendly: () => void): void {
           size: 15,
         },
       ),
+    );
+
+    // ── 2v2 ──
+    const ty = y;
+    y = row(
+      y,
+      'ic_battle',
+      t('modes.team'),
+      t('modes.teamDesc'),
+      t('modes.search'),
+      'primary',
+      () => go({ mode: '2v2' }),
+      190,
+    );
+    box.add(
+      kit.button(s, W / 2 - 104, ty + 140, 150, 60, t('modes.withFriends'), 'info', () => go({ mode: 'create2v2' }), {
+        size: 18,
+      }),
     );
 
     // ── Torneos ──

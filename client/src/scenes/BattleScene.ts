@@ -23,6 +23,11 @@ import {
   type SimEvent,
   type Team,
   type Winner,
+  seatKey,
+  type SeatIndex,
+  type SeatKey,
+  type PlayerSetup,
+  type SimUnit,
 } from '@arena/shared';
 import { createAnims, palette, queueBattle, moveFrame } from '../systems/Assets';
 import { Sfx, Music } from '../systems/Sfx';
@@ -74,6 +79,8 @@ export class BattleScene extends BaseScene {
   me: Team = 'blue';
   /** true si estoy jugando (no espectador ni repetición). */
   isPlayer = true;
+  /** 2v2: mi asiento en el equipo (1 = el compañero); en 1v1, siempre 0. */
+  mySeat: SeatIndex = 0;
   view = new View(false);
   private data_!: BattleData;
   private theme!: ArenaTheme;
@@ -153,6 +160,7 @@ export class BattleScene extends BaseScene {
     }
     this.isPlayer = this.source.me !== null;
     this.me = this.source.me ?? 'blue';
+    this.mySeat = this.source.seat;
     this.view = new View(this.me === 'red');
     this.theme = ARENAS[this.match.setup.arena] ?? ARENAS[0];
   }
@@ -172,8 +180,14 @@ export class BattleScene extends BaseScene {
     });
     const ids = new Set<number>();
     for (const g of [...Object.values(TOWER_GUARDIANS.blue), ...Object.values(TOWER_GUARDIANS.red)]) ids.add(g.pokemon);
-    const p = this.match.setup.players;
-    for (const k of [...p.blue.deck, ...p.red.deck]) ids.add(getCard(k).pokemon);
+    const p = this.match.setup.players,
+      pt = this.match.setup.partners;
+    // 2v2: también las cartas de los compañeros (y lo que sacan sus edificios)
+    for (const k of [...p.blue.deck, ...p.red.deck, ...(pt?.blue?.deck ?? []), ...(pt?.red?.deck ?? [])]) {
+      ids.add(getCard(k).pokemon);
+      const spawn = getCard(k).spawn;
+      if (spawn) ids.add(getCard(spawn).pokemon);
+    }
     this.needIds = [...ids];
     queueBattle(this, this.needIds);
   }
@@ -228,7 +242,7 @@ export class BattleScene extends BaseScene {
     this.overlay = this.add.graphics().setDepth(5).setVisible(false);
     this.createHud();
     if (this.isPlayer) {
-      this.hand = new Hand(this, this.match.setup.players[this.me].levels);
+      this.hand = new Hand(this, this.mySetup.levels);
       this.hand.update();
     } else {
       this.createWatchControls();
@@ -283,7 +297,7 @@ export class BattleScene extends BaseScene {
   /** Intenta jugar una carta (coordenadas del mundo). Devuelve true si se ha enviado. */
   playCard(key: string, x: number, y: number): boolean {
     if (!this.canInteract || this.isPending(key)) return false;
-    const check = this.match.canPlay(this.me, key, x, y);
+    const check = this.match.canPlay(this.me, key, x, y, this.mySeat);
     if (check === 'elixir') {
       this.toast(t('battle.toast.noElixir'), 0xff8af0);
       this.hand?.flashElixir();
@@ -461,6 +475,23 @@ export class BattleScene extends BaseScene {
   }
 
   // ───────────────────────── HUD ─────────────────────────
+
+  /** Mi asiento en la partida (en 2v2 puedo ser el compañero). */
+  get mySeatKey(): SeatKey {
+    return seatKey(this.me, this.mySeat);
+  }
+
+  /** Mi mazo y mis niveles. */
+  get mySetup(): PlayerSetup {
+    const s = this.match.setup;
+    return this.mySeat ? s.partners![this.me]! : s.players[this.me];
+  }
+
+  /** Vista de una tropa: las de mi compañero (2v2) con el aro más claro. */
+  private unitView(u: SimUnit): UnitView {
+    const mine = u.team === this.me;
+    return new UnitView(this, u, mine, this.view, mine && this.match.teamPlay && u.seat !== this.mySeat);
+  }
 
   get foe(): Team {
     return other(this.me);
@@ -685,8 +716,14 @@ export class BattleScene extends BaseScene {
 
   confirmSurrender(): void {
     if (this.match.over || this.modalOpen) return;
-    openModal(this, 560, 400, t('battle.surrender.title'), (box, close) => {
-      box.add(txt(this, 0, -30, t('battle.surrender.body'), 26));
+    // 2v2: no se pierde al momento; te vas y un bot ocupa tu sitio para que tu compañero siga
+    const team = this.match.teamPlay;
+    openModal(this, 560, 400, team ? t('battle.leave.title') : t('battle.surrender.title'), (box, close) => {
+      box.add(
+        txt(this, 0, -30, team ? t('battle.leave.body') : t('battle.surrender.body'), 24, '#ffffff', {
+          wordWrap: { width: 480 },
+        }),
+      );
       box.add(button(this, -125, 100, 220, 84, t('battle.surrender.keep'), COLORS.blue, close, 28));
       box.add(
         button(
@@ -700,6 +737,8 @@ export class BattleScene extends BaseScene {
           () => {
             close();
             this.source.send({ t: 'surrender', team: this.me });
+            // 2v2: al salir de la escena se cierra la conexión (y un bot ocupa el sitio)
+            if (team) kit.goTo(this, 'Lobby', { tab: 'battle' });
           },
           28,
         ),
@@ -910,7 +949,7 @@ export class BattleScene extends BaseScene {
       else if (t.active) tv.onAwake(true);
       this.towers.set(t.id, tv);
     }
-    for (const u of m.units) this.units.set(u.id, new UnitView(this, u, u.team === this.me, this.view));
+    for (const u of m.units) this.units.set(u.id, this.unitView(u));
     for (const p of m.projectiles) this.projectiles.set(p.id, new ProjectileView(this.fx, p, this.view));
     for (const [card] of this.pendingPlays) this.clearPending(card);
   }
@@ -921,7 +960,7 @@ export class BattleScene extends BaseScene {
     for (const ev of events) {
       switch (ev.e) {
         case 'deploy':
-          if (ev.team === this.me) this.clearPending(ev.card);
+          if (ev.team === this.me && (ev.seat ?? 0) === this.mySeat) this.clearPending(ev.card);
           this.time.delayedCall(200, () => {
             this.fx.ring(ev.x, v.y(ev.y), 0.9 * T, this.teamColor(ev.team));
             this.particles.dust(ev.x, v.y(ev.y), 12, this.dustTint);
@@ -930,7 +969,7 @@ export class BattleScene extends BaseScene {
           break;
         case 'spawn': {
           const u = m.units.find((x) => x.id === ev.id);
-          if (u) this.units.set(u.id, new UnitView(this, u, u.team === this.me, v));
+          if (u) this.units.set(u.id, this.unitView(u));
           break;
         }
         case 'attack': {
@@ -1162,7 +1201,7 @@ export class BattleScene extends BaseScene {
       winner,
       crowns: { ...m.crowns },
       duration: Math.round(m.elapsed),
-      deck: [...m.setup.players[this.me].deck],
+      deck: [...this.mySetup.deck],
       opponent: P[this.foe].name,
       replay,
     });

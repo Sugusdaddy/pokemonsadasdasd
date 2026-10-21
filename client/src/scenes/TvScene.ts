@@ -212,6 +212,8 @@ function modeChip(mode: MatchMode): Chip {
       return [t('online.chipChallenge'), 0xff9a3c];
     case 'tournament':
       return [t('online.chipTournament'), 0x44d17a];
+    case '2v2':
+      return [t('online.chipTeam'), 0x5cc8ff];
     default:
       return [t('tv.chipRanked'), kit.C.gold];
   }

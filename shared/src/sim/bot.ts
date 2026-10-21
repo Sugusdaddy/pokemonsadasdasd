@@ -4,7 +4,7 @@ import { emoteId } from '../data/emotes';
 import { clamp, dist } from './math';
 import type { Match } from './match';
 import type { Rng } from './rng';
-import { other, type Input, type SimEvent, type SimUnit, type Team } from './types';
+import { other, seatKey, type Input, type SeatIndex, type SimEvent, type SimUnit, type Team } from './types';
 
 const RIVER_TOP = ARENA.riverY - ARENA.riverHalf;
 const RIVER_BOT = ARENA.riverY + ARENA.riverHalf;
@@ -37,6 +37,8 @@ export class Bot {
     readonly team: Team,
     private readonly cfg: AiConfig,
     private readonly rng: Rng,
+    /** 2v2: 1 = juega como el compañero. */
+    readonly seat: SeatIndex = 0,
   ) {}
 
   /** Y en el sistema del bot (su lado arriba) ↔ Y del mundo. Es su propia inversa. */
@@ -79,15 +81,20 @@ export class Bot {
   private think(m: Match): Input | null {
     const me = this.team,
       foe = other(me);
-    const elixir = m.elixir[me];
-    const hand = m.cycles[me].hand.map((k) => ({ k, c: getCard(k) })).filter((h) => h.c.cost <= elixir);
+    const seat = this.seat;
+    const sk = seatKey(me, seat);
+    const elixir = m.elixir[sk];
+    const hand = m.cycles[sk].hand.map((k) => ({ k, c: getCard(k) })).filter((h) => h.c.cost <= elixir);
     if (!hand.length) return null;
     const rng = this.rng;
     const tryPlay = (k: string, x: number, myY: number): Input | null => {
       const y = this.my(myY);
       const rx = Math.round(x),
         ry = Math.round(y);
-      return m.canPlay(me, k, rx, ry) === 'ok' ? { t: 'play', team: me, card: k, x: rx, y: ry } : null;
+      if (m.canPlay(me, k, rx, ry, seat) !== 'ok') return null;
+      return seat
+        ? { t: 'play', team: me, card: k, x: rx, y: ry, seat }
+        : { t: 'play', team: me, card: k, x: rx, y: ry };
     };
     const foes = m.units.filter((u) => u.alive && u.team === foe);
     const threats = foes.filter((u) => this.my(u.y) < RIVER_BOT + 3 * T).sort((a, c) => this.my(a.y) - this.my(c.y));
@@ -95,7 +102,7 @@ export class Bot {
     // 1) Hechizos de daño (y congelación) contra grupos o para rematar torres
     const spell = hand.find((h) => h.c.type === 'spell' && h.c.effect !== 'heal' && h.c.effect !== 'rage');
     if (spell) {
-      const sc: Card = m.cardFor(me, spell.k);
+      const sc: Card = m.cardFor(me, spell.k, seat);
       for (const u of foes) {
         const near = foes.filter((o) => dist(o.x, o.y, u.x, u.y) < sc.radiusSpell);
         const val = near.reduce((s, o) => s + Math.min(o.hp, sc.dmg), 0);
@@ -117,7 +124,7 @@ export class Bot {
     // 1b) Curación o furia sobre sus tropas que ya están atacando en campo rival
     const boost = hand.find((h) => h.c.effect === 'heal' || h.c.effect === 'rage');
     if (boost) {
-      const sc: Card = m.cardFor(me, boost.k);
+      const sc: Card = m.cardFor(me, boost.k, seat);
       const mine = m.units.filter((u) => u.alive && u.team === me && !u.building && this.my(u.y) > RIVER_BOT);
       for (const u of mine) {
         const near = mine.filter((o) => dist(o.x, o.y, u.x, u.y) < sc.radiusSpell);

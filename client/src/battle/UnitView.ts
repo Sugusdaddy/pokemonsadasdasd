@@ -32,6 +32,8 @@ export class UnitView {
     readonly u: SimUnit,
     readonly mine: boolean,
     private readonly view: View,
+    /** 2v2: es de mi compañero (aro más claro). */
+    readonly ally = false,
   ) {
     const s = scene.add;
     const r = u.radius;
@@ -43,7 +45,9 @@ export class UnitView {
       .image(u.x, this.y, 'fx_shadow')
       .setDisplaySize(r * 2.7, r * 1.25)
       .setAlpha(u.flying ? 0.3 : 0.55);
-    this.ring = s.ellipse(u.x, this.y, r * 2.6, r * 1.2).setStrokeStyle(3, mine ? COLORS.player : COLORS.enemy, 0.85);
+    this.ring = s
+      .ellipse(u.x, this.y, r * 2.6, r * 1.2)
+      .setStrokeStyle(3, ally ? 0xa8e6ff : mine ? COLORS.player : COLORS.enemy, 0.85);
     if (u.building) {
       this.base = s
         .image(u.x, this.y, mine ? 'bld_base_player' : 'bld_base_enemy')

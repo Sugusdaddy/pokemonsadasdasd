@@ -27,6 +27,9 @@ import {
   type Pending,
   type PlayCheck,
   type SimArea,
+  type SeatIndex,
+  type SeatKey,
+  seatKey,
   type SimEvent,
   type SimProjectile,
   type SimTower,
@@ -83,9 +86,12 @@ export class Match {
   doubleAnnounced = false;
   over = false;
   winner: Winner | null = null;
-  elixir: Record<Team, number> = { blue: RULES.elixirStart, red: RULES.elixirStart };
+  /** Elixir y mano de cada jugador (en 1v1 solo existen 'blue' y 'red'). */
+  elixir = { blue: RULES.elixirStart, red: RULES.elixirStart } as Record<SeatKey, number>;
   crowns: Record<Team, number> = { blue: 0, red: 0 };
-  cycles: Record<Team, CardCycle>;
+  cycles: Record<SeatKey, CardCycle>;
+  /** Jugadores de la partida: blue y red, y en 2v2 también blue2 y red2. */
+  readonly seats: SeatKey[];
   units: SimUnit[] = [];
   towers: SimTower[] = [];
   towersBy: Record<Team, Record<TowerSide, SimTower>>;
@@ -98,7 +104,7 @@ export class Match {
 
   private nextId = 1;
   private events: SimEvent[] = [];
-  private cardCache: Record<Team, Record<string, Card>> = { blue: {}, red: {} };
+  private cardCache: Record<SeatKey, Record<string, Card>> = { blue: {}, red: {}, blue2: {}, red2: {} };
 
   constructor(setup: MatchSetup) {
     this.setup = setup;
@@ -107,7 +113,17 @@ export class Match {
     this.cycles = {
       blue: new CardCycle(setup.players.blue.deck, this.rng),
       red: new CardCycle(setup.players.red.deck, this.rng),
-    };
+    } as Record<SeatKey, CardCycle>;
+    this.seats = ['blue', 'red'];
+    // 2v2: los compañeros, después (así el azar de los de siempre no cambia)
+    for (const team of TEAMS) {
+      const p = setup.partners?.[team];
+      if (!p) continue;
+      const k = seatKey(team, 1);
+      this.cycles[k] = new CardCycle(p.deck, this.rng);
+      this.elixir[k] = RULES.elixirStart;
+      this.seats.push(k);
+    }
     this.towersBy = { blue: {}, red: {} } as Record<Team, Record<TowerSide, SimTower>>;
     this.spawnTowers();
   }
@@ -126,22 +142,31 @@ export class Match {
     return this.overtime || this.ticksLeft <= ticks(RULES.doubleElixirAt, TICK_RATE);
   }
 
-  /** Carta con los niveles del jugador de ese equipo. */
-  cardFor(team: Team, key: string): Card {
-    let c = this.cardCache[team][key];
+  /** ¿Es 2v2? */
+  get teamPlay(): boolean {
+    return this.seats.length > 2;
+  }
+
+  /** Carta con los niveles del jugador de ese asiento. */
+  cardFor(team: Team, key: string, seat: SeatIndex = 0): Card {
+    const k = seatKey(team, seat);
+    let c = this.cardCache[k][key];
     if (!c) {
-      c = cardAtLevel(key, this.setup.players[team].levels[key]);
-      this.cardCache[team][key] = c;
+      const p = seat ? this.setup.partners![team]! : this.setup.players[team];
+      c = cardAtLevel(key, p.levels[key]);
+      this.cardCache[k][key] = c;
     }
     return c;
   }
 
-  /** ¿Puede ese equipo jugar esa carta ahí ahora mismo? */
-  canPlay(team: Team, key: string, x: number, y: number): PlayCheck {
+  /** ¿Puede ese jugador jugar esa carta ahí ahora mismo? */
+  canPlay(team: Team, key: string, x: number, y: number, seat: SeatIndex = 0): PlayCheck {
     if (this.over) return 'over';
-    if (!isCardKey(key) || !this.cycles[team].hand.includes(key)) return 'hand';
+    const k = seatKey(team, seat);
+    const cycle = this.cycles[k];
+    if (!cycle || !isCardKey(key) || !cycle.hand.includes(key)) return 'hand';
     const card = getCard(key);
-    if (this.elixir[team] < card.cost) return 'elixir';
+    if (this.elixir[k] < card.cost) return 'elixir';
     if (!Number.isFinite(x) || !Number.isFinite(y) || !this.canDeploy(team, card, x, y)) return 'zone';
     return 'ok';
   }
@@ -173,7 +198,7 @@ export class Match {
       this.emit({ e: 'doubleElixir' });
     }
     const regen = (DT / RULES.elixirRegen) * (dbl ? 2 : 1) * (this.setup.rules?.elixir ?? 1);
-    for (const team of TEAMS) this.elixir[team] = Math.min(RULES.elixirMax, this.elixir[team] + regen);
+    for (const s of this.seats) this.elixir[s] = Math.min(RULES.elixirMax, this.elixir[s] + regen);
 
     this.runPending();
     this.updateAreas();
@@ -225,6 +250,8 @@ export class Match {
       mix(a.id);
       mix(a.until);
     }
+    // 2v2: el elixir de los compañeros (al final: en 1v1 la huella es la de siempre)
+    for (const s of this.seats.slice(2)) mix(this.elixir[s]);
     return h >>> 0;
   }
 
@@ -244,14 +271,16 @@ export class Match {
     }
     const x = Math.round(input.x),
       y = Math.round(input.y);
-    if (this.canPlay(input.team, input.card, x, y) !== 'ok') {
+    const seat: SeatIndex = input.seat === 1 ? 1 : 0;
+    if (this.canPlay(input.team, input.card, x, y, seat) !== 'ok') {
       this.log.pop();
       return;
     }
-    const cycle = this.cycles[input.team];
-    this.elixir[input.team] -= getCard(input.card).cost;
+    const k = seatKey(input.team, seat);
+    const cycle = this.cycles[k];
+    this.elixir[k] -= getCard(input.card).cost;
     cycle.play(cycle.hand.indexOf(input.card));
-    this.deploy(input.team, input.card, x, y);
+    this.deploy(input.team, input.card, x, y, seat);
   }
 
   // ───────────────────────── Torres ─────────────────────────
@@ -395,9 +424,9 @@ export class Match {
     return this.inPocket(team, x, y);
   }
 
-  private deploy(team: Team, key: string, x: number, y: number): void {
-    const card = this.cardFor(team, key);
-    this.emit({ e: 'deploy', team, card: key, x, y });
+  private deploy(team: Team, key: string, x: number, y: number, seat: SeatIndex = 0): void {
+    const card = this.cardFor(team, key, seat);
+    this.emit(seat ? { e: 'deploy', team, card: key, x, y, seat } : { e: 'deploy', team, card: key, x, y });
     if (card.type === 'spell') {
       this.emit({ e: 'spellCast', team, card: key, x, y });
       this.pending.push({ kind: 'spell', at: this.tick + ticks(RULES.spellDelay, TICK_RATE), team, card, x, y });
@@ -405,12 +434,12 @@ export class Match {
     }
     for (const [dx, fy] of formation(card.count, 0.55 * T)) {
       const dy = team === 'blue' ? fy : -fy; // la formación mira hacia el rival
-      this.spawnUnit(team, card, x + dx, y + dy, RULES.deployTime);
+      this.spawnUnit(team, card, x + dx, y + dy, RULES.deployTime, seat);
     }
   }
 
   /** Crea una tropa o un edificio (desplegado por un jugador o sacado por un generador). */
-  private spawnUnit(team: Team, card: Card, x: number, y: number, deployLeft: number): SimUnit {
+  private spawnUnit(team: Team, card: Card, x: number, y: number, deployLeft: number, seat: SeatIndex = 0): SimUnit {
     const building = card.type === 'building';
     const u: SimUnit = {
       id: this.nextId++,
@@ -439,6 +468,7 @@ export class Match {
       burnDps: 0,
       faceX: 0,
       faceY: team === 'blue' ? -1 : 1,
+      seat,
       building,
       decay: building ? card.hp / card.lifetime : 0,
       // el primer Combee sale enseguida; luego, cada spawnEvery
@@ -622,7 +652,8 @@ export class Match {
       u.elixirT -= dt;
       if (u.elixirT <= 0) {
         u.elixirT += c.elixirEvery;
-        this.elixir[u.team] = Math.min(RULES.elixirMax, this.elixir[u.team] + 1);
+        const k = seatKey(u.team, u.seat);
+        this.elixir[k] = Math.min(RULES.elixirMax, this.elixir[k] + 1);
         this.emit({ e: 'elixirGain', id: u.id, team: u.team, amount: 1 });
       }
     }
@@ -668,11 +699,11 @@ export class Match {
     const key = b.card.spawn!;
     const level = startLevel(getCard(key)) + (b.card.level - startLevel(getCard(b.card.key)));
     const ck = `${key}@${level}`;
-    const card = (this.cardCache[b.team][ck] ??= cardAtLevel(key, level));
+    const card = (this.cardCache[seatKey(b.team, b.seat)][ck] ??= cardAtLevel(key, level));
     const fwd = b.team === 'blue' ? -1 : 1;
     const y0 = b.y + fwd * (b.radius + card.radius + 6);
     for (const [dx, fy] of formation(b.card.spawnCount, 0.55 * T))
-      this.spawnUnit(b.team, card, b.x + dx, y0 + fwd * fy, RULES.spawnDeploy);
+      this.spawnUnit(b.team, card, b.x + dx, y0 + fwd * fy, RULES.spawnDeploy, b.seat);
   }
 
   private attack(u: SimUnit, tg: Body): void {

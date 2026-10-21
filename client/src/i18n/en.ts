@@ -860,4 +860,22 @@ export const EN: Record<string, string> = {
   'err.tournament.notEnded': 'The tournament has not finished yet.',
   'econ.noPrize': 'No prize for that position.',
   'econ.prizeToday': 'You already claimed a tournament prize today.',
+  'modes.team': '2v2',
+  'modes.teamDesc':
+    'Two per side, each with their own hand and elixir. Search for players or play with friends; bots fill the gaps.',
+  'modes.search': 'Search',
+  'modes.withFriends': 'Friends',
+  'online.team': '2v2',
+  'online.teamRoom': '2v2 with friends',
+  'online.chipTeam': '2v2',
+  'online.yourTeam': 'Your team',
+  'online.rivals': 'Rivals',
+  'online.botSeat': 'Free (bot)',
+  'online.teamWaiting': 'Players in the room: {n}/4',
+  'online.teamHost':
+    'Share the code: the first friend joins your team. Start whenever you like: bots take the free seats.',
+  'online.teamGuest': 'Waiting for the host to start…',
+  'online.teamStart': 'Start',
+  'battle.leave.title': 'Leave the battle?',
+  'battle.leave.body': 'A bot will take your place so your partner can keep playing. You still get the result.',
 };

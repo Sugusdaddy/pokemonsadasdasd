@@ -2,7 +2,15 @@ import { AI_BY_ARENA } from '../config';
 import { Bot } from './bot';
 import { Match } from './match';
 import { Rng } from './rng';
-import type { Input, MatchSetup, SimEvent, Team, TimedInput, Winner } from './types';
+import {
+  seatOf,
+  type Input,
+  type MatchSetup,
+  type SeatKey,
+  type SimEvent,
+  type TimedInput,
+  type Winner,
+} from './types';
 
 /** Una repetición es la configuración (con la semilla) + los inputs con su tick. */
 export interface Replay {
@@ -39,16 +47,29 @@ export function runReplay(
   return { match: m, winner: m.winner };
 }
 
-/** Crea los bots de una partida a partir de su semilla (mismo resultado en cliente y servidor). */
-export function makeBots(setup: MatchSetup, teams: readonly Team[]): Bot[] {
+const BOT_FORK: Record<SeatKey, number> = { blue: 1, red: 2, blue2: 3, red2: 4 };
+
+/**
+ * Crea los bots de una partida a partir de su semilla (mismo resultado en cliente y servidor).
+ * `seats`: 'blue' / 'red' juegan como el jugador principal; 'blue2' / 'red2', como el compañero (2v2).
+ */
+export function makeBots(setup: MatchSetup, seats: readonly SeatKey[]): Bot[] {
   const rng = new Rng((setup.seed ^ 0x5bd1e995) >>> 0);
-  return teams.map((t) => new Bot(t, AI_BY_ARENA(setup.arena), rng.fork(t === 'blue' ? 1 : 2)));
+  return seats.map((k) => {
+    const { team, seat } = seatOf(k);
+    return new Bot(team, AI_BY_ARENA(setup.arena), rng.fork(BOT_FORK[k]), seat);
+  });
 }
 
 /** Partida bot contra bot (tests y balance). */
 export function runBotMatch(
   setup: MatchSetup,
-  teams: readonly Team[] = ['blue', 'red'],
+  teams: readonly SeatKey[] = [
+    'blue',
+    'red',
+    ...(setup.partners?.blue ? ['blue2' as const] : []),
+    ...(setup.partners?.red ? ['red2' as const] : []),
+  ],
 ): { match: Match; replay: Replay } {
   const m = new Match(setup);
   const bots = makeBots(setup, teams);

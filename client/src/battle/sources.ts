@@ -11,6 +11,7 @@ import {
   type Replay,
   type SimEvent,
   type Team,
+  type SeatIndex,
 } from '@arena/shared';
 import type { OnlineSession } from '../net/OnlineSession';
 
@@ -24,6 +25,8 @@ export interface BattleSource {
   readonly match: Match;
   /** Mi equipo; null si solo miro (espectador o repetición). */
   readonly me: Team | null;
+  /** 2v2: mi asiento en el equipo (1 = el compañero). */
+  readonly seat: SeatIndex;
   readonly players: Record<Team, PlayerInfo>;
   /** Fracción del siguiente tick ya transcurrida (para interpolar al dibujar). */
   readonly alpha: number;
@@ -42,6 +45,7 @@ export class LocalSource implements BattleSource {
   readonly kind = 'local';
   readonly match: Match;
   readonly me: Team = 'blue';
+  readonly seat: SeatIndex = 0;
   /** El tutorial para la partida mientras explica algo. */
   paused = false;
   private bots: Bot[];
@@ -115,6 +119,10 @@ export class OnlineSource implements BattleSource {
     return you === 'spectator' ? null : you;
   }
 
+  get seat(): SeatIndex {
+    return this.session.start!.seat ?? 0;
+  }
+
   get players(): Record<Team, PlayerInfo> {
     return this.session.start!.players;
   }
@@ -165,6 +173,7 @@ export class ReplaySource implements BattleSource {
   readonly kind = 'replay';
   readonly match: Match;
   readonly me = null;
+  readonly seat: SeatIndex = 0;
   speed = 1;
   paused = false;
   private byTick: Map<number, Input[]>;
