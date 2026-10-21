@@ -18,6 +18,8 @@ import {
 import { SERVER_URL, api, joinOptions } from './api';
 
 const ACTIVE_KEY = 'arenaRoyale.activeMatch';
+/** La cola avisa de que el servidor se apaga (despliegue): hay que volver a entrar. */
+const RESTART = 'queue.restart';
 
 let client: Client | null = null;
 export const net = (): Client => (client ??= new Client(SERVER_URL));
@@ -158,11 +160,29 @@ export class OnlineSession {
     signal: AbortSignal,
     queue: Pick<ClientJoin, 'queue' | 'tournamentId'> = {},
   ): Promise<OnlineSession> {
+    // si el servidor se está actualizando (un despliegue), se vuelve a la cola: ya en el nuevo
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await OnlineSession.queueOnce(onStatus, signal, queue);
+      } catch (e) {
+        const restarting = e instanceof Error && (e.message === RESTART || e.message === 'err.server.restarting');
+        if (!restarting || attempt >= 5 || signal.aborted) throw e;
+        await new Promise((r) => setTimeout(r, 1000 * attempt));
+      }
+    }
+  }
+
+  private static async queueOnce(
+    onStatus: (s: QueueStatusMsg) => void,
+    signal: AbortSignal,
+    queue: Pick<ClientJoin, 'queue' | 'tournamentId'>,
+  ): Promise<OnlineSession> {
     const q = await net().joinOrCreate('queue', { ...joinOptions(), ...queue });
     try {
       const matched = await new Promise<MatchedMsg>((resolve, reject) => {
         q.onMessage('queue', onStatus);
         q.onMessage('matched', resolve);
+        q.onMessage('restart', () => reject(new Error(RESTART)));
         q.onLeave(() => reject(new Error('Se ha cerrado la cola')));
         signal.addEventListener('abort', () => reject(new DOMException('Cancelado', 'AbortError')));
       });

@@ -7,3 +7,4 @@ shared/src/data/*.json
 CREDITS.md
 package-lock.json
 PROMPT_CLAUDE_CODE.md
+shared/test/fixtures/

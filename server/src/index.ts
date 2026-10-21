@@ -3,6 +3,14 @@ import net from 'node:net';
 import { DEFAULT_PORT } from '@arena/shared';
 import { startServer } from './app';
 import { initSentry, reportError } from './sentry';
+import { drainSeconds, productionProblems } from './config';
+
+// en producción no se arranca con una configuración a medias
+const problems = productionProblems();
+if (problems.length) {
+  console.error(`[arena] no se puede arrancar en producción:\n  - ${problems.join('\n  - ')}`);
+  process.exit(1);
+}
 
 // ARENA_PORT manda; PORT solo en producción (lo fijan Railway/Fly). En desarrollo, 2567.
 const port =
@@ -41,7 +49,7 @@ if (await initSentry()) {
 }
 
 if (process.env.DATABASE_URL) await waitForDb(process.env.DATABASE_URL);
-const server = await startServer({ port });
+const server = await startServer({ port, drainSeconds: drainSeconds() });
 console.log(
   `[arena] servidor en ws://localhost:${server.port}  (API: http://localhost:${server.port}/api/health, datos: ${server.store.kind})`,
 );

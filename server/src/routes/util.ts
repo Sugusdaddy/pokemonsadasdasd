@@ -26,6 +26,20 @@ export async function optionalSession(req: Request): Promise<string | null> {
   return (await verifySession(bearer(req.headers.authorization)))?.accountId ?? null;
 }
 
+/** Limitador sencillo por IP: como mucho `perMinute` peticiones por minuto (429 si se pasa). */
+export function rateLimit(perMinute: number) {
+  const hits = new Map<string, { n: number; at: number }>();
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const ip = req.ip ?? 'x';
+    const now = Date.now();
+    const h = hits.get(ip);
+    if (!h || now - h.at > 60_000) hits.set(ip, { n: 1, at: now });
+    else if (++h.n > perMinute) return void res.status(429).json({ error: 'err.rate' });
+    if (hits.size > 10_000) hits.clear();
+    next();
+  };
+}
+
 /** ¿Alguna de estas wallets es de admin (ADMIN_WALLETS)? */
 export const isAdminWallet = (wallets: string[]): boolean => wallets.some((w) => ctx.adminWallets.has(w));
 

@@ -378,6 +378,7 @@ export const EN: Record<string, string> = {
   'err.session': 'Your session expired. Reload the game.',
   'err.server': 'Something went wrong on the server. Try again.',
   'err.busy': 'The server is busy. Try again in a moment.',
+  'err.server.restarting': 'The server is updating. Try again in a few seconds.',
   'err.rate': 'Too many attempts. Wait a moment.',
   'err.forbidden': 'Not allowed on this server.',
   'err.account.notFound': 'Account not found. Reload the game.',

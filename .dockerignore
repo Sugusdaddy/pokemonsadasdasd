@@ -1,0 +1,15 @@
+# Lo que no entra en las imágenes de Docker
+.git
+**/node_modules
+**/dist
+coverage
+*.log
+.DS_Store
+# secretos y datos locales
+**/.env
+**/.env.*
+!**/.env.example
+server/.pgdata
+server/data
+# pack de sprites original (109 MB): el cliente usa los atlas ya generados de client/public/gen
+assets

@@ -301,6 +301,7 @@ export const ES: Record<string, string> = {
   'err.session': 'Tu sesión ha caducado. Recarga el juego.',
   'err.server': 'Algo ha fallado en el servidor. Inténtalo otra vez.',
   'err.busy': 'El servidor está ocupado. Inténtalo en un momento.',
+  'err.server.restarting': 'El servidor se está actualizando. Inténtalo en unos segundos.',
   'err.rate': 'Demasiados intentos. Espera un momento.',
   'err.forbidden': 'No está permitido en este servidor.',
   'err.account.notFound': 'No se encuentra la cuenta. Recarga el juego.',

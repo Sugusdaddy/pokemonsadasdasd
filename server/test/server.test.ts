@@ -131,7 +131,7 @@ async function queue(client: Client, o: ClientJoin): Promise<{ room: Room; match
 describe('servidor', () => {
   it('API de salud', async () => {
     const r = await fetch(`${http}/api/health`);
-    expect(await r.json()).toEqual({ ok: true, db: 'memory' });
+    expect(await r.json()).toEqual({ ok: true, db: 'memory', draining: false });
   });
 
   it('sin rival en la cola → partida contra bot; las cartas llegan con retardo y la repetición se guarda', async () => {

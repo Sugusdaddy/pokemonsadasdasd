@@ -10,6 +10,8 @@ export interface ServerSettings {
   reconnectSeconds: number;
   /** Segundos que la sala sigue abierta tras el final (espectadores, pantalla de resultados). */
   linger: number;
+  /** Al apagar: segundos que se deja terminar a las partidas en curso (0 = se cortan ya). */
+  drainSeconds: number;
 }
 
 /** Estado compartido por las salas de este proceso. */
@@ -22,6 +24,8 @@ export const ctx = {
   adminWallets: new Set<string>(),
   /** Balance de cartas en vigor (se carga al arrancar y lo cambia el admin). Lo llevan las partidas nuevas. */
   balance: NO_BALANCE as Balance,
+  /** El servidor se está apagando: no empieza partidas nuevas y deja acabar las que hay. */
+  draining: false,
 };
 
 export function store(): Store {

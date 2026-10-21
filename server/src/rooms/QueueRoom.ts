@@ -12,7 +12,7 @@ import {
   type QueueStatusMsg,
   type RuleSet,
 } from '@arena/shared';
-import { settings, store } from '../context';
+import { ctx, settings, store } from '../context';
 import { authAccount, type MatchRoomOptions, type SeatAuth } from './MatchRoom';
 import { reportError } from '../sentry';
 
@@ -48,6 +48,7 @@ export class QueueRoom extends Room {
 
   override async onAuth(_client: Client, options: ClientJoin): Promise<Omit<Waiting, 'client' | 'since' | 'busy'>> {
     if (options?.protocol !== undefined && options.protocol !== PROTOCOL_VERSION) throw new Error('err.version');
+    if (ctx.draining) throw new Error('err.server.restarting');
     const auth = await authAccount(options?.token);
     // una cuenta solo puede estar una vez en la cola
     for (const w of this.waiting.values()) if (w.auth.accountId === auth.accountId) throw new Error('err.queue.twice');
@@ -76,11 +77,18 @@ export class QueueRoom extends Room {
     this.waiting.set(client.sessionId, { ...w, client, since: Date.now(), busy: false });
   }
 
+  /** El servidor se apaga: se avisa a quien espera para que vuelva a la cola (ya en el servidor nuevo). */
+  override onBeforeShutdown(): void {
+    this.broadcast('restart');
+    void this.disconnect();
+  }
+
   override onLeave(client: Client): void {
     this.waiting.delete(client.sessionId);
   }
 
   private async matchmake(): Promise<void> {
+    if (ctx.draining) return;
     const now = Date.now();
     const list = [...this.waiting.values()].filter((w) => !w.busy).sort((a, b) => a.since - b.since);
     const used = new Set<Waiting>();

@@ -1,0 +1,56 @@
+# ─────────────────────────────────────────────────────────────
+#  El juego entero en local como en producción:
+#    docker compose up --build      → juego en http://localhost:8080
+#  Postgres + servidor (imagen de producción, aplica las migraciones al arrancar) + cliente
+#  (build de producción con nginx). Los datos quedan en el volumen "pgdata".
+#  Para desarrollar sigue siendo más cómodo `npm run dev`.
+# ─────────────────────────────────────────────────────────────
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: arena
+      POSTGRES_PASSWORD: arena
+      POSTGRES_DB: arena
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U arena -d arena']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  server:
+    build:
+      context: .
+      target: server
+    environment:
+      DATABASE_URL: postgresql://arena:arena@db:5432/arena
+      # solo para este compose local; en Railway va un secreto aleatorio de verdad
+      SESSION_SECRET: ${SESSION_SECRET:-solo-para-docker-compose-local-no-usar-en-produccion}
+      CORS_ORIGINS: http://localhost:8080
+      PUBLIC_DOMAIN: localhost:8080
+      ADMIN_WALLETS: ${ADMIN_WALLETS:-}
+      SHUTDOWN_DRAIN_SECONDS: ${SHUTDOWN_DRAIN_SECONDS:-300}
+    command: sh -c "npx prisma migrate deploy --schema server/prisma/schema.prisma && exec node --enable-source-maps server/dist/index.js"
+    ports:
+      - '2567:2567'
+    depends_on:
+      db:
+        condition: service_healthy
+    # al parar, las partidas en curso tienen hasta 5 min para terminar
+    stop_grace_period: 330s
+
+  client:
+    build:
+      context: .
+      target: client
+      args:
+        VITE_SERVER_URL: ws://localhost:2567
+    ports:
+      - '8080:8080'
+    depends_on:
+      - server
+
+volumes:
+  pgdata:

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -53,13 +53,62 @@ function serviceWorker(): Plugin {
   };
 }
 
-export default defineConfig({
+/**
+ * Content-Security-Policy del build (en un <meta>, así lleva la URL del servidor de cada
+ * entorno): solo scripts propios, conexiones al servidor de juego (y a Sentry si hay DSN)
+ * y las fuentes de Google. `frame-ancestors` no vale en <meta>: va en las cabeceras del
+ * hosting (vercel.json, deploy/nginx.conf).
+ */
+export function cspFor(env: Record<string, string>): string {
+  const connect = ["'self'"];
+  const server = env.VITE_SERVER_URL?.trim();
+  if (server) {
+    const u = new URL(server);
+    const secure = u.protocol === 'wss:' || u.protocol === 'https:';
+    connect.push(`${secure ? 'wss' : 'ws'}://${u.host}`, `${secure ? 'https' : 'http'}://${u.host}`);
+  } else {
+    // sin VITE_SERVER_URL el cliente busca el servidor en su misma máquina, puerto 2567
+    connect.push('ws://*:2567', 'wss://*:2567', 'http://*:2567', 'https://*:2567');
+  }
+  const dsn = env.VITE_SENTRY_DSN?.trim();
+  if (dsn) connect.push(`https://${new URL(dsn).host}`);
+  return [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: blob:",
+    "media-src 'self' data: blob:",
+    `connect-src ${connect.join(' ')}`,
+    "worker-src 'self'",
+    "manifest-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'none'",
+  ].join('; ');
+}
+
+function contentSecurityPolicy(env: Record<string, string>): Plugin {
+  return {
+    name: 'arena-csp',
+    apply: 'build',
+    transformIndexHtml: () => [
+      {
+        tag: 'meta',
+        attrs: { 'http-equiv': 'Content-Security-Policy', content: cspFor(env) },
+        injectTo: 'head-prepend',
+      },
+    ],
+  };
+}
+
+export default defineConfig(({ mode }) => ({
   base: './',
   server: { port: 5173, host: true },
-  plugins: [serviceWorker()],
+  plugins: [serviceWorker(), contentSecurityPolicy(loadEnv(mode, ROOT, 'VITE_'))],
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 2000,
     rollupOptions: { output: { manualChunks: { phaser: ['phaser'] } } },
   },
-});
+}));

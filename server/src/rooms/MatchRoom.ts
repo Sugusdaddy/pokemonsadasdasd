@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { Room, type Client } from '@colyseus/core';
+import { Protocol, Room, type Client } from '@colyseus/core';
 import {
   DT,
   HASH_EVERY,
@@ -157,6 +157,10 @@ export class MatchRoom extends Room {
   private scheduled = new Map<number, Input[]>();
   private startAt = 0;
   private finished = false;
+  /** Se termina de guardar el resultado (al apagar se espera a que acabe). */
+  private settled: Promise<void> = Promise.resolve();
+  /** El servidor se apaga y esta sala ya se ha cerrado: las salidas no cuentan como abandono. */
+  private shuttingDown = false;
   private fillTimer: { clear(): void } | null = null;
 
   override onCreate(options: MatchRoomOptions): void {
@@ -188,6 +192,7 @@ export class MatchRoom extends Room {
   override async onAuth(_client: Client, options: JoinPayload): Promise<SeatAuth | true> {
     if (options?.protocol !== undefined && options.protocol !== PROTOCOL_VERSION) throw new Error('err.version');
     if (options?.spectate) return true;
+    if (ctx.draining) throw new Error('err.server.restarting');
     // a las emparejadas solo se entra con el sitio que reserva la cola (sin pasar por aquí)
     if (this.mode !== 'friendly') throw new Error('err.room.reserved');
     if (this.seats.size >= this.capacity || this.match) throw new Error('err.room.full');
@@ -293,7 +298,7 @@ export class MatchRoom extends Room {
   }
 
   override async onLeave(client: Client, consented: boolean): Promise<void> {
-    if (this.spectators.delete(client.sessionId)) return;
+    if (this.spectators.delete(client.sessionId) || this.shuttingDown) return;
     const key = this.bySession.get(client.sessionId);
     if (!key) return;
     const seat = this.seats.get(key)!;
@@ -337,6 +342,24 @@ export class MatchRoom extends Room {
 
   override onDispose(): void {
     if (this.code) ctx.friendly.delete(this.code);
+  }
+
+  /**
+   * El servidor se apaga (un despliegue). Una partida en marcha (o en el draft) sigue hasta
+   * el final con su resultado normal; si no acaba en drainSeconds, se corta sin resultado.
+   * Las salas que aún esperan jugadores se cierran ya. Nadie pierde por el reinicio.
+   */
+  override onBeforeShutdown(): void {
+    const s = settings().drainSeconds;
+    if (this.finished) return void this.settled.finally(() => this.closeForShutdown());
+    if ((!this.match && !this.draft) || s <= 0) return this.closeForShutdown();
+    this.clock.setTimeout(() => this.closeForShutdown(), s * 1000);
+  }
+
+  private closeForShutdown(): void {
+    this.shuttingDown = true;
+    this.setSimulationInterval(undefined);
+    void this.disconnect(Protocol.WS_CLOSE_WITH_ERROR);
   }
 
   // ───────────────────────── Inicio ─────────────────────────
@@ -655,8 +678,10 @@ export class MatchRoom extends Room {
   private finish(): void {
     if (this.finished) return;
     this.finished = true;
-    this.setSimulationInterval(undefined);
-    void this.settle();
+    // se para la simulación pero no el reloj de la sala: Colyseus solo lo avanza solo si no hay
+    // intervalo, y quitarlo deja el antiguo marcado (sin esto no saltaban el linger ni el apagado)
+    this.setSimulationInterval(() => {}, 100);
+    this.settled = this.settle();
   }
 
   /** Guarda la partida, reparte recompensas (calculadas aquí, nunca en el cliente) y avisa. */

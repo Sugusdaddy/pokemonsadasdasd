@@ -36,8 +36,11 @@ Sin servidor, la pantalla de carga ofrece reintentar o jugar una **práctica** c
 | `npm run db:migrate`      | Crea una migración nueva tras cambiar `server/prisma/schema.prisma`                  |
 | `npm run db:deploy`       | Aplica las migraciones pendientes (producción)                                       |
 | `npm run db:studio`       | Explorador de la base de datos (Prisma Studio)                                       |
-| `npm run start:server`    | Servidor sin recarga (producción: usa `PORT`)                                        |
+| `npm run start:server`    | Servidor sin recarga, desde el código TypeScript                                     |
+| `npm run build:server`    | Empaqueta el servidor para producción en `server/dist/index.js`                      |
+| `npm run start:prod`      | Arranca el servidor empaquetado (lo que corre en producción; usa `PORT`)             |
 | `npm run build`           | Build de producción en `client/dist/` (estático, se puede subir a cualquier hosting) |
+| `npm run golden`          | Comprueba las repeticiones de referencia (`-- --update` las regenera)                |
 | `npm run assets`          | Regenera atlas y `pack.json` desde el pack de sprites                                |
 | `npm run assets:fan-only` | Igual, pero solo con sprites de fans (ver [ART_PIPELINE.md](ART_PIPELINE.md))        |
 | `npm run icons`           | Regenera los iconos de la app (`client/public/icons/`) desde el pixel art propio     |
@@ -321,7 +324,9 @@ server/   Servidor de juego (Colyseus + Express + Prisma)
   src/rooms/MatchRoom.ts  Partida autoritativa (validación, retardo, reconexión, espectadores)
   src/rooms/QueueRoom.ts  Cola de emparejamiento por trofeos
   test/                   Tests de integración (servidor real + clientes)
-tools/    build-assets.ts (atlas + pack.json), ensure-assets.ts
+tools/    build-assets.ts (atlas + pack.json), ensure-assets.ts, build-server.ts, golden-replays.ts
+deploy/   nginx.conf y cabeceras de seguridad del cliente en Docker
+Dockerfile, docker-compose.yml, vercel.json   Despliegue (ver "Despliegue")
 ```
 
 ## Cómo funciona una batalla
@@ -571,6 +576,55 @@ torres son del equipo. Las tropas de tu compañero llevan el aro azul claro.
   se mandan los errores sin datos personales: sin usuario, sin cabeceras (la sesión), sin cookies, sin el nombre de
   la máquina, sin lo que sale por consola ni el rastro de clics, y sin trazas de rendimiento. Hay un test que lo
   comprueba con un "Sentry" falso en local. (SDK 10: el 11 necesita Node 20.)
+
+## Despliegue (Fase 5)
+
+Plan: **servidor + PostgreSQL en Railway** (entornos `staging` y `production`, cada uno con su base de datos) y
+**cliente en Vercel**. Subdominios gratis por ahora. Esto es lo que ya está listo (5A):
+
+- **Servidor de producción**: `npm run build:server` lo empaqueta en un solo `server/dist/index.js` (con mapa de
+  fuentes; las dependencias se quedan en `node_modules`) y `npm run start:prod` lo arranca sin compilar nada.
+- **Docker**: el `Dockerfile` hace la imagen del servidor (Node 22, sin dependencias de desarrollo, con Prisma para
+  `migrate deploy`, como usuario sin privilegios y con healthcheck). `docker compose up --build` levanta el juego
+  entero como en producción en http://localhost:8080: Postgres, servidor (aplica las migraciones al arrancar) y
+  cliente con nginx. Necesita los atlas de `client/public/gen` (`npm run assets`).
+- **Configuración obligatoria en producción** (`NODE_ENV=production`): el servidor **no arranca** si falta
+  `DATABASE_URL`, si `SESSION_SECRET` es el de ejemplo o tiene menos de 32 caracteres, o si falta `CORS_ORIGINS`.
+  `ALLOW_DEV_CHEATS` se ignora siempre en producción.
+- **CORS**: `CORS_ORIGINS` es la lista de webs del cliente, separadas por comas. Acepta un `*` dentro del nombre
+  para las vistas previas de Vercel (`https://arena-royale-*-equipo.vercel.app`; el `*` no cruza puntos). Se aplica
+  a la API, al emparejamiento de Colyseus y a la conexión WebSocket (otra web no puede ni conectarse). Sin la
+  variable, en desarrollo se acepta todo.
+- **Límites**: además de los del login y los invitados, toda la API tiene un tope por IP (600 peticiones/min).
+- **Desplegar sin cortar partidas**: al recibir `SIGTERM` el servidor deja de aceptar colas y partidas nuevas,
+  `/api/health` responde 503, la cola avisa a quien espera para que vuelva a entrar (el cliente lo hace solo, ya en
+  el servidor nuevo) y las partidas en curso **terminan con su resultado normal**. Si alguna no acaba en
+  `SHUTDOWN_DRAIN_SECONDS` (5 min por defecto en producción, 0 en desarrollo) se corta **sin resultado**: nadie
+  gana ni pierde trofeos por un reinicio. Antes, un reinicio daba la partida por perdida al primero en
+  desconectarse.
+- **Cliente**: el build lleva una Content-Security-Policy en un `<meta>` (solo scripts propios, conexión al
+  servidor de `VITE_SERVER_URL`, a Sentry si hay DSN y a las fuentes de Google). `vercel.json` y
+  `deploy/nginx.conf` ponen el resto de cabeceras (sin iframes, `nosniff`, Referrer y Permissions-Policy) y la
+  caché: `assets/` para siempre (llevan hash) y el resto revalidando, para que lleguen las actualizaciones.
+- **Determinismo vigilado**: `shared/test/fixtures/golden-replays.json` guarda 24 partidas bot contra bot (1v1,
+  elixir x2/x3, muerte súbita, 2v2 y balance cambiado). Un test las vuelve a jugar y exige la misma huella: si un
+  cambio en la simulación hiciera que las repeticiones guardadas se vieran distinto, falla. Si es a propósito,
+  `npm run golden -- --update` y explicarlo en el commit.
+
+| Variable (servidor)      | Para qué                                                                         |
+| ------------------------ | -------------------------------------------------------------------------------- |
+| `NODE_ENV`               | `production` en Railway (activa las comprobaciones de arriba)                    |
+| `DATABASE_URL`           | PostgreSQL (Railway la da en su servicio de base de datos)                       |
+| `SESSION_SECRET`         | Firma de las sesiones: aleatorio, 32+ caracteres, distinto en cada entorno       |
+| `CORS_ORIGINS`           | Webs del cliente, p. ej. `https://arena-royale.vercel.app`                       |
+| `PUBLIC_DOMAIN`          | Dominio del mensaje que firma la wallet (si no, el de la web desde la que juega) |
+| `ADMIN_WALLETS`          | Wallets con la pestaña Admin                                                     |
+| `SHUTDOWN_DRAIN_SECONDS` | Tiempo para que terminen las partidas al apagar (300 por defecto en producción)  |
+| `SENTRY_DSN`             | Opcional: errores a Sentry                                                       |
+| `PORT`                   | Lo pone Railway                                                                  |
+
+Del cliente (al compilar): `VITE_SERVER_URL` (p. ej. `wss://arena-royale-production.up.railway.app`) y
+`VITE_SENTRY_DSN` (opcional).
 
 ## Arte y modo "solo fans"
 

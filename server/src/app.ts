@@ -11,7 +11,9 @@ import {
   MATCH_START_DELAY_MS,
   RECONNECT_SECONDS,
 } from '@arena/shared';
-import { ctx, type ServerSettings } from './context';
+import { ctx, settings, type ServerSettings } from './context';
+import { cheatsAllowed, originMatcher, parseOrigins } from './config';
+import { rateLimit } from './routes/util';
 import { MatchRoom } from './rooms/MatchRoom';
 import { QueueRoom } from './rooms/QueueRoom';
 import { ClanRoom } from './rooms/ClanRoom';
@@ -40,6 +42,8 @@ export interface StartOptions extends Partial<ServerSettings> {
   seasonJob?: boolean;
   /** Wallets de admin (si no: ADMIN_WALLETS, separadas por comas). */
   adminWallets?: string[];
+  /** Webs desde las que se puede jugar (si no: CORS_ORIGINS; vacío = todas, para desarrollo). */
+  corsOrigins?: string[];
 }
 
 export interface RunningServer {
@@ -65,7 +69,9 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     matchStartDelayMs: opts.matchStartDelayMs ?? MATCH_START_DELAY_MS,
     reconnectSeconds: opts.reconnectSeconds ?? RECONNECT_SECONDS,
     linger: opts.linger ?? 15,
+    drainSeconds: opts.drainSeconds ?? 0,
   };
+  ctx.draining = false;
   const store: Store = opts.store ?? (process.env.DATABASE_URL ? new PrismaStore() : new MemoryStore());
   if (store.kind === 'memory' && !opts.store)
     console.warn('[arena] sin DATABASE_URL: las cuentas se guardan en memoria');
@@ -77,22 +83,49 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   for (const w of ctx.adminWallets)
     if (!isSolanaAddress(w)) console.warn(`[admin] ADMIN_WALLETS: "${w}" no es una wallet válida`);
 
+  // CORS: solo las webs del cliente (en desarrollo, todas). Se aplica a la API, al
+  // emparejamiento de Colyseus y a la conexión WebSocket.
+  const patterns = opts.corsOrigins ?? parseOrigins(process.env.CORS_ORIGINS);
+  const allowed = originMatcher(patterns);
+  const allowOrigin = (origin: string | undefined): string | null =>
+    !patterns.length ? origin || '*' : origin && allowed(origin) ? origin : null;
+  // Colyseus mezcla sus cabeceras por defecto (Allow-Origin: *) con las de getCorsHeaders: se quita
+  // el comodín para que un origen no permitido se quede sin cabecera
+  delete (matchMaker.controller.DEFAULT_CORS_HEADERS as Partial<Record<string, string>>)['Access-Control-Allow-Origin'];
+  matchMaker.controller.getCorsHeaders = (req): Record<string, string> => {
+    const origin = allowOrigin(req.headers.origin);
+    return origin ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : { Vary: 'Origin' };
+  };
+
   const app = express();
   app.set('trust proxy', 1);
+  app.disable('x-powered-by');
   app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    if (req.method === 'OPTIONS') return void res.sendStatus(204);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Vary', 'Origin');
+    const origin = allowOrigin(req.get('origin'));
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    }
+    if (req.method === 'OPTIONS') return void res.sendStatus(origin ? 204 : 403);
     next();
   });
-  app.get('/api/health', (_req, res) => void res.json({ ok: true, db: store.kind }));
+  // mientras se apaga responde 503: los balanceadores dejan de mandarle gente
+  app.get(
+    '/api/health',
+    (_req, res) =>
+      void res.status(ctx.draining ? 503 : 200).json({ ok: !ctx.draining, db: store.kind, draining: ctx.draining }),
+  );
+  // límite general por IP para toda la API (el login y los invitados tienen el suyo, más corto)
+  if (opts.rateLimits ?? true) app.use('/api', rateLimit(600));
   // balance de cartas en vigor (los menús enseñan estos números)
   app.get('/api/balance', (_req, res) => void res.json(ctx.balance));
   app.use(
     '/api',
     accountRoutes(store, {
-      allowCheats: opts.allowCheats ?? process.env.ALLOW_DEV_CHEATS === '1',
+      allowCheats: opts.allowCheats ?? cheatsAllowed(),
       // dominio del mensaje que firma la wallet: el configurado, o la web desde la que se juega
       domain: (req) =>
         opts.domain ?? process.env.PUBLIC_DOMAIN ?? originHost(req.get('origin')) ?? req.get('host') ?? 'arena-royale',
@@ -137,7 +170,23 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
 
   const stopSeasons = opts.seasonJob === false ? () => {} : startSeasonJob(store);
   const httpServer = http.createServer(app);
-  const gameServer = new Server({ transport: new WebSocketTransport({ server: httpServer }), greet: false });
+  const gameServer = new Server({
+    transport: new WebSocketTransport({
+      server: httpServer,
+      // los navegadores mandan Origin: solo se aceptan las webs del cliente (sin Origin = bots y tests)
+      verifyClient: (info: { origin?: string }) => !info.origin || !!allowOrigin(info.origin),
+    }),
+    greet: false,
+  });
+  // Apagado (SIGTERM al desplegar): no se empiezan partidas nuevas y las que están en marcha
+  // terminan (MatchRoom.onBeforeShutdown) antes de cerrar la base de datos.
+  gameServer.onBeforeShutdown(async () => {
+    ctx.draining = true;
+    stopSeasons();
+    const s = settings().drainSeconds;
+    if (s > 0) console.log(`[arena] apagando: las partidas en curso tienen hasta ${s} s para terminar`);
+  });
+  gameServer.onShutdown(() => store.close());
   gameServer.define('match', MatchRoom);
   gameServer.define('queue', QueueRoom);
   gameServer.define('clan', ClanRoom).filterBy(['clanId']);
@@ -149,10 +198,6 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     port,
     gameServer,
     store,
-    close: async () => {
-      stopSeasons();
-      await gameServer.gracefullyShutdown(false);
-      await store.close();
-    },
+    close: () => gameServer.gracefullyShutdown(false),
   };
 }

@@ -45,7 +45,7 @@ import {
   verifySignature,
 } from '../auth';
 import type { Store } from '../store/types';
-import { isAdminWallet } from './util';
+import { isAdminWallet, rateLimit } from './util';
 import { reportError } from '../sentry';
 
 /** Lo que ve el cliente de su cuenta. */
@@ -75,20 +75,6 @@ export const view = (id: string, guest: boolean, wallets: string[], state: Profi
     admin: isAdminWallet(wallets),
   };
 };
-
-/** Limitador sencillo por IP (login y creación de invitados). */
-function rateLimit(perMinute: number) {
-  const hits = new Map<string, { n: number; at: number }>();
-  return (req: Request, res: Response, next: NextFunction) => {
-    const ip = req.ip ?? 'x';
-    const now = Date.now();
-    const h = hits.get(ip);
-    if (!h || now - h.at > 60_000) hits.set(ip, { n: 1, at: now });
-    else if (++h.n > perMinute) return void res.status(429).json({ error: 'err.rate' });
-    if (hits.size > 10_000) hits.clear();
-    next();
-  };
-}
 
 export function accountRoutes(
   store: Store,
