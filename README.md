@@ -392,6 +392,16 @@ Para cambiar un dibujo, edita su función y recarga: las texturas se regeneran a
 gemas moradas en las épicas y turquesa en las legendarias), un brillo que recorre las épicas y legendarias de vez en
 cuando y destellos en las legendarias.
 
+## Apertura de Pokéball (Fase 3C)
+
+- **Luz por rareza**: con cada una de las tres sacudidas, la luz y un aura detrás de la Pokéball se acercan al color de
+  la mejor carta que trae (más intensa si hay épica o legendaria), con chispas de ese color.
+- **Apertura**: golpe de cámara, destello, onda expansiva y chispas; las dos mitades de la Pokéball salen despedidas.
+- **Cartas que salen volando**: cada carta sale boca abajo de la Pokéball, vuela en arco girando y dejando estela, y
+  se da la vuelta en el centro. Las épicas, con destello morado. El oro y las gemas salen como un chorro de monedas.
+- **Legendarias**: la pantalla se oscurece, sube un haz de luz desde la Pokéball con brasas, la cámara se acerca despacio
+  y la carta sube por el haz; al darse la vuelta, destello blanco, onda grande y el cartel de _¡Legendaria!_.
+
 ## Arte y modo "solo fans"
 
 Ver [ART_PIPELINE.md](ART_PIPELINE.md): cómo se generan los atlas, la opción `ART.spriteSource = 'fan-only'`
