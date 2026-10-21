@@ -68,4 +68,25 @@ describe.skipIf(!url)('PostgreSQL (PrismaStore)', () => {
     expect(m.hash).toBe(4294967295);
     expect((await store.listMatches(5)).some((x) => x.id === id)).toBe(true);
   });
+
+  it('ranking: orden por trofeos, rango por arena y puesto', async () => {
+    const tag = Date.now();
+    const mk = async (t: number) => {
+      const a = await store.createAccount({ ...freshProfile(Date.now()), name: `R${tag}`, trophies: t }, true);
+      return a.id;
+    };
+    const hi = await mk(800_001), lo = await mk(800_000);
+    const top = await store.leaderboard({ min: 800_000 }, 10, 0);
+    expect(top.slice(0, 2).map((e) => e.accountId)).toEqual([hi, lo]);
+    expect(await store.countAbove(800_000, { min: 800_000 })).toBeGreaterThanOrEqual(1);
+    expect(await store.countRanked({ min: 800_000, max: 800_001 })).toBeGreaterThanOrEqual(1);
+  });
+
+  it('el cierre de una temporada solo lo empieza un proceso', async () => {
+    const id = `t${Date.now()}`.slice(0, 20);
+    const both = await Promise.all([store.beginSeasonClose(id), store.beginSeasonClose(id)]);
+    expect(both.filter(Boolean)).toHaveLength(1);
+    await store.finishSeasonClose(id, [{ accountId: 'x', rank: 1, name: 'X', trophies: 10, best: 12 }]);
+    expect(await store.seasonTop(id, 5)).toEqual([{ accountId: 'x', rank: 1, name: 'X', trophies: 10, best: 12 }]);
+  });
 });

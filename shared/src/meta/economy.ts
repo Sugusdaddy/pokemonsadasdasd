@@ -28,6 +28,7 @@ import { STARTER_DECK, cardsUpToArena, getCard, isCardKey, startLevel } from '..
 import { rollBall, type BallReward } from './balls';
 import { ROAD } from './road';
 import { defaultRand, randInt, type RandFn } from './random';
+import { seasonAt, softReset, tierFor, type SeasonProgress, type SeasonReward } from './season';
 
 export type SlotState = 'locked' | 'unlocking' | 'ready';
 export interface BallSlot {
@@ -60,6 +61,10 @@ export interface ProfileState {
   roadClaimed: number[];
   shop: { day: string; bought: string[]; freeClaimed: boolean };
   stats: { wins: number; losses: number; draws: number; threeCrowns: number; battles: number; cardsFound: number };
+  /** Temporada en curso (las cuentas anteriores a las temporadas no lo tienen hasta su primer cambio). */
+  season?: SeasonProgress;
+  /** Recompensa de la temporada anterior, pendiente de reclamar. */
+  pendingSeason?: SeasonReward | null;
 }
 
 /** Error de regla de juego. `code` es una clave de traducción (`econ.*`). */
@@ -97,6 +102,8 @@ export function freshProfile(now: number): ProfileState {
     roadClaimed: [],
     shop: { day: '', bought: [], freeClaimed: false },
     stats: { wins: 0, losses: 0, draws: 0, threeCrowns: 0, battles: 0, cardsFound: STARTER_DECK.length },
+    season: { id: seasonAt(now).id, best: 0, battles: 0 },
+    pendingSeason: null,
   };
 }
 
@@ -446,6 +453,10 @@ export function applyBattle(
   } else st.draws += 1;
   s.trophies = Math.max(0, s.trophies + res.trophies);
   s.maxTrophies = Math.max(s.maxTrophies, s.trophies);
+  if (s.season) {
+    s.season.battles += 1;
+    s.season.best = Math.max(s.season.best, s.trophies);
+  }
   s.gold += res.gold;
   s.crowns = Math.min(CROWNS_FOR_CROWN_BALL, s.crowns + myCrowns);
   res.kingLevelUp = addXp(s, res.xp);
@@ -464,6 +475,42 @@ export function sanitize(s: ProfileState): ProfileState {
   return s;
 }
 
+// ───────────────────────── Temporadas ─────────────────────────
+
+/**
+ * Si ha empezado una temporada nueva desde la última vez: reinicio suave de trofeos y
+ * recompensa pendiente (si jugó en la anterior). Devuelve true si ha cambiado algo.
+ * `rank` = puesto en el ranking global al cerrar la temporada (lo pone el servidor).
+ */
+export function rollSeason(s: ProfileState, now: number, rank?: number): boolean {
+  const current = seasonAt(now).id;
+  if (!s.season) {
+    s.season = { id: current, best: s.trophies, battles: 0 };
+    return true;
+  }
+  if (s.season.id === current) return false;
+  const old = s.season;
+  const before = s.trophies;
+  const after = softReset(before);
+  if (old.battles > 0) {
+    s.pendingSeason = { seasonId: old.id, best: Math.max(old.best, before), trophiesBefore: before, trophiesAfter: after, rank, tier: tierFor(Math.max(old.best, before)) };
+  }
+  s.trophies = after;
+  s.season = { id: current, best: after, battles: 0 };
+  return true;
+}
+
+/** Reclama la recompensa de la temporada anterior. */
+export function claimSeasonReward(s: ProfileState, rand: RandFn = defaultRand): { gold: number; gems: number; ball?: BallReward } {
+  const p = s.pendingSeason;
+  if (!p) fail('econ.claimed');
+  const { gold, gems, ball } = p!.tier;
+  s.gold += gold;
+  s.gems += gems;
+  s.pendingSeason = null;
+  return { gold, gems, ball: ball ? applyReward(s, rollBall(ball, arenaOf(s), rand)) : undefined };
+}
+
 // ───────────────────────── Solo en desarrollo ─────────────────────────
 
 /** "Modo prueba" de Perfil. El servidor solo lo permite si ALLOW_DEV_CHEATS=1. */
@@ -474,5 +521,6 @@ export function devCheat(s: ProfileState, kind: unknown): void {
   } else if (kind === 'trophies') {
     s.trophies += 300;
     s.maxTrophies = Math.max(s.maxTrophies, s.trophies);
+    if (s.season) s.season.best = Math.max(s.season.best, s.trophies);
   } else fail('econ.offer');
 }

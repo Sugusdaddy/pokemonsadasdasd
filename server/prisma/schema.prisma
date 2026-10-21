@@ -69,3 +69,25 @@ model Match {
   @@index([blueId])
   @@index([redId])
 }
+
+/// Temporada mensual (AAAA-MM). La fila se crea al empezar a cerrarla: así solo un proceso la cierra.
+model Season {
+  id        String    @id
+  closingAt DateTime  @default(now())
+  closedAt  DateTime?
+  results   SeasonResult[]
+}
+
+/// Clasificación final de una temporada (se guarda el top al cerrarla).
+model SeasonResult {
+  seasonId  String
+  season    Season  @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  accountId String
+  rank      Int
+  name      String
+  trophies  Int
+  best      Int
+
+  @@id([seasonId, accountId])
+  @@index([seasonId, rank])
+}

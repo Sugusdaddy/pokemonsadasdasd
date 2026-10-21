@@ -478,6 +478,18 @@ export function createIconTextures(scene: Phaser.Scene): void {
     g.fillStyle(O).fillCircle(32, 22, 15).fillRoundedRect(8, 36, 48, 26, 12);
     g.fillStyle(0x3fbf5a).fillCircle(32, 22, 12).fillRoundedRect(11, 39, 42, 20, 10);
   });
+  make('ic_social', (g) => {
+    // podio de tres escalones
+    g.fillStyle(O)
+      .fillRoundedRect(4, 30, 20, 30, 4)
+      .fillRoundedRect(22, 16, 20, 44, 4)
+      .fillRoundedRect(40, 38, 20, 22, 4);
+    g.fillStyle(0xb9c2e8).fillRoundedRect(7, 33, 14, 24, 3);
+    g.fillStyle(0xffc21a).fillRoundedRect(25, 19, 14, 38, 3);
+    g.fillStyle(0xd9873a).fillRoundedRect(43, 41, 14, 16, 3);
+    g.fillStyle(O).fillCircle(32, 8, 6);
+    g.fillStyle(0xfff1b8).fillCircle(32, 8, 4);
+  });
   make('ic_lock', (g) => {
     g.lineStyle(6, O).strokeCircle(32, 24, 12);
     g.fillStyle(O).fillRoundedRect(12, 26, 40, 32, 6);

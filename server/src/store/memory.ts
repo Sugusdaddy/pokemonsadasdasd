@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { ProfileState } from '@arena/shared';
-import type { AccountRow, MatchRecord, MatchSummary, Store } from './types';
+import type { AccountRow, MatchRecord, MatchSummary, RankEntry, RankRange, SeasonResultRow, Store } from './types';
 
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -11,6 +11,57 @@ export class MemoryStore implements Store {
   private wallets = new Map<string, string>();
   private nonces = new Map<string, { address: string; message: string; expiresAt: Date }>();
   private matches: MatchRecord[] = [];
+  private seasons = new Map<string, { closed: boolean; top: SeasonResultRow[] }>();
+
+  private ranked(range: RankRange): AccountRow[] {
+    return [...this.accounts.values()]
+      .filter(
+        (a) =>
+          a.state.trophies > 0 && (range.min ?? 0) <= a.state.trophies && a.state.trophies < (range.max ?? Infinity),
+      )
+      .sort(
+        (a, b) =>
+          b.state.trophies - a.state.trophies || b.state.kingLevel - a.state.kingLevel || +a.createdAt - +b.createdAt,
+      );
+  }
+
+  async leaderboard(range: RankRange, limit: number, offset: number): Promise<RankEntry[]> {
+    return this.ranked(range)
+      .slice(offset, offset + limit)
+      .map((a) => ({
+        accountId: a.id,
+        name: a.state.name,
+        trophies: a.state.trophies,
+        kingLevel: a.state.kingLevel,
+        wallet: a.wallets[0] ?? null,
+      }));
+  }
+
+  async countAbove(trophies: number, range: RankRange): Promise<number> {
+    return this.ranked(range).filter((a) => a.state.trophies > trophies).length;
+  }
+
+  async countRanked(range: RankRange): Promise<number> {
+    return this.ranked(range).length;
+  }
+
+  async rankedSnapshot() {
+    return this.ranked({}).map((a) => ({ accountId: a.id, trophies: a.state.trophies }));
+  }
+
+  async beginSeasonClose(id: string): Promise<boolean> {
+    if (this.seasons.has(id)) return false;
+    this.seasons.set(id, { closed: false, top: [] });
+    return true;
+  }
+
+  async finishSeasonClose(id: string, top: SeasonResultRow[]): Promise<void> {
+    this.seasons.set(id, { closed: true, top: clone(top) });
+  }
+
+  async seasonTop(id: string, limit: number): Promise<SeasonResultRow[]> {
+    return clone((this.seasons.get(id)?.top ?? []).slice(0, limit));
+  }
 
   async createAccount(state: ProfileState, isGuest: boolean, wallet?: string): Promise<AccountRow> {
     const row: AccountRow = {

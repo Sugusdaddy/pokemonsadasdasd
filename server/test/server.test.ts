@@ -21,6 +21,8 @@ import { startServer, type RunningServer } from '../src/app';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
 import { MemoryStore } from '../src/store/memory';
+import { closeSeasonIfNeeded } from '../src/seasons';
+import { seasonAt, previousSeasonId } from '@arena/shared';
 
 type StoredReplay = Replay & { meta: { hash: number; ticks: number } };
 
@@ -34,6 +36,7 @@ beforeAll(async () => {
     store: new MemoryStore(),
     allowCheats: true,
     rateLimits: false,
+    seasonJob: false,
     queueBotAfterMs: 1200,
     matchFillBotAfterMs: 1500,
     matchStartDelayMs: 150,
@@ -443,5 +446,70 @@ describe('cuentas y economía', () => {
     const saved = (await server.store.getAccount(o.accountId))!;
     expect(saved.state.trophies).toBe(120 + r.result.trophies);
     expect(saved.state.stats.losses).toBe(1);
+  });
+});
+
+// ───────────────────────── Rankings y temporadas ─────────────────────────
+
+interface Board {
+  total: number;
+  entries: Array<{ rank: number; accountId: string; name: string; trophies: number; wallet: string | null }>;
+  me: { rank: number | null; trophies: number } | null;
+}
+
+describe('rankings y temporadas', () => {
+  it('ranking global: de más a menos trofeos, empates comparten puesto y sin los de 0', async () => {
+    const a = await opts(90_500, 'Top');
+    const b = await opts(90_300, 'EmpateA');
+    const c = await opts(90_300, 'EmpateB');
+    const z = await opts(0, 'Cero');
+    const board = (await api<Board>('/leaderboard?scope=global&limit=10', b.token)).json;
+    const pos = (id: string) => board.entries.find((e) => e.accountId === id);
+    expect(pos(a.accountId)!.rank).toBe(1);
+    expect(pos(b.accountId)!.rank).toBe(2);
+    expect(pos(c.accountId)!.rank).toBe(2);
+    expect(pos(z.accountId)).toBeUndefined();
+    expect(board.me).toEqual({ rank: 2, trophies: 90_300 });
+    const zb = (await api<Board>('/leaderboard?scope=global', z.token)).json;
+    expect(zb.me).toEqual({ rank: null, trophies: 0 });
+  });
+
+  it('ranking por arena: solo los trofeos de esa arena', async () => {
+    const inArena1 = await opts(450, 'Luna');
+    const board = (await api<Board>('/leaderboard?scope=arena&arena=1&limit=100', inArena1.token)).json;
+    expect(board.entries.every((e) => e.trophies >= 300 && e.trophies < 700)).toBe(true);
+    expect(board.entries.some((e) => e.accountId === inArena1.accountId)).toBe(true);
+    expect(board.me?.rank).toBeGreaterThan(0);
+    expect((await api('/leaderboard?scope=arena&arena=99')).status).toBe(400);
+  });
+
+  it('cierre de temporada: puesto final, reinicio suave, recompensa reclamable una vez y archivo', async () => {
+    const now = Date.now();
+    const prev = previousSeasonId(seasonAt(now).id);
+    // un jugador que jugó la temporada pasada con muchos trofeos
+    const p = await opts(1, 'Veterano');
+    await server.store.mutate(p.accountId, (s) => {
+      s.trophies = 2400;
+      s.season = { id: prev, best: 2500, battles: 12 };
+    });
+    const r = await closeSeasonIfNeeded(server.store, now);
+    expect(r?.closed).toBe(prev);
+    expect(await closeSeasonIfNeeded(server.store, now)).toBeNull(); // solo una vez
+    const me = (await api('/me', p.token)).json.account.state as unknown as {
+      trophies: number;
+      pendingSeason: { seasonId: string; best: number; rank: number; tier: { gold: number; ball: string } };
+    };
+    expect(me.trophies).toBe(1600 + 400); // 2400 → reinicio suave
+    expect(me.pendingSeason).toMatchObject({ seasonId: prev, best: 2500, tier: { gold: 4000, ball: 'master' } });
+    expect(me.pendingSeason.rank).toBeGreaterThan(0);
+    const season = (await api<{ previous: { id: string; top: Array<{ name: string }> } }>('/season')).json;
+    expect(season.previous.id).toBe(prev);
+    expect(season.previous.top.length).toBeGreaterThan(0);
+    const before = (await api('/me', p.token)).json.account.state.gold;
+    const claim = await api<{ result: { gold: number; ball?: { type: string } }; account: AccountView }>('/me/season/claim', p.token, {});
+    expect(claim.status).toBe(200);
+    expect(claim.json.result.ball?.type).toBe('master');
+    expect(claim.json.account.state.gold).toBeGreaterThanOrEqual(before + 4000);
+    expect((await api('/me/season/claim', p.token, {})).json.error).toBe('econ.claimed');
   });
 });

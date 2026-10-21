@@ -116,6 +116,9 @@ class ProfileStore {
   get displayName(): string {
     return !this.d.name || this.d.name === DEFAULT_NAME ? t('player.defaultName') : this.d.name;
   }
+  get accountId(): string {
+    return this.account.id;
+  }
   get wallet(): string | null {
     return this.account.wallets[0] ?? null;
   }
@@ -183,6 +186,7 @@ class ProfileStore {
   buyCardOffer = (id: string) => this.act<{ key: string; count: number; isNew: boolean }>('/me/shop/card', { id });
   buyBall = (type: BallType) => this.act<BallReward>('/me/shop/ball', { type });
   buyGold = (index: number) => this.act<number>('/me/shop/gold', { index });
+  claimSeasonReward = () => this.act<{ gold: number; gems: number; ball?: BallReward }>('/me/season/claim');
   devCheat = (kind: 'resources' | 'trophies') => this.act<void>('/me/dev', { kind });
   reset = () => this.act<void>('/me/reset');
 

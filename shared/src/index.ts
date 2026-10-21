@@ -12,3 +12,4 @@ export * from './net/protocol';
 export * from './net/lockstep';
 export * from './net/view';
 export * from './meta/economy';
+export * from './meta/season';

@@ -11,12 +11,15 @@ import { CardsTab } from '../ui/tabs/CardsTab';
 import { ShopTab } from '../ui/tabs/ShopTab';
 import { RoadTab } from '../ui/tabs/RoadTab';
 import { ProfileTab } from '../ui/tabs/ProfileTab';
-import { SIDEBAR_W, TOP_BAR, playerName, type MenuScene, type Tab, type TabKey } from '../ui/tabs/Tab';
+import { SocialTab, tierLabel } from '../ui/tabs/SocialTab';
+import { openModal } from '../ui/Modal';
+import { SIDEBAR_W, TOP_BAR, playerName, runAction, type MenuScene, type Tab, type TabKey } from '../ui/tabs/Tab';
 import { shortAddress } from '../net/wallet';
 import { BaseScene } from './BaseScene';
 
 export const TOP = TOP_BAR; // alto de la barra superior
 export const NAV_Y = 1136; // inicio de la barra de pestañas (móvil)
+const NAV_STEP = 120; // ancho de cada pestaña en móvil (720 / 6)
 
 type TabClass = new (scene: MenuScene) => Tab;
 const TABS: Array<{ key: TabKey; label: string; icon: string; cls: TabClass }> = [
@@ -24,6 +27,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: string; cls: TabClass }> =
   { key: 'cards', label: 'nav.cards', icon: 'ic_cards', cls: CardsTab },
   { key: 'battle', label: 'nav.battle', icon: 'ic_battle', cls: BattleTab },
   { key: 'road', label: 'nav.road', icon: 'ic_road', cls: RoadTab },
+  { key: 'social', label: 'nav.social', icon: 'ic_social', cls: SocialTab },
   { key: 'profile', label: 'nav.profile', icon: 'ic_profile', cls: ProfileTab },
 ];
 
@@ -86,6 +90,7 @@ export class LobbyScene extends BaseScene implements MenuScene {
     this.input.on('pointerdown', () => Sfx.unlock());
     this.bindKeys();
     kit.fadeIn(this);
+    this.maybeSeasonEnd();
     // si la ventana cambió de forma durante la batalla, se aplica ahora
     this.game.events.emit('layout-check');
     (window as unknown as { __lobby: LobbyScene }).__lobby = this;
@@ -169,15 +174,15 @@ export class LobbyScene extends BaseScene implements MenuScene {
     }
     this.accent = this.add.graphics().setDepth(101);
     this.navItems = TABS.map((tb, i) => {
-      const x = L.pc ? 62 : 72 + i * 144;
-      const y = L.pc ? TOP + 78 + i * 128 : NAV_Y + 62;
+      const x = L.pc ? 62 : NAV_STEP / 2 + i * NAV_STEP;
+      const y = L.pc ? TOP + 72 + i * 120 : NAV_Y + 62;
       const active = L.pc
-        ? kit.panel(this, 12, y - 54, SIDEBAR_W - 26, 100, 'gold')
-        : kit.panel(this, x - 70, NAV_Y - 22, 140, 158, 'gold');
+        ? kit.panel(this, 12, y - 50, SIDEBAR_W - 26, 96, 'gold')
+        : kit.panel(this, x - NAV_STEP / 2 + 2, NAV_Y - 22, NAV_STEP - 4, 158, 'gold');
       active.setDepth(100).setVisible(false);
       const hover = L.pc
-        ? kit.panel(this, 12, y - 54, SIDEBAR_W - 26, 100, 'light')
-        : kit.panel(this, x - 66, NAV_Y + 2, 132, 128, 'light');
+        ? kit.panel(this, 12, y - 50, SIDEBAR_W - 26, 96, 'light')
+        : kit.panel(this, x - NAV_STEP / 2 + 4, NAV_Y + 2, NAV_STEP - 8, 128, 'light');
       hover.setDepth(100).setVisible(false).setAlpha(0.55);
       const icon = this.add.image(x, y, tb.icon).setDisplaySize(60, 60).setDepth(102);
       const label = L.pc
@@ -187,7 +192,7 @@ export class LobbyScene extends BaseScene implements MenuScene {
         const hk = kit.text(this, SIDEBAR_W - 30, y + 30, String(i + 1), 'small', '#7480c0', { size: 15, originX: 1 });
         hk.setDepth(102);
       }
-      const zone = L.pc ? this.add.zone(SIDEBAR_W / 2, y, SIDEBAR_W, 120) : this.add.zone(x, NAV_Y + 72, 144, 144);
+      const zone = L.pc ? this.add.zone(SIDEBAR_W / 2, y, SIDEBAR_W, 114) : this.add.zone(x, NAV_Y + 72, NAV_STEP, 144);
       zone.setInteractive({ useHandCursor: true }).setDepth(103);
       zone.on('pointerup', () => {
         if (!this.modalOpen) {
@@ -224,7 +229,7 @@ export class LobbyScene extends BaseScene implements MenuScene {
     this.drawBadges();
   }
 
-  /** Teclado: 1-5 cambian de pestaña y Enter empieza la batalla (Esc lo gestiona cada ventana). */
+  /** Teclado: 1-6 cambian de pestaña y Enter empieza la batalla (Esc lo gestiona cada ventana). */
   bindKeys(): void {
     const kb = this.input.keyboard;
     if (!kb) return;
@@ -260,6 +265,7 @@ export class LobbyScene extends BaseScene implements MenuScene {
     dot('road', RoadTab.claimable());
     // el servidor renueva la tienda cada día: basta con mirar si el regalo está sin cobrar
     dot('shop', !Profile.d.shop.freeClaimed);
+    dot('social', !!Profile.d.pendingSeason);
   }
 
   showTab(key: TabKey, instant = false): void {
@@ -273,6 +279,45 @@ export class LobbyScene extends BaseScene implements MenuScene {
       this.tweens.add({ targets: this.tab.root, alpha: 1, y: 0, duration: 180, ease: 'Cubic.easeOut' });
     }
     this.drawNav();
+  }
+
+  /** Si ha terminado una temporada con recompensa sin cobrar, la enseña. */
+  maybeSeasonEnd(): void {
+    const p = Profile.d.pendingSeason;
+    if (!p || this.modalOpen) return;
+    openModal(this, 600, 560, t('season.endTitle'), (box, close) => {
+      // si se cobra desde otra ventana (o el menú se rehízo a mitad de la petición), se cierra sola
+      const off = Profile.onChange(() => {
+        if (!Profile.d.pendingSeason) close();
+      });
+      box.once('destroy', off);
+      box.add(kit.text(this, 0, -200, t('season.endBody', { id: p.seasonId }), 'body', '#dfe4ff', { size: 22 }));
+      box.add(this.add.image(0, -120, 'ic_trophy').setDisplaySize(96, 96));
+      if (p.rank) box.add(kit.text(this, 0, -44, t('season.endRank', { n: p.rank }), 'h2', '#ffd75a', { size: 32 }));
+      box.add(kit.text(this, 0, 2, t('season.endBest', { n: p.best }), 'h3', '#ffffff', { size: 24 }));
+      box.add(
+        kit.text(this, 0, 40, t('season.endReset', { a: p.trophiesBefore, b: p.trophiesAfter }), 'body', '#aab3e8', {
+          size: 20,
+        }),
+      );
+      box.add(kit.panel(this, -260, 76, 520, 70, 'inset'));
+      box.add(kit.text(this, 0, 111, tierLabel(p.tier), 'label', '#ffffff', { size: 20 }));
+      box.add(
+        kit.button(this, 0, 210, 360, 76, t('season.claim'), 'primary', () => {
+          void runAction(
+            this,
+            'season-claim',
+            () => Profile.claimSeasonReward(),
+            (r) => {
+              close();
+              if (r.ball) return this.openBallScene(r.ball, 'social');
+              Sfx.play('coin');
+              this.drawBadges();
+            },
+          );
+        }),
+      );
+    });
   }
 
   /** Abre una Pokéball con la animación (sale del menú y vuelve a la pestaña indicada). */

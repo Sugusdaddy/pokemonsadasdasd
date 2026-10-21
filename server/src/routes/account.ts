@@ -19,6 +19,8 @@ import {
   claimCrownBall,
   claimRoad,
   claimDailyGift,
+  claimSeasonReward,
+  rollSeason,
   buyCardOffer,
   buyBall,
   buyGold,
@@ -101,6 +103,7 @@ export function accountRoutes(
       try {
         const now = Date.now();
         const { result, state } = await store.mutate(req.accountId!, (s) => {
+          rollSeason(s, now);
           tickSlots(s, now);
           refreshShop(s, now);
           return fn(s, req, now);
@@ -176,6 +179,7 @@ export function accountRoutes(
     const now = Date.now();
     try {
       const { state } = await store.mutate(req.accountId!, (s) => {
+        rollSeason(s, now);
         tickSlots(s, now);
         refreshShop(s, now);
       });
@@ -231,6 +235,12 @@ export function accountRoutes(
     '/me/balls/crown',
     auth,
     act((s) => claimCrownBall(s, rand)),
+  );
+
+  r.post(
+    '/me/season/claim',
+    auth,
+    act((s) => claimSeasonReward(s, rand)),
   );
 
   r.post(

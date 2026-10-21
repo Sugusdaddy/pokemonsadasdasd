@@ -14,6 +14,8 @@ import { ctx, type ServerSettings } from './context';
 import { MatchRoom } from './rooms/MatchRoom';
 import { QueueRoom } from './rooms/QueueRoom';
 import { accountRoutes } from './routes/account';
+import { leaderboardRoutes } from './routes/leaderboard';
+import { startSeasonJob } from './seasons';
 import { MemoryStore } from './store/memory';
 import { PrismaStore } from './store/prisma';
 import type { Store } from './store/types';
@@ -27,6 +29,8 @@ export interface StartOptions extends Partial<ServerSettings> {
   domain?: string;
   /** Límites de peticiones por IP (los tests los quitan). */
   rateLimits?: boolean;
+  /** Cierre automático de temporadas (los tests lo lanzan a mano). */
+  seasonJob?: boolean;
 }
 
 export interface RunningServer {
@@ -78,6 +82,7 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
       rateLimits: opts.rateLimits ?? true,
     }),
   );
+  app.use('/api', leaderboardRoutes(store));
   app.get('/api/replays', async (req, res) => {
     const list = await store.listMatches(Math.max(1, Math.min(100, Number(req.query.limit) || 20)));
     res.json(list.map((m) => ({ ...m, endedAt: m.endedAt.toISOString() })));
@@ -109,6 +114,7 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     );
   });
 
+  const stopSeasons = opts.seasonJob === false ? () => {} : startSeasonJob(store);
   const httpServer = http.createServer(app);
   const gameServer = new Server({ transport: new WebSocketTransport({ server: httpServer }), greet: false });
   gameServer.define('match', MatchRoom);
@@ -122,6 +128,7 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     gameServer,
     store,
     close: async () => {
+      stopSeasons();
       await gameServer.gracefullyShutdown(false);
       await store.close();
     },

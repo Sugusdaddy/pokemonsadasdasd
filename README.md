@@ -64,7 +64,7 @@ El diseño se elige solo según la forma de la ventana, o se fuerza en **Perfil 
 | `T`                 | Emotes (y luego `1`-`4`)                                        |
 | Esc (sin carta)     | Rendirse                                                        |
 | Espacio / `F`       | En repeticiones: pausa / velocidad x1-x2-x4                     |
-| `1`-`5`, Intro, Esc | En el menú: pestañas, batalla y cerrar ventanas                 |
+| `1`-`6`, Intro, Esc | En el menú: pestañas, batalla y cerrar ventanas                 |
 
 ## Idiomas
 
@@ -128,6 +128,32 @@ API (además de la de la Fase 1):
 
 **Base de datos**: mientras Railway esté disponible se usará su PostgreSQL. En desarrollo hay uno local que arranca
 solo. Sin `DATABASE_URL` el servidor guarda todo en memoria (y lo avisa), útil para probar rápido.
+
+## Rankings y temporadas (Fase 2B)
+
+Pestaña **Social** del menú (la 5.ª): clasificación y temporada.
+
+- **Clasificación global** y **por arena** (solo los jugadores con trofeos de esa arena), de 100 en 100. Con el mismo
+  número de trofeos se comparte puesto. Arriba sale tu puesto (o que aún no tienes, si estás a 0). Las cuentas con
+  wallet muestran la dirección abreviada; los invitados también salen.
+- **Temporadas mensuales** (mes natural en UTC, p. ej. `2026-10`). Se guarda tu máximo de trofeos de la temporada.
+- **Al terminar**:
+  - Reinicio suave: por encima de 1600 trofeos se pierde la mitad de lo que sobra (2400 → 2000).
+  - Recompensa según tus **trofeos máximos** de la temporada (tramos en `shared/src/meta/season.ts`: de 100 de oro a
+    4000 de oro + 150 gemas + Master Ball). Solo si jugaste alguna partida esa temporada.
+  - Al entrar sale la ventana de fin de temporada con tu puesto final y el botón para reclamarla (una sola vez).
+- **Cierre en el servidor**: un trabajo que se ejecuta al arrancar y cada 10 minutos (reintenta a los 30 s si falla)
+  congela el ranking, da a cada jugador su puesto, aplica el reinicio y archiva el top 1000 (tablas `Season` y
+  `SeasonResult`). La fila `Season` hace de cerrojo: aunque haya varios servidores, solo uno cierra cada temporada.
+  Quien no tenía trofeos cambia de temporada solo la próxima vez que entra.
+
+| Ruta                                                            | Qué hace                                                    |
+| --------------------------------------------------------------- | ----------------------------------------------------------- |
+| `GET /api/leaderboard?scope=global\|arena&arena=N&limit&offset` | Ranking (con tu puesto si mandas la sesión)                 |
+| `GET /api/season`                                               | Temporada actual, tramos de recompensa y top de la anterior |
+| `POST /api/me/season/claim`                                     | Cobra la recompensa de la temporada terminada               |
+
+Ahora va sobre PostgreSQL; cuando haya muchos jugadores pasará a Redis (sorted sets) sin cambiar la API.
 
 ## Online (Fase 1)
 
