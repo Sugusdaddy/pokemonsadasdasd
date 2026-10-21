@@ -19,6 +19,7 @@
     "audio": "tsx tools/build-audio.ts",
     "icons": "tsx tools/build-icons.ts",
     "golden": "tsx tools/golden-replays.ts",
+    "smoke": "tsx tools/smoke.ts",
     "typecheck": "tsc -p shared && tsc -p client && tsc -p server && tsc -p tools",
     "lint": "eslint .",
     "format": "prettier --write .",

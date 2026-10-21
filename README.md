@@ -41,6 +41,7 @@ Sin servidor, la pantalla de carga ofrece reintentar o jugar una **práctica** c
 | `npm run start:prod`      | Arranca el servidor empaquetado (lo que corre en producción; usa `PORT`)             |
 | `npm run build`           | Build de producción en `client/dist/` (estático, se puede subir a cualquier hosting) |
 | `npm run golden`          | Comprueba las repeticiones de referencia (`-- --update` las regenera)                |
+| `npm run smoke`           | Partida de prueba contra un servidor de verdad (`-- --server URL`, ver "Despliegue") |
 | `npm run assets`          | Regenera atlas y `pack.json` desde el pack de sprites                                |
 | `npm run assets:fan-only` | Igual, pero solo con sprites de fans (ver [ART_PIPELINE.md](ART_PIPELINE.md))        |
 | `npm run icons`           | Regenera los iconos de la app (`client/public/icons/`) desde el pixel art propio     |
@@ -324,9 +325,10 @@ server/   Servidor de juego (Colyseus + Express + Prisma)
   src/rooms/MatchRoom.ts  Partida autoritativa (validación, retardo, reconexión, espectadores)
   src/rooms/QueueRoom.ts  Cola de emparejamiento por trofeos
   test/                   Tests de integración (servidor real + clientes)
-tools/    build-assets.ts (atlas + pack.json), ensure-assets.ts, build-server.ts, golden-replays.ts
+tools/    build-assets.ts (atlas + pack.json), ensure-assets.ts, build-server.ts, golden-replays.ts, smoke.ts
 deploy/   nginx.conf y cabeceras de seguridad del cliente en Docker
 Dockerfile, docker-compose.yml, vercel.json   Despliegue (ver "Despliegue")
+.github/workflows/ci.yml                       CI de GitHub Actions
 ```
 
 ## Cómo funciona una batalla
@@ -622,6 +624,20 @@ Plan: **servidor + PostgreSQL en Railway** (entornos `staging` y `production`, c
 | `SHUTDOWN_DRAIN_SECONDS` | Tiempo para que terminen las partidas al apagar (300 por defecto en producción)  |
 | `SENTRY_DSN`             | Opcional: errores a Sentry                                                       |
 | `PORT`                   | Lo pone Railway                                                                  |
+
+### Repositorio y CI (5B)
+
+- Los **atlas de sprites** (`client/public/gen`, ~6 MB) van en git para que el CI y Vercel compilen el cliente sin
+  el pack original, que sigue fuera (`assets/SpritesPokemon`, 109 MB).
+- **GitHub Actions** (`.github/workflows/ci.yml`), en cada push a `main` y en cada pull request:
+  - **check**, en Node 18 y 22: migraciones sobre un PostgreSQL de verdad, tipos, lint, formato, todos los tests
+    (también los de Prisma y las repeticiones de referencia) y los builds del cliente y del servidor.
+  - **docker**: construye las imágenes, levanta `docker compose`, comprueba el cliente de nginx (CSP, cabeceras,
+    atlas) y juega dos **partidas de prueba**: una normal y otra mandando a mitad el `SIGTERM` de un despliegue,
+    que tiene que seguir hasta el final, con `/api/health` en 503, y después el servidor se apaga limpio.
+- **Prueba de humo** (`npm run smoke -- --server URL [--origin WEB] [--drain-cmd "…"]`): crea un invitado, juega
+  contra el bot, se rinde y comprueba resultado, recompensas, CORS y que la repetición guardada da la misma huella
+  con este código. Sirve igual contra staging y producción.
 
 Del cliente (al compilar): `VITE_SERVER_URL` (p. ej. `wss://arena-royale-production.up.railway.app`) y
 `VITE_SENTRY_DSN` (opcional).

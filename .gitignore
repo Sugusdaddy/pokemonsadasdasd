@@ -5,10 +5,10 @@ coverage/
 .DS_Store
 .env
 .env.*
-# Sprite pack (licencias: ver CREDITS.md) y assets generados a partir de él
+# Sprite pack original (licencias: ver CREDITS.md). Los atlas generados a partir de él
+# (client/public/gen, ~6 MB) sí van en git: el CI y el despliegue compilan el cliente con ellos.
 assets/SpritesPokemon/
 assets/custom/
-client/public/gen/
 server/data/
 server/.pgdata/
 server/.env

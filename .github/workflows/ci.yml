@@ -1,0 +1,103 @@
+# CI de Arena Royale: en cada push a main y en cada pull request.
+#  - check: tipos, lint, formato, todos los tests (con PostgreSQL de verdad) y los builds,
+#    en Node 18 (el de desarrollo) y 22 (el de la imagen de producción).
+#  - docker: construye las imágenes, levanta docker compose (Postgres + servidor + cliente)
+#    y juega partidas de prueba contra él, una de ellas apagando el servidor a mitad
+#    (lo que pasa en cada despliegue) para comprobar que no se corta.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Tipos, lint, tests y build (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 22]
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: arena
+          POSTGRES_PASSWORD: arena
+          POSTGRES_DB: arena
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U arena -d arena"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Migraciones
+        run: npm run db:deploy
+        env:
+          DATABASE_URL: postgresql://arena:arena@localhost:5432/arena
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - name: Tests (incluidas las repeticiones de referencia y los de PostgreSQL)
+        run: npm test
+        env:
+          TEST_DATABASE_URL: postgresql://arena:arena@localhost:5432/arena
+      - name: Build del cliente
+        run: npm run build -w client
+      - name: Build del servidor
+        run: npm run build:server
+
+  docker:
+    name: Docker y compose (partidas de prueba)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # para el script de la prueba de humo (tools/smoke.ts)
+      - run: npm ci --no-audit --no-fund
+      - name: Construir las imágenes
+        run: docker compose build
+      - name: Arrancar Postgres, servidor y cliente
+        run: |
+          docker compose up -d
+          for i in $(seq 1 60); do curl -fsS http://localhost:2567/api/health && break; sleep 2; done
+          curl -fsS http://localhost:2567/api/health
+      - name: 'Cliente (nginx): página, CSP, cabeceras y atlas'
+        run: |
+          curl -fsS http://localhost:8080/ | grep -q 'Content-Security-Policy'
+          curl -fsSI http://localhost:8080/ | grep -qi '^x-frame-options: DENY'
+          curl -fsS -o /dev/null http://localhost:8080/sw.js
+          curl -fsS -o /dev/null http://localhost:8080/gen/manifest.json
+      - name: Partida de prueba
+        run: npm run smoke -- --server http://localhost:2567 --origin http://localhost:8080
+      - name: Partida con apagado a mitad (el SIGTERM de un despliegue)
+        run: npm run smoke -- --server http://localhost:2567 --drain-cmd "docker compose kill -s SIGTERM server"
+      - name: El servidor terminó limpio
+        run: test "$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose ps -aq server)")" = 0
+      - name: Registros (si algo ha fallado)
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Apagar
+        if: always()
+        run: docker compose down -v
