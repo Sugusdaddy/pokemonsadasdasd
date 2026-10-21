@@ -9,6 +9,7 @@ import {
   type Winner,
   type SeasonInfo,
   type SeasonTier,
+  type Balance,
 } from '@arena/shared';
 import { sessionToken } from './session';
 
@@ -93,6 +94,8 @@ export const api = {
       `/api/leaderboard?scope=${scope}&limit=${opts.limit ?? 50}&offset=${opts.offset ?? 0}${scope === 'arena' ? `&arena=${opts.arena ?? 0}` : ''}`,
     ),
   season: () => get<SeasonOverview>('/api/season'),
+  /** Balance de cartas en vigor (lo que enseñan los menús). */
+  balance: () => get<Balance>('/api/balance'),
 };
 
 /** Lo que el jugador manda al servidor al unirse: solo su sesión (el resto lo sabe el servidor). */

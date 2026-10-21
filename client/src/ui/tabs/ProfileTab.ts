@@ -24,6 +24,8 @@ import {
   setAutoLow,
   type QualityLevel,
 } from '../../systems/Quality';
+import { applyAccessibility } from '../../systems/Accessibility';
+import { refreshTeamArt } from '../../art';
 
 export class ProfileTab extends Tab {
   override build(): void {
@@ -126,6 +128,26 @@ export class ProfileTab extends Tab {
         this.rebuild();
       },
     );
+
+    // ── Accesibilidad ──
+    const yesNo: Array<[string, string]> = [
+      ['0', t('common.no')],
+      ['1', t('common.yes')],
+    ];
+    y = this.segmented(P, rx, W, y, t('profile.colorblind'), settings.colorblind ? '1' : '0', yesNo, (v) => {
+      settings.colorblind = v === '1';
+      Profile.saveSettings();
+      // las torres y peanas llevan los colores de equipo pintados: se redibujan
+      if (applyAccessibility()) refreshTeamArt(s);
+      this.rebuild();
+    });
+    y = this.segmented(P, rx, W, y, t('profile.bigText'), settings.bigText ? '1' : '0', yesNo, (v) => {
+      settings.bigText = v === '1';
+      Profile.saveSettings();
+      applyAccessibility();
+      // todo el menú se vuelve a dibujar con el tamaño nuevo
+      s.scene.restart({ tab: 'profile' });
+    });
 
     // ── Pantalla e idioma ──
     y = this.segmented(

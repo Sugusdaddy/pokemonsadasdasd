@@ -4,6 +4,7 @@ import { Server, matchMaker } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import {
   isFriendlyCode,
+  NO_BALANCE,
   DEFAULT_PORT,
   QUEUE_BOT_AFTER_MS,
   MATCH_FILL_BOT_AFTER_MS,
@@ -69,6 +70,8 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   if (store.kind === 'memory' && !opts.store)
     console.warn('[arena] sin DATABASE_URL: las cuentas se guardan en memoria');
   ctx.store = store;
+  const bal = await store.currentBalance();
+  ctx.balance = bal ? { v: bal.version, o: bal.overrides } : NO_BALANCE;
   const admins = opts.adminWallets ?? (process.env.ADMIN_WALLETS ?? '').split(',');
   ctx.adminWallets = new Set(admins.map((w) => w.trim()).filter(Boolean));
   for (const w of ctx.adminWallets)
@@ -84,6 +87,8 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     next();
   });
   app.get('/api/health', (_req, res) => void res.json({ ok: true, db: store.kind }));
+  // balance de cartas en vigor (los menús enseñan estos números)
+  app.get('/api/balance', (_req, res) => void res.json(ctx.balance));
   app.use(
     '/api',
     accountRoutes(store, {

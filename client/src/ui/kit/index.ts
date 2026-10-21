@@ -23,6 +23,12 @@ export interface TextOpts extends Phaser.Types.GameObjects.Text.TextStyle {
   dropShadow?: boolean;
 }
 
+let textBoost = 1;
+/** Accesibilidad: los textos de lectura (body, small) más grandes. */
+export function setTextBoost(k: number): void {
+  textBoost = k;
+}
+
 /** Texto con la escala tipográfica del juego: títulos con contorno y sombra, cuerpo limpio. */
 export function text(
   scene: Scene,
@@ -35,7 +41,7 @@ export function text(
 ): Phaser.GameObjects.Text {
   const t = TYPE[style];
   const { originX, originY, size, dropShadow, ...rest } = opts;
-  const px = size ?? t.size;
+  const px = Math.round((size ?? t.size) * (style === 'body' || style === 'small' ? textBoost : 1));
   const stroke = t.stroke ? Math.max(2, Math.round((t.stroke * px) / t.size)) : 0;
   const o = scene.add.text(x, y, str, {
     fontFamily: t.font,

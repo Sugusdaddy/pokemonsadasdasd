@@ -551,6 +551,27 @@ torres son del equipo. Las tropas de tu compañero llevan el aro azul claro.
   anterior no puede conectarse: no sabría dibujar una partida 2v2).
 - Pendiente para más adelante: buscar partida **en pareja** (dos amigos juntos contra otra pareja de la cola).
 
+## Balance, estadísticas, accesibilidad y errores (Fase 4E)
+
+- **Estadísticas de cartas**: al acabar cada partida (menos las amistosas), por cada jugador (no bots) cada carta de
+  su mazo suma una partida, una victoria si ganó su equipo y las veces que la jugó. Se guardan por versión de
+  balance (tabla `CardStat`), así se ve el efecto de cada cambio.
+- **Balance editable**: en **Admin → Cartas** está la tabla de victorias y uso (en rojo las que ganan demasiado, en
+  azul las que poco). Tocando una carta se cambian su **vida, daño, segundos entre ataques y coste** (entre ¼ y 4
+  veces la base) y **Guardar versión** pide una nota y crea una versión nueva (tabla `BalanceVersion`, con
+  historial y registro de admin). Vale para las partidas que empiecen a partir de ese momento: cada partida lleva en
+  `MatchSetup.balance` los números con los que se jugó, así que el servidor, los clientes y las **repeticiones**
+  usan siempre esos, aunque luego cambien. Lo de `cardDefs.ts` sigue siendo la base; sin cambios, las partidas son
+  idénticas a las de antes. Los menús enseñan el balance en vigor (`GET /api/balance`). API de admin:
+  `GET/POST /api/admin/balance` y `GET /api/admin/cards?version=N`. Protocolo v4 (las partidas llevan el balance).
+- **Accesibilidad** (Perfil): **colores para daltonismo** (los equipos pasan a azul cielo y bermellón de la paleta de
+  Okabe-Ito, también en las torres y peanas) y **texto grande** (descripciones y ayudas un 15 % más grandes).
+- **Errores a Sentry, solo si lo activas**: en el servidor con `SENTRY_DSN` (ver `server/.env.example`) y en el
+  navegador con `VITE_SENTRY_DSN` al compilar. Sin esas variables **no se carga el SDK ni se manda nada**. Con ellas
+  se mandan los errores sin datos personales: sin usuario, sin cabeceras (la sesión), sin cookies, sin el nombre de
+  la máquina, sin lo que sale por consola ni el rastro de clics, y sin trazas de rendimiento. Hay un test que lo
+  comprueba con un "Sentry" falso en local. (SDK 10: el 11 necesita Node 20.)
+
 ## Arte y modo "solo fans"
 
 Ver [ART_PIPELINE.md](ART_PIPELINE.md): cómo se generan los atlas, la opción `ART.spriteSource = 'fan-only'`

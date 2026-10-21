@@ -1,6 +1,21 @@
 import {
+  BALANCE_STATS,
+  allCardKeys,
+  getCard,
+  setLiveBalance,
+  statApplies,
+  statRange,
+  withOverride,
+  type Balance,
+  type BalanceStat,
+  type CardOverride,
+} from '@arena/shared';
+import { cardName } from '../../i18n';
+import { Sfx } from '../../systems/Sfx';
+import {
   Admin,
   MUTE_OPTIONS,
+  type CardStat,
   type AdminLogEntry,
   type AdminPlayer,
   type AdminStats,
@@ -17,7 +32,7 @@ import { Tab, runAction, sectionHeader, type Area } from './Tab';
 import { IdeasView } from './social/IdeasView';
 import { confirm, msgTime, panelButton } from './social/common';
 
-type Section = 'summary' | 'reports' | 'players' | 'ideas' | 'log';
+type Section = 'summary' | 'reports' | 'players' | 'cards' | 'ideas' | 'log';
 const BAR_H = 76;
 
 /** Lo cargado (se conserva al redibujar y al volver a la pestaña). */
@@ -27,7 +42,19 @@ const data = {
   query: '',
   players: null as AdminPlayer[] | null,
   log: null as AdminLogEntry[] | null,
+  /** Balance en vigor, cambios sin guardar y estadísticas de las cartas. */
+  balance: null as Balance | null,
+  draft: null as Record<string, CardOverride> | null,
+  cards: null as { version: number; decks: number; rows: CardStat[] } | null,
   failed: false,
+};
+
+/** Paso de los botones − / + del editor de balance. */
+const STEP: Record<BalanceStat, (base: number) => number> = {
+  hp: (b) => Math.max(1, Math.round(b * 0.05)),
+  dmg: (b) => Math.max(1, Math.round(b * 0.05)),
+  hitSpeed: () => 0.05,
+  cost: () => 1,
 };
 
 const muteLabel = (h: number): string => (h < 24 ? t('admin.hours', { n: h }) : t('admin.days', { n: h / 24 }));
@@ -56,6 +83,12 @@ export class AdminTab extends Tab {
       else if (sec === 'reports') data.reports = await Admin.reports();
       else if (sec === 'players' && data.query) data.players = await Admin.players(data.query);
       else if (sec === 'log') data.log = await Admin.log();
+      else if (sec === 'cards') {
+        const [b, c] = await Promise.all([Admin.balance(), Admin.cards()]);
+        data.balance = b.current;
+        data.draft ??= structuredClone(b.current.o);
+        data.cards = c;
+      }
       data.failed = false;
     } catch {
       data.failed = true;
@@ -82,6 +115,7 @@ export class AdminTab extends Tab {
     if (sec === 'summary') y = this.buildSummary(P, pad, y, w);
     else if (sec === 'reports') y = this.buildReports(P, pad, y, w);
     else if (sec === 'players') y = this.buildPlayers(P, pad, y, w);
+    else if (sec === 'cards') y = this.buildCards(P, pad, y, w);
     else y = this.buildLog(P, pad, y, w);
     P.setContentHeight(y + 30);
   }
@@ -94,6 +128,7 @@ export class AdminTab extends Tab {
       ['summary', t('admin.secSummary')],
       ['reports', t('admin.secReports')],
       ['players', t('admin.secPlayers')],
+      ['cards', t('admin.secCards')],
       ['ideas', t('admin.secIdeas')],
       ['log', t('admin.secLog')],
     ];
@@ -138,6 +173,177 @@ export class AdminTab extends Tab {
       ),
     );
     return y + 100;
+  }
+
+  // ───────── Cartas: victorias, uso y balance ─────────
+
+  /** ¿Hay cambios sin guardar respecto al balance en vigor? */
+  private pendingCards(): string[] {
+    const cur = data.balance?.o ?? {};
+    const draft = data.draft ?? {};
+    const keys = new Set([...Object.keys(cur), ...Object.keys(draft)]);
+    return [...keys].filter((k) => JSON.stringify(cur[k] ?? {}) !== JSON.stringify(draft[k] ?? {}));
+  }
+
+  private buildCards(P: ScrollPanel, x: number, y: number, w: number): number {
+    const s = this.scene;
+    const st = data.cards;
+    sectionHeader(
+      s,
+      x,
+      y + 14,
+      w,
+      t('admin.cardsTitle', { v: data.balance?.v ?? 0 }),
+      st ? t('admin.cardsGames', { n: st.decks }) : '',
+    ).forEach((o) => P.add(o));
+    y += 60;
+    if (!st || !data.balance) return this.loading(P, x, y, w);
+    // cambios sin guardar
+    const pending = this.pendingCards();
+    if (pending.length) {
+      P.add(kit.panel(s, x, y, w, 78, 'gold'));
+      P.add(
+        kit.text(s, x + 20, y + 39, t('admin.cardsPending', { n: pending.length }), 'label', '#3a2600', {
+          originX: 0,
+          size: 18,
+        }),
+      );
+      panelButton(P, x + w - 300, y + 39, 170, 54, t('admin.cardsSave'), 'success', () => this.saveBalance());
+      panelButton(P, x + w - 110, y + 39, 170, 54, t('admin.cardsDiscard'), 'neutral', () => {
+        data.draft = structuredClone(data.balance!.o);
+        this.rebuild();
+      });
+      y += 92;
+    }
+    P.add(
+      kit.text(s, x + w / 2, y + 4, t('admin.cardsHint'), 'small', '#7480c0', {
+        size: 15,
+        originY: 0,
+        wordWrap: { width: w - 20 },
+      }),
+    );
+    y += 56;
+    // tabla: de más a menos victorias (las que no se han jugado, al final)
+    const byKey = new Map(st.rows.map((r) => [r.key, r]));
+    const rows = allCardKeys().map((k) => ({ k, r: byKey.get(k) }));
+    const rate = (r?: CardStat) => (r && r.games ? r.wins / r.games : -1);
+    rows.sort((a, b) => rate(b.r) - rate(a.r) || a.k.localeCompare(b.k));
+    const cols = L.pc ? [0.36, 0.16, 0.16, 0.16, 0.16] : [0.4, 0.2, 0.2, 0.2, 0];
+    const colX = (i: number) => x + 16 + cols.slice(0, i).reduce((a, b) => a + b, 0) * (w - 32);
+    const head = [t('admin.colCard'), t('admin.colWin'), t('admin.colUse'), t('admin.colGames'), t('admin.colPlays')];
+    head.forEach((h, i) => cols[i] && P.add(kit.text(s, colX(i), y, h, 'label', '#aab3e8', { originX: 0, size: 15 })));
+    y += 26;
+    for (const { k, r } of rows) {
+      const ov = data.draft?.[k];
+      P.add(kit.panel(s, x, y, w, 50, ov ? 'blue' : 'card'));
+      const card = getCard(k);
+      const win = rate(r);
+      const winCol = win < 0 ? '#7480c0' : win > 0.58 ? '#ff9a9a' : win < 0.42 ? '#9fc4ff' : '#ffffff';
+      const cells = [
+        `${ov ? '✎ ' : ''}${cardName(card)}`,
+        win < 0 ? '—' : `${Math.round(win * 100)} %`,
+        r && st.decks ? `${Math.round((r.games / st.decks) * 100)} %` : '—',
+        r ? String(r.games) : '0',
+        r && r.games ? (r.plays / r.games).toFixed(1) : '—',
+      ];
+      cells.forEach((txt, i) => {
+        if (!cols[i]) return;
+        P.add(kit.text(s, colX(i), y + 25, txt, 'label', i === 1 ? winCol : '#ffffff', { originX: 0, size: 17 }));
+      });
+      P.addTap(x + w / 2, y + 25, w, 50, () => {
+        Sfx.play('click');
+        this.editCard(k);
+      });
+      y += 56;
+    }
+    return y;
+  }
+
+  /** Editor de una carta: − / + por estadística, sobre una copia (se guarda todo junto). */
+  private editCard(key: string): void {
+    const s = this.scene;
+    const base = getCard(key);
+    const stats = BALANCE_STATS.filter((st) => statApplies(base, st));
+    openModal(s, 620, 210 + stats.length * 92, cardName(base), (box, close) => {
+      const content = s.add.container(0, 0);
+      box.add(content);
+      const H = 210 + stats.length * 92;
+      const render = () => {
+        content.removeAll(true);
+        const cur = withOverride(base, data.draft?.[key]);
+        let y = -H / 2 + 50;
+        for (const st of stats) {
+          const changed = cur[st] !== base[st];
+          content.add(kit.panel(s, -280, y, 560, 78, changed ? 'blue' : 'dark'));
+          content.add(kit.text(s, -256, y + 26, t(`admin.stat.${st}`), 'label', '#ffffff', { originX: 0, size: 19 }));
+          content.add(
+            kit.text(s, -256, y + 54, t('admin.statBase', { n: base[st] }), 'small', '#aab3e8', {
+              originX: 0,
+              size: 14,
+            }),
+          );
+          content.add(
+            kit.text(s, 120, y + 39, String(cur[st]), 'number', changed ? '#ffd75a' : '#ffffff', { size: 26 }),
+          );
+          const [lo, hi] = statRange(base, st);
+          const set = (v: number) => {
+            const value = Math.min(hi, Math.max(lo, st === 'hitSpeed' ? Math.round(v * 100) / 100 : Math.round(v)));
+            const ov = { ...(data.draft![key] ?? {}) };
+            if (value === base[st]) delete ov[st];
+            else ov[st] = value;
+            if (Object.keys(ov).length) data.draft![key] = ov;
+            else delete data.draft![key];
+            render();
+          };
+          content.add(
+            kit.button(s, 30, y + 39, 64, 56, '−', 'neutral', () => set(cur[st] - STEP[st](base[st])), { size: 30 }),
+          );
+          content.add(
+            kit.button(s, 210, y + 39, 64, 56, '+', 'neutral', () => set(cur[st] + STEP[st](base[st])), { size: 30 }),
+          );
+          y += 92;
+        }
+        content.add(
+          kit.button(
+            s,
+            -140,
+            H / 2 - 60,
+            240,
+            70,
+            t('admin.cardReset'),
+            'neutral',
+            () => {
+              delete data.draft![key];
+              render();
+            },
+            { size: 22 },
+          ),
+        );
+        content.add(kit.button(s, 140, H / 2 - 60, 240, 70, t('common.ok'), 'success', close, { size: 26 }));
+      };
+      render();
+      box.once('destroy', () => this.rebuild());
+    });
+  }
+
+  /** Guarda todos los cambios como una versión nueva (con una nota de qué y por qué). */
+  private saveBalance(): void {
+    const s = this.scene;
+    void textPrompt(t('admin.cardsNote'), { maxLength: 120 }).then((note) => {
+      if (!note?.trim()) return;
+      void runAction(
+        s,
+        'admin:balance',
+        () => Admin.saveBalance(data.draft ?? {}, note.trim()),
+        (r) => {
+          data.balance = r.current;
+          data.draft = structuredClone(r.current.o);
+          setLiveBalance(r.current);
+          toast(s, t('admin.cardsSaved', { v: r.current.v }), '#7dff8a');
+          void this.load();
+        },
+      );
+    });
   }
 
   // ───────── Resumen ─────────

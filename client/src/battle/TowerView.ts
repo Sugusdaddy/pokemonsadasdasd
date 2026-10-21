@@ -6,6 +6,7 @@ import { Sfx } from '../systems/Sfx';
 import { shake } from '../systems/Shake';
 import { txt } from '../ui/style';
 import type { FxPools } from './Pools';
+import { TEAM } from '../systems/teamColors';
 
 /** Dibujo de una torre y de su guardián. Los datos (vida, activa) vienen de la simulación. */
 export class TowerView {
@@ -119,7 +120,7 @@ export class TowerView {
     this.scene.tweens.add({ targets: this.sprite, alpha: 0, delay: 600, duration: 400 });
     shake(this.scene, 350, 0.012);
     Sfx.play('tower');
-    const col = this.mine ? COLORS.player : COLORS.enemy;
+    const col = this.mine ? TEAM.player : TEAM.enemy;
     for (let i = 0; i < 18; i++) fx.debris(this.t.x, this.sy - 30, i % 3 ? 0x8f91a0 : col);
     fx.ring(this.t.x, this.sy, 90, palette('fire')[3]);
     this.drawHp();
@@ -171,13 +172,7 @@ export class TowerView {
     const bx = t.x - w / 2;
     const by = this.sy + 30;
     g.fillStyle(COLORS.panelDark).fillRoundedRect(bx - 2, by - 2, w + 4, h + 4, 4);
-    g.fillStyle(this.mine ? COLORS.player : COLORS.enemy).fillRoundedRect(
-      bx,
-      by,
-      Math.max(2, w * (t.hp / t.maxHp)),
-      h,
-      3,
-    );
+    g.fillStyle(this.mine ? TEAM.player : TEAM.enemy).fillRoundedRect(bx, by, Math.max(2, w * (t.hp / t.maxHp)), h, 3);
     // insignia de nivel
     g.fillStyle(COLORS.panelDark).fillCircle(bx - 10, by + h / 2, 13);
     g.fillStyle(this.mine ? 0x3a7cff : 0xc8303a).fillCircle(bx - 10, by + h / 2, 10);

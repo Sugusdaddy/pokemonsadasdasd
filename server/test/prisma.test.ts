@@ -245,4 +245,20 @@ describe.skipIf(!url)('PostgreSQL (PrismaStore)', () => {
     const claims = await Promise.all([store.markPrizeClaimed(t.id, owner.id), store.markPrizeClaimed(t.id, owner.id)]);
     expect(claims.filter(Boolean)).toHaveLength(1);
   });
+
+  it('balance: versiones en orden y estadísticas de cartas que se suman sin perder ninguna', async () => {
+    const before = (await store.currentBalance())?.version ?? 0;
+    const a = await store.saveBalance({ pikachu: { dmg: 70 } }, 'prueba', 'admin-test');
+    expect(a.version).toBeGreaterThan(before);
+    expect((await store.currentBalance())?.overrides).toEqual({ pikachu: { dmg: 70 } });
+    const v = 900_000 + Math.floor(Math.random() * 1000);
+    await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        store.recordCardStats(v, [{ key: 'pikachu', games: 1, wins: i % 2, plays: 2 }]),
+      ),
+    );
+    expect(await store.cardStats(v)).toEqual([{ key: 'pikachu', games: 10, wins: 5, plays: 20 }]);
+    await store.db.cardStat.deleteMany({ where: { version: v } });
+    await store.db.balanceVersion.deleteMany({ where: { adminId: 'admin-test' } });
+  });
 });

@@ -13,7 +13,7 @@ import type {
   Team,
   Winner,
 } from '@arena/shared';
-import type { RuleSet, TournamentStanding } from '@arena/shared';
+import type { CardOverride, RuleSet, TournamentStanding } from '@arena/shared';
 
 export interface AccountRow {
   id: string;
@@ -301,6 +301,33 @@ export interface AdminStore {
   listAdminLog(limit: number): Promise<AdminLogRow[]>;
 }
 
+// ───────────────────────── Balance y estadísticas de cartas ─────────────────────────
+
+export interface BalanceRow {
+  version: number;
+  overrides: Record<string, CardOverride>;
+  note: string;
+  adminId: string;
+  createdAt: Date;
+}
+
+export interface CardStatRow {
+  key: string;
+  games: number;
+  wins: number;
+  plays: number;
+}
+
+export interface BalanceStore {
+  /** La versión en vigor (la última), o null si nunca se ha cambiado nada. */
+  currentBalance(): Promise<BalanceRow | null>;
+  balanceHistory(limit: number): Promise<BalanceRow[]>;
+  saveBalance(overrides: Record<string, CardOverride>, note: string, adminId: string): Promise<BalanceRow>;
+  /** Suma partidas, victorias y jugadas de cada carta (una fila por carta del mazo de un jugador). */
+  recordCardStats(version: number, rows: CardStatRow[]): Promise<void>;
+  cardStats(version: number): Promise<CardStatRow[]>;
+}
+
 // ───────────────────────── Torneos ─────────────────────────
 
 export interface TournamentRow {
@@ -348,7 +375,7 @@ export interface TournamentStore {
  * Acceso a datos. Hay dos implementaciones con el mismo comportamiento:
  * PrismaStore (PostgreSQL) y MemoryStore (tests y arranque sin base de datos).
  */
-export interface Store extends SocialStore, AdminStore, TournamentStore {
+export interface Store extends SocialStore, AdminStore, TournamentStore, BalanceStore {
   readonly kind: 'postgres' | 'memory';
 
   createAccount(state: ProfileState, isGuest: boolean, wallet?: string): Promise<AccountRow>;

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ARENA, RULES, COLORS, W, T, PLAYER_EMOTES, formation, getCard, type Card } from '@arena/shared';
+import { ARENA, RULES, COLORS, W, T, PLAYER_EMOTES, formation, type Card } from '@arena/shared';
 import { animKey, animInfo, pkAtlas } from '../systems/Assets';
 import { Sfx } from '../systems/Sfx';
 import { L } from '../layout';
@@ -7,6 +7,7 @@ import { makeCardView, type CardView } from './CardView';
 import { txt } from './style';
 import { t, emoteText } from '../i18n';
 import type { BattleScene } from '../scenes/BattleScene';
+import { TEAM } from '../systems/teamColors';
 
 const CARD_W = 132,
   CARD_H = 158;
@@ -169,12 +170,19 @@ export class Hand {
     this.handSig = this.cycle.hand.join('|');
     const lay = this.lay;
     this.views = this.cycle.hand.map((k, i) =>
-      makeCardView(this.b, getCard(k), lay.slotX(i), lay.cardY, CARD_W, CARD_H, {
+      makeCardView(this.b, this.b.match.baseCard(k), lay.slotX(i), lay.cardY, CARD_W, CARD_H, {
         level: this.levels[k],
         compact: true,
       }).setDepth(5002),
     );
-    this.nextView = makeCardView(this.b, getCard(this.cycle.next), lay.next.x, lay.next.y, 74, 92).setDepth(5002);
+    this.nextView = makeCardView(
+      this.b,
+      this.b.match.baseCard(this.cycle.next),
+      lay.next.x,
+      lay.next.y,
+      74,
+      92,
+    ).setDepth(5002);
     this.layout();
     this.buildGhost();
   }
@@ -218,7 +226,7 @@ export class Hand {
     this.ghost.removeAll(true);
     this.ghostCard = null;
     if (this.selected < 0) return;
-    const card = getCard(this.cycle.hand[this.selected]);
+    const card = this.b.match.baseCard(this.cycle.hand[this.selected]);
     this.ghostCard = card;
     if (card.type === 'spell') {
       const g = this.b.add.graphics();
@@ -234,7 +242,7 @@ export class Hand {
       this.ghost.add(r);
     }
     for (const [dx, dy] of formation(card.count, 0.55 * T)) {
-      const sh = this.b.add.ellipse(dx, dy, card.radius * 2.6, card.radius * 1.2).setStrokeStyle(3, COLORS.player, 0.9);
+      const sh = this.b.add.ellipse(dx, dy, card.radius * 2.6, card.radius * 1.2).setStrokeStyle(3, TEAM.player, 0.9);
       const sp = this.b.add
         .sprite(dx, dy - (card.flying ? 22 : 0), pkAtlas(card.pokemon), 'Idle_4_0')
         .setScale(card.scale)
@@ -400,7 +408,7 @@ export class Hand {
     const e = this.b.match.elixir[this.b.mySeatKey];
     this.views.forEach((v, i) => {
       const k = this.cycle.hand[i];
-      v.dim.setVisible(getCard(k).cost > e || this.b.isPending(k));
+      v.dim.setVisible(this.b.match.baseCard(k).cost > e || this.b.isPending(k));
     });
     const w = this.lay.elixir.w;
     const fill = Math.max(0, Math.min(1, e / RULES.elixirMax));

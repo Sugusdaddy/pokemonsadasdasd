@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { FRIENDLY_CODE_ALPHABET } from '@arena/shared';
+import { FRIENDLY_CODE_ALPHABET, NO_BALANCE, type Balance } from '@arena/shared';
 import type { Store } from './store/types';
 
 /** Ajustes del servidor (los tests los acortan). */
@@ -20,6 +20,8 @@ export const ctx = {
   friendly: new Map<string, string>(),
   /** Wallets con acceso a la pestaña de admin (ADMIN_WALLETS). */
   adminWallets: new Set<string>(),
+  /** Balance de cartas en vigor (se carga al arrancar y lo cambia el admin). Lo llevan las partidas nuevas. */
+  balance: NO_BALANCE as Balance,
 };
 
 export function store(): Store {

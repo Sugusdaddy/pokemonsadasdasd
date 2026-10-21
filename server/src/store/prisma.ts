@@ -40,8 +40,10 @@ import type {
   Store,
   TournamentPlayerRow,
   TournamentRow,
+  BalanceRow,
+  CardStatRow,
 } from './types';
-import type { RuleSet } from '@arena/shared';
+import type { CardOverride, RuleSet } from '@arena/shared';
 
 type DbAccount = Prisma.AccountGetPayload<{ include: { wallets: true } }>;
 
@@ -636,6 +638,54 @@ export class PrismaStore implements Store {
     createdAt: i.createdAt,
     updatedAt: i.updatedAt,
   });
+
+  // ───────────────────────── Balance y estadísticas de cartas ─────────────────────────
+
+  private toBalance(b: {
+    version: number;
+    overrides: unknown;
+    note: string;
+    adminId: string;
+    createdAt: Date;
+  }): BalanceRow {
+    return { ...b, overrides: b.overrides as Record<string, CardOverride> };
+  }
+
+  async currentBalance(): Promise<BalanceRow | null> {
+    const b = await this.db.balanceVersion.findFirst({ orderBy: { version: 'desc' } });
+    return b ? this.toBalance(b) : null;
+  }
+
+  async balanceHistory(limit: number): Promise<BalanceRow[]> {
+    const rows = await this.db.balanceVersion.findMany({ orderBy: { version: 'desc' }, take: limit });
+    return rows.map((b) => this.toBalance(b));
+  }
+
+  async saveBalance(overrides: Record<string, CardOverride>, note: string, adminId: string): Promise<BalanceRow> {
+    return this.toBalance(await this.db.balanceVersion.create({ data: { overrides, note, adminId } }));
+  }
+
+  async recordCardStats(version: number, rows: CardStatRow[]): Promise<void> {
+    if (!rows.length) return;
+    await this.db.$transaction(
+      rows.map((r) =>
+        this.db.cardStat.upsert({
+          where: { version_key: { version, key: r.key } },
+          create: { version, key: r.key, games: r.games, wins: r.wins, plays: r.plays },
+          update: { games: { increment: r.games }, wins: { increment: r.wins }, plays: { increment: r.plays } },
+        }),
+      ),
+    );
+  }
+
+  async cardStats(version: number): Promise<CardStatRow[]> {
+    return (await this.db.cardStat.findMany({ where: { version } })).map(({ key, games, wins, plays }) => ({
+      key,
+      games,
+      wins,
+      plays,
+    }));
+  }
 
   // ───────────────────────── Torneos ─────────────────────────
 

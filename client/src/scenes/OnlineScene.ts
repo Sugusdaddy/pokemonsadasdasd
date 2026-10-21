@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import {
-  getCard,
+  liveCard,
   isFriendlyCode,
   type ClientJoin,
   type DraftMsg,
@@ -292,7 +292,7 @@ export class OnlineScene extends BaseScene {
     // las dos cartas
     if (m.pair) {
       const views = m.pair.map((k, i) => {
-        const v = makeCardView(this, getCard(k), cx + (i ? 150 : -150), py + sy(260), 200, 240);
+        const v = makeCardView(this, liveCard(k), cx + (i ? 150 : -150), py + sy(260), 200, 240);
         v.setSize(200, 240).setInteractive({ useHandCursor: true });
         v.on('pointerover', () => this.tweens.add({ targets: v, scale: 1.05, duration: 100 }));
         v.on('pointerout', () => this.tweens.add({ targets: v, scale: 1, duration: 100 }));
@@ -322,7 +322,7 @@ export class OnlineScene extends BaseScene {
         c.add(kit.panel(this, x - 30, y - 37, 60, 74, 'inset'));
         continue;
       }
-      c.add(makeCardView(this, getCard(item[0]), x, y, 62, 76));
+      c.add(makeCardView(this, liveCard(item[0]), x, y, 62, 76));
       if (item[1])
         c.add(
           this.add

@@ -16,6 +16,7 @@ export * from './meta/season';
 export * from './meta/missions';
 export * from './meta/modes';
 export * from './meta/draft';
+export * from './meta/balance';
 export * from './meta/clan';
 export * from './social/filter';
 export * from './meta/ideas';

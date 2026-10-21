@@ -1,5 +1,6 @@
 import express from 'express';
-import { DEFAULT_NAME, IDEA_STATUSES, cleanReply, type IdeaStatus } from '@arena/shared';
+import { DEFAULT_NAME, IDEA_STATUSES, cleanOverrides, cleanReply, type IdeaStatus } from '@arena/shared';
+import { ctx } from '../context';
 import { chatView, toClan } from '../rooms/ClanRoom';
 import type { Store } from '../store/types';
 import { ideaView } from './ideas';
@@ -27,6 +28,54 @@ export function adminRoutes(store: Store): express.Router {
     if (!MUTE_HOURS.includes(n)) fail('err.admin.hours');
     return n;
   };
+
+  // ── Balance de cartas y sus estadísticas ──
+
+  /** Balance en vigor y las últimas versiones. */
+  r.get(
+    '/admin/balance',
+    handle('admin', async () => ({
+      current: ctx.balance,
+      history: (await store.balanceHistory(20)).map((h) => ({
+        version: h.version,
+        note: h.note,
+        at: +h.createdAt,
+        cards: Object.keys(h.overrides).length,
+      })),
+    })),
+  );
+
+  /**
+   * Guarda una versión nueva del balance ({ overrides, note }): todos los cambios en vigor, no
+   * solo los nuevos. Vale para las partidas que empiecen a partir de ahora.
+   */
+  r.post(
+    '/admin/balance',
+    handle('admin', async (req: Authed, me) => {
+      const clean = cleanOverrides(req.body?.overrides);
+      const overrides = typeof clean === 'string' ? fail(clean) : clean;
+      const note = String(req.body?.note ?? '')
+        .trim()
+        .slice(0, 120);
+      if (!note) fail('err.balance.note');
+      const row = await store.saveBalance(overrides, note, me);
+      ctx.balance = { v: row.version, o: row.overrides };
+      await log(me, 'balance', `v${row.version}`, { note, cards: Object.keys(row.overrides) });
+      return { current: ctx.balance };
+    }),
+  );
+
+  /** Victorias y uso de cada carta con una versión del balance (por defecto, la que está en vigor). */
+  r.get(
+    '/admin/cards',
+    handle('admin', async (req: Authed) => {
+      const q = Number(req.query.version);
+      const version = Number.isInteger(q) && q >= 0 ? q : ctx.balance.v;
+      const rows = await store.cardStats(version);
+      // cada mazo tiene 8 cartas: partidas de jugador = suma / 8
+      return { version, decks: Math.round(rows.reduce((s, r) => s + r.games, 0) / 8), rows };
+    }),
+  );
 
   r.get(
     '/admin/stats',

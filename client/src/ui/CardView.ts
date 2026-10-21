@@ -441,7 +441,7 @@ export function makeCardView(
   c.add(
     baked(
       scene,
-      `cardO_${card.key}_${w}x${h}_${locked ? 1 : 0}_${opts.level ?? ''}_${opts.compact ? 1 : 0}_${progKey}_${getLang()}`,
+      `cardO_${card.key}_c${card.cost}_${w}x${h}_${locked ? 1 : 0}_${opts.level ?? ''}_${opts.compact ? 1 : 0}_${progKey}_${getLang()}`,
       -w / 2 - 12,
       -h / 2 - 14,
       w + 24,

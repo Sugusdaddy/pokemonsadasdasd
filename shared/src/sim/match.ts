@@ -13,6 +13,7 @@ import {
   type TowerKind,
 } from '../config';
 import { cardAtLevel, getCard, isCardKey, levelMult, startLevel, type Card } from '../data/cards';
+import { withOverride } from '../meta/balance';
 import { PACK } from '../data/pack';
 import { typeMultiplier } from '../data/typeChart';
 import { Rng } from './rng';
@@ -105,6 +106,7 @@ export class Match {
   private nextId = 1;
   private events: SimEvent[] = [];
   private cardCache: Record<SeatKey, Record<string, Card>> = { blue: {}, red: {}, blue2: {}, red2: {} };
+  private baseCache: Record<string, Card> = {};
 
   constructor(setup: MatchSetup) {
     this.setup = setup;
@@ -147,13 +149,18 @@ export class Match {
     return this.seats.length > 2;
   }
 
+  /** Carta de esta partida (con sus cambios de balance), sin nivel. */
+  baseCard(key: string): Card {
+    return (this.baseCache[key] ??= withOverride(getCard(key), this.setup.balance?.o[key]));
+  }
+
   /** Carta con los niveles del jugador de ese asiento. */
   cardFor(team: Team, key: string, seat: SeatIndex = 0): Card {
     const k = seatKey(team, seat);
     let c = this.cardCache[k][key];
     if (!c) {
       const p = seat ? this.setup.partners![team]! : this.setup.players[team];
-      c = cardAtLevel(key, p.levels[key]);
+      c = cardAtLevel(key, p.levels[key], this.baseCard(key));
       this.cardCache[k][key] = c;
     }
     return c;
@@ -165,7 +172,7 @@ export class Match {
     const k = seatKey(team, seat);
     const cycle = this.cycles[k];
     if (!cycle || !isCardKey(key) || !cycle.hand.includes(key)) return 'hand';
-    const card = getCard(key);
+    const card = this.baseCard(key);
     if (this.elixir[k] < card.cost) return 'elixir';
     if (!Number.isFinite(x) || !Number.isFinite(y) || !this.canDeploy(team, card, x, y)) return 'zone';
     return 'ok';
@@ -278,7 +285,7 @@ export class Match {
     }
     const k = seatKey(input.team, seat);
     const cycle = this.cycles[k];
-    this.elixir[k] -= getCard(input.card).cost;
+    this.elixir[k] -= this.baseCard(input.card).cost;
     cycle.play(cycle.hand.indexOf(input.card));
     this.deploy(input.team, input.card, x, y, seat);
   }
@@ -699,7 +706,7 @@ export class Match {
     const key = b.card.spawn!;
     const level = startLevel(getCard(key)) + (b.card.level - startLevel(getCard(b.card.key)));
     const ck = `${key}@${level}`;
-    const card = (this.cardCache[seatKey(b.team, b.seat)][ck] ??= cardAtLevel(key, level));
+    const card = (this.cardCache[seatKey(b.team, b.seat)][ck] ??= cardAtLevel(key, level, this.baseCard(key)));
     const fwd = b.team === 'blue' ? -1 : 1;
     const y0 = b.y + fwd * (b.radius + card.radius + 6);
     for (const [dx, fy] of formation(b.card.spawnCount, 0.55 * T))

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@arena/shared": "*",
+    "@sentry/browser": "10.76.2",
     "@wallet-standard/app": "^1.1.0",
     "bs58": "^6.0.0",
     "colyseus.js": "^0.16.22",

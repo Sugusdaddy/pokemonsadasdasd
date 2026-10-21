@@ -6,7 +6,7 @@ import {
   canEdit,
   canKick,
   canSetRole,
-  getCard,
+  liveCard,
   nextRole,
   prevRole,
   type ClanChatMessage,
@@ -599,7 +599,7 @@ export class ClanView {
       return;
     }
     const keys = Object.keys(Profile.d.cards).filter((k) => {
-      const c = getCard(k);
+      const c = liveCard(k);
       return DONATION[c.rarity] && Profile.d.cards[k].level < MAX_LEVEL;
     });
     const cols = 4,
@@ -614,7 +614,7 @@ export class ClanView {
       keys.forEach((k, i) => {
         const x = -((cols - 1) * (cw + 14)) / 2 + (i % cols) * (cw + 14);
         const y = -h / 2 + 120 + ch / 2 + Math.floor(i / cols) * (ch + 20);
-        const card = getCard(k);
+        const card = liveCard(k);
         const v = makeCardView(s, card, x, y, cw, ch, { level: Profile.d.cards[k].level, compact: true });
         v.setSize(cw, ch).setInteractive({ useHandCursor: true });
         v.on(
@@ -730,7 +730,7 @@ export class ClanView {
   /** Petición de cartas: carta, progreso y botón de donar. */
   private request(P: ScrollPanel, x: number, y: number, w: number, m: ClanChatMessage, mine: boolean): number {
     const s = this.scene;
-    const card = getCard(m.card!);
+    const card = liveCard(m.card!);
     const h = 148;
     const bw = Math.min(w, L.pc ? 640 : 600);
     const bx = mine ? x + w - bw : x;

@@ -1,4 +1,4 @@
-import { ARENAS, allCardKeys, getCard, ROAD, type RoadReward, type RoadStep } from '@arena/shared';
+import { ARENAS, allCardKeys, liveCard, ROAD, type RoadReward, type RoadStep } from '@arena/shared';
 import { Profile } from '../../meta/Profile';
 import { animInfo } from '../../systems/Assets';
 import { Sfx } from '../../systems/Sfx';
@@ -143,10 +143,10 @@ export class RoadTab extends Tab {
         size: 20,
       }),
     );
-    const cards = allCardKeys().filter((k) => getCard(k).arena === idx);
+    const cards = allCardKeys().filter((k) => liveCard(k).arena === idx);
     const step = Math.min(L.pc ? 110 : 92, (W - 130) / Math.max(1, cards.length - 1));
     cards.forEach((k, i) => {
-      const c = getCard(k),
+      const c = liveCard(k),
         a = animInfo(c.pokemon, 'Idle');
       const x = 84 + i * step,
         cy = y + 148;

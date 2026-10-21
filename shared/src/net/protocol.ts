@@ -12,7 +12,7 @@ import { getCard, isCardKey } from '../data/cards';
 import type { Input, MatchSetup, PlayCheck, SeatIndex, SeatKey, Team, TimedInput, Winner } from '../sim/types';
 import type { BattleResult, ChallengeOutcome, ProfileState } from '../meta/economy';
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const DEFAULT_PORT = 2567;
 
 /** Ticks entre que el servidor recibe un input y lo aplica (2 ticks = 100 ms). */

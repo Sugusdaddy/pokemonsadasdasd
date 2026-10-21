@@ -11,6 +11,28 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Versión del balance de cartas (cambios de vida, daño, velocidad de ataque y coste). Vale la última.
+model BalanceVersion {
+  version   Int      @id @default(autoincrement())
+  /// { carta: { hp?, dmg?, hitSpeed?, cost? } }
+  overrides Json
+  note      String
+  adminId   String
+  createdAt DateTime @default(now())
+}
+
+/// Uso y victorias de cada carta con cada versión de balance (mazos de jugadores, sin amistosas).
+model CardStat {
+  version Int
+  key     String
+  /// Partidas en las que la carta iba en el mazo de un jugador, cuántas ganó y cuántas veces se jugó.
+  games   Int    @default(0)
+  wins    Int    @default(0)
+  plays   Int    @default(0)
+
+  @@id([version, key])
+}
+
 /// Torneo creado por un jugador: dura unos minutos y se juega por código (o abierto a todos).
 model Tournament {
   id         String   @id @default(cuid())

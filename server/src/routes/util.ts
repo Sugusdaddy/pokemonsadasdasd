@@ -3,6 +3,7 @@ import { EconError } from '@arena/shared';
 import { bearer, verifySession } from '../auth';
 import { ctx } from '../context';
 import type { Store } from '../store/types';
+import { reportError } from '../sentry';
 
 /** Petición con la cuenta de la sesión (la rellena `requireSession`). */
 export type Authed = Request & { accountId?: string };
@@ -52,7 +53,10 @@ export const handle =
     } catch (e) {
       const code =
         e instanceof EconError ? e.code : e instanceof Error && e.message.startsWith('err.') ? e.message : null;
-      if (!code) console.error(`[${tag}]`, e);
+      if (!code) {
+        console.error(`[${tag}]`, e);
+        reportError(e, `api.${tag}`, { path: req.path });
+      }
       res.status(code ? 400 : 500).json({ error: code ?? 'err.server' });
     }
   };

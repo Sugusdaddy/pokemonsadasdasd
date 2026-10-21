@@ -1,5 +1,6 @@
 import type { Card } from '../data/cards';
 import type { TowerKind } from '../config';
+import type { Balance } from '../meta/balance';
 
 /** blue = abajo (en local, el jugador), red = arriba. */
 export type Team = 'blue' | 'red';
@@ -40,6 +41,8 @@ export interface MatchSetup {
   players: Record<Team, PlayerSetup>;
   /** 2v2: el compañero de cada equipo (asiento 1). */
   partners?: Partial<Record<Team, PlayerSetup>>;
+  /** Cambios de balance con los que se juega (versión y valores); sin esto, las cartas de cardDefs. */
+  balance?: Balance;
   rules?: MatchRules;
 }
 

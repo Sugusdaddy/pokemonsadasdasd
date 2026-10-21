@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BALLS, BALL_OFFERS, GOLD_OFFERS, DAILY_GIFT, getCard, type BallType, type CardOffer } from '@arena/shared';
+import { BALLS, BALL_OFFERS, GOLD_OFFERS, DAILY_GIFT, liveCard, type BallType, type CardOffer } from '@arena/shared';
 import { Profile } from '../../meta/Profile';
 import { Sfx } from '../../systems/Sfx';
 import { makeCardView } from '../CardView';
@@ -93,7 +93,7 @@ export class ShopTab extends Tab {
       const bought = shop.bought.includes(o.id);
       const c = s.add.container(cx, cy);
       c.add(kit.panel(s, -105, -120, 210, 280, 'card'));
-      const v = makeCardView(s, getCard(o.key), 0, -14, 140, 168, { locked: false });
+      const v = makeCardView(s, liveCard(o.key), 0, -14, 140, 168, { locked: false });
       c.add(v);
       c.add(kit.text(s, 0, 92, `x${o.count}`, 'h3', '#ffffff', { size: 26 }));
       if (bought) {
@@ -196,7 +196,7 @@ export class ShopTab extends Tab {
 
   buyCard(o: CardOffer): void {
     const s = this.scene;
-    const c = getCard(o.key);
+    const c = liveCard(o.key);
     openModal(s, 560, 600, t('shop.buy'), (box, close) => {
       box.add(makeCardView(s, c, 0, -110, 170, 204, {}));
       box.add(kit.text(s, 0, 36, `${cardName(c)} x${o.count}`, 'h2', '#ffffff', { size: 32 }));

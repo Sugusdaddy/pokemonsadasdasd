@@ -1,5 +1,5 @@
 import { ARENA, T, W, DT, type AiConfig } from '../config';
-import { getCard, type Card } from '../data/cards';
+import type { Card } from '../data/cards';
 import { emoteId } from '../data/emotes';
 import { clamp, dist } from './math';
 import type { Match } from './match';
@@ -84,7 +84,8 @@ export class Bot {
     const seat = this.seat;
     const sk = seatKey(me, seat);
     const elixir = m.elixir[sk];
-    const hand = m.cycles[sk].hand.map((k) => ({ k, c: getCard(k) })).filter((h) => h.c.cost <= elixir);
+    // (las cartas de la partida: con sus cambios de balance)
+    const hand = m.cycles[sk].hand.map((k) => ({ k, c: m.baseCard(k) })).filter((h) => h.c.cost <= elixir);
     if (!hand.length) return null;
     const rng = this.rng;
     const tryPlay = (k: string, x: number, myY: number): Input | null => {

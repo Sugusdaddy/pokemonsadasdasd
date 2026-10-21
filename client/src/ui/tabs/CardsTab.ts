@@ -1,4 +1,4 @@
-import { getCard, allCardKeys } from '@arena/shared';
+import { liveCard, allCardKeys } from '@arena/shared';
 import { L } from '../../layout';
 import { Profile } from '../../meta/Profile';
 import { Sfx } from '../../systems/Sfx';
@@ -40,7 +40,7 @@ export class CardsTab extends Tab {
     let y = 24;
 
     // ── Cabecera de mazo + selector de mazos ──
-    const avg = deck.reduce((a, k) => a + getCard(k).cost, 0) / deck.length;
+    const avg = deck.reduce((a, k) => a + liveCard(k).cost, 0) / deck.length;
     for (const o of sectionHeader(s, 30, y + 6, W - 60, t('cards.deck'))) P.add(o);
     P.add(kit.text(s, W - 260, y + 6, t('cards.deckN'), 'label', '#aab3e8', { originX: 1, size: 20 }));
     for (let i = 0; i < 3; i++) {
@@ -76,7 +76,7 @@ export class CardsTab extends Tab {
     if (this.swapKey) {
       P.add(kit.panel(s, 20, y, W - 40, 64, 'gold'));
       P.add(
-        kit.text(s, W / 2, y + 30, t('cards.swapHint', { name: cardName(getCard(this.swapKey)) }), 'h3', '#ffffff', {
+        kit.text(s, W / 2, y + 30, t('cards.swapHint', { name: cardName(liveCard(this.swapKey)) }), 'h3', '#ffffff', {
           size: 22,
         }),
       );
@@ -187,11 +187,11 @@ export class CardsTab extends Tab {
       locked.forEach((k, i) => {
         const cx = G.x(i),
           cy = y + CH / 2 + G.row(i) * STEP_Y;
-        const v = makeCardView(s, getCard(k), cx, cy, CW, CH, { locked: true });
+        const v = makeCardView(s, liveCard(k), cx, cy, CW, CH, { locked: true });
         P.add(v);
-        const reachable = getCard(k).arena <= Profile.arena;
+        const reachable = liveCard(k).arena <= Profile.arena;
         P.add(
-          kit.text(s, cx, cy + CH / 2 + 24, arenaName(getCard(k).arena), 'label', reachable ? '#ffd75a' : '#5a64a8', {
+          kit.text(s, cx, cy + CH / 2 + 24, arenaName(liveCard(k).arena), 'label', reachable ? '#ffd75a' : '#5a64a8', {
             size: 16,
           }),
         );
@@ -214,7 +214,7 @@ export class CardsTab extends Tab {
 
   cardView(k: string, cx: number, cy: number): CardView {
     const owned = Profile.d.cards[k];
-    return makeCardView(this.scene, getCard(k), cx, cy, CW, CH, {
+    return makeCardView(this.scene, liveCard(k), cx, cy, CW, CH, {
       level: Profile.level(k),
       progress: { have: owned.count, need: Profile.cardsNeeded(k) },
     });

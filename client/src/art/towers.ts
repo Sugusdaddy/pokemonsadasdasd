@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
-import { COLORS } from '@arena/shared';
 import { INK, Pix, shade } from './pixel';
+import { TEAM } from '../systems/teamColors';
 
 // ─────────────────────────────────────────────────────────────
 //  TORRES en pixel art (rejilla a la mitad; textura a 2x).
@@ -218,8 +218,8 @@ function rubble(): Pix {
 /** Crea todas las texturas de torres (las de antes se sustituyen). */
 export function createTowerArt(scene: Phaser.Scene): void {
   for (const [side, col] of [
-    ['player', COLORS.player],
-    ['enemy', COLORS.enemy],
+    ['player', TEAM.player],
+    ['enemy', TEAM.enemy],
   ] as const) {
     const t = teamCols(col);
     kingTower(t, false).toTexture(scene, `tower_king_${side}`);

@@ -56,6 +56,7 @@ import * as kit from '../ui/kit';
 import { BaseScene } from './BaseScene';
 import { applyFpsCap, isAutoLow, lowQuality, particleAmount, qualitySetting, setAutoLow } from '../systems/Quality';
 import { FpsWatch } from '../systems/fpsWatch';
+import { TEAM } from '../systems/teamColors';
 
 const FLAG = { x: W - 34, y: 104, r: 24 };
 const RIVER_TOP = ARENA.riverY - ARENA.riverHalf;
@@ -321,8 +322,8 @@ export class BattleScene extends BaseScene {
   private addPending(card: string, x: number, wy: number): void {
     const c = this.add.container(x, this.view.y(wy)).setDepth(4800);
     const g = this.add.graphics();
-    g.lineStyle(3, COLORS.player, 0.9).strokeCircle(0, 0, 0.9 * T);
-    g.fillStyle(COLORS.player, 0.18).fillCircle(0, 0, 0.9 * T);
+    g.lineStyle(3, TEAM.player, 0.9).strokeCircle(0, 0, 0.9 * T);
+    g.fillStyle(TEAM.player, 0.18).fillCircle(0, 0, 0.9 * T);
     c.add(g);
     this.tweens.add({
       targets: c,
@@ -792,8 +793,8 @@ export class BattleScene extends BaseScene {
     g.clear();
     const { foe, me } = this.crownLayout;
     for (let i = 0; i < 3; i++) {
-      drawCrown(g, foe.x + i * foe.dx, foe.y, foe.r, i < m.crowns[this.foe] ? COLORS.enemy : 0x3b3f63);
-      drawCrown(g, me.x + i * me.dx, me.y, me.r, i < m.crowns[this.me] ? COLORS.player : 0x3b3f63);
+      drawCrown(g, foe.x + i * foe.dx, foe.y, foe.r, i < m.crowns[this.foe] ? TEAM.enemy : 0x3b3f63);
+      drawCrown(g, me.x + i * me.dx, me.y, me.r, i < m.crowns[this.me] ? TEAM.player : 0x3b3f63);
     }
   }
 
@@ -929,7 +930,7 @@ export class BattleScene extends BaseScene {
   // ───────────────────────── Vistas y eventos ─────────────────────────
 
   private teamColor(team: Team): number {
-    return team === this.me ? COLORS.player : COLORS.enemy;
+    return team === this.me ? TEAM.player : TEAM.enemy;
   }
 
   /** La partida se ha reconstruido (reconexión/resync): se recrean todas las vistas. */

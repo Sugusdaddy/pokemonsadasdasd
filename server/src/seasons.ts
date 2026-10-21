@@ -1,5 +1,6 @@
 import { previousSeasonId, rollSeason, seasonAt } from '@arena/shared';
 import type { SeasonResultRow, Store } from './store/types';
+import { reportError } from './sentry';
 
 /** Cuántos puestos se guardan en el archivo de cada temporada. */
 const ARCHIVE_TOP = 1000;
@@ -49,6 +50,7 @@ export function startSeasonJob(store: Store): () => void {
   const run = () =>
     void closeSeasonIfNeeded(store).catch((e) => {
       console.error('[season]', e instanceof Error ? e.message : e);
+      reportError(e, 'season');
       if (!retry) retry = setTimeout(() => ((retry = null), run()), 30_000);
     });
   run();

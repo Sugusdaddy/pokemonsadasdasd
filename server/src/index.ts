@@ -2,6 +2,7 @@ import './env';
 import net from 'node:net';
 import { DEFAULT_PORT } from '@arena/shared';
 import { startServer } from './app';
+import { initSentry, reportError } from './sentry';
 
 // ARENA_PORT manda; PORT solo en producción (lo fijan Railway/Fly). En desarrollo, 2567.
 const port =
@@ -28,6 +29,15 @@ async function waitForDb(url: string, timeoutMs = 60_000): Promise<void> {
     warned = true;
     await new Promise((r) => setTimeout(r, 500));
   }
+}
+
+// errores a Sentry solo si hay SENTRY_DSN (sin ella no se carga nada)
+if (await initSentry()) {
+  process.on('unhandledRejection', (e) => reportError(e, 'unhandledRejection'));
+  process.on('uncaughtException', (e) => {
+    reportError(e, 'uncaughtException');
+    console.error(e);
+  });
 }
 
 if (process.env.DATABASE_URL) await waitForDb(process.env.DATABASE_URL);

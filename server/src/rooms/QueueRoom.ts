@@ -14,6 +14,7 @@ import {
 } from '@arena/shared';
 import { settings, store } from '../context';
 import { authAccount, type MatchRoomOptions, type SeatAuth } from './MatchRoom';
+import { reportError } from '../sentry';
 
 interface Waiting {
   client: Client;
@@ -145,6 +146,7 @@ export class QueueRoom extends Room {
       }
     } catch (err) {
       console.error('[queue] no se pudo crear la partida', err);
+      reportError(err, 'queue');
       players.forEach((p) => (p.busy = false));
     }
   }

@@ -9,6 +9,7 @@
     "@colyseus/schema": "^3.0.76",
     "@colyseus/ws-transport": "^0.16.5",
     "@prisma/client": "^6.19.3",
+    "@sentry/node": "10.76.2",
     "bs58": "^6.0.0",
     "express": "^4.22.3",
     "ioredis": "^5.11.1",

@@ -1,4 +1,4 @@
-import { T, MAX_LEVEL, RULES, getCard, cardAtLevel, type Card } from '@arena/shared';
+import { T, MAX_LEVEL, RULES, liveCard, cardAtLevel, type Card } from '@arena/shared';
 import { Profile } from '../meta/Profile';
 import type { BaseScene } from '../scenes/BaseScene';
 import { Sfx } from '../systems/Sfx';
@@ -47,7 +47,7 @@ function statRows(c: Card, next: Card | null): StatRow[] {
     if (c.spawn)
       rows.push([
         t('stat.spawns'),
-        t('stat.spawnEvery', { name: cardName(getCard(c.spawn)), n: c.spawnCount, s: c.spawnEvery }),
+        t('stat.spawnEvery', { name: cardName(liveCard(c.spawn)), n: c.spawnCount, s: c.spawnEvery }),
         '',
       ]);
     if (c.elixirEvery) rows.push([t('stat.elixirGen'), t('stat.elixirEvery', { s: c.elixirEvery }), '']);
@@ -85,18 +85,18 @@ export function openCardPopup(
   key: string,
   { onUse, onChange }: { onUse?: (key: string) => void; onChange?: () => void } = {},
 ): void {
-  const base = getCard(key);
+  const base = liveCard(key);
   const owned = Profile.has(key);
   const level0 = Profile.level(key);
-  const nStats = statRows(cardAtLevel(key, level0), null).length;
+  const nStats = statRows(cardAtLevel(key, level0, liveCard(key)), null).length;
   // alto: zona de la carta (350) + estadísticas + acciones
   const H = 350 + Math.ceil(nStats / 2) * 78 + 150;
   const top = -H / 2;
   openModal(scene, 680, H, owned ? cardName(base) : '???', (box, close) => {
     const level = Profile.level(key);
-    const c = cardAtLevel(key, level);
+    const c = cardAtLevel(key, level, liveCard(key));
     const canNext = owned && level < MAX_LEVEL;
-    const next = canNext ? cardAtLevel(key, level + 1) : null;
+    const next = canNext ? cardAtLevel(key, level + 1, liveCard(key)) : null;
     const need = owned ? Profile.cardsNeeded(key) : 0;
     const have = owned ? Profile.d.cards[key].count : 0;
 

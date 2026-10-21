@@ -1,8 +1,9 @@
 import type Phaser from 'phaser';
-import { COLORS, RULES, PACK, HOVER, T, type AnimName, type SimUnit } from '@arena/shared';
+import { RULES, PACK, HOVER, T, type AnimName, type SimUnit } from '@arena/shared';
 import { animKey, animInfo, dirFromVector, pkAtlas } from '../systems/Assets';
 import type { View } from './View';
 import { Sfx } from '../systems/Sfx';
+import { TEAM } from '../systems/teamColors';
 
 const CASTING = new Set<AnimName>(['Attack', 'Shoot', 'Charge']);
 
@@ -47,7 +48,7 @@ export class UnitView {
       .setAlpha(u.flying ? 0.3 : 0.55);
     this.ring = s
       .ellipse(u.x, this.y, r * 2.6, r * 1.2)
-      .setStrokeStyle(3, ally ? 0xa8e6ff : mine ? COLORS.player : COLORS.enemy, 0.85);
+      .setStrokeStyle(3, ally ? 0xa8e6ff : mine ? TEAM.player : TEAM.enemy, 0.85);
     if (u.building) {
       this.base = s
         .image(u.x, this.y, mine ? 'bld_base_player' : 'bld_base_enemy')
@@ -186,7 +187,7 @@ export class UnitView {
       const bx = this.x - w / 2,
         by = this.y - lift - this.sprite.displayHeight * 0.55 - 10;
       g.fillStyle(0x14122b).fillRect(bx - 1, by - 1, w + 2, h + 2);
-      g.fillStyle(this.mine ? COLORS.player : COLORS.enemy).fillRect(bx, by, w * Math.max(0, u.hp / u.maxHp), h);
+      g.fillStyle(this.mine ? TEAM.player : TEAM.enemy).fillRect(bx, by, w * Math.max(0, u.hp / u.maxHp), h);
       g.setDepth(4000);
     }
   }

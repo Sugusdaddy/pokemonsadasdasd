@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { FONT, TITLE, ARENAS, cardPokemonIds } from '@arena/shared';
+import { FONT, TITLE, ARENAS, cardPokemonIds, setLiveBalance } from '@arena/shared';
 import { L } from '../layout';
 import { Profile } from '../meta/Profile';
 import { Sfx } from '../systems/Sfx';
@@ -19,6 +19,8 @@ import * as kit from '../ui/kit';
 import { t } from '../i18n';
 import { BaseScene } from './BaseScene';
 import { applyFpsCap } from '../systems/Quality';
+import { api } from '../net/api';
+import { applyAccessibility } from '../systems/Accessibility';
 
 /** Carga el manifest de los atlas, el perfil y los retratos (Idle) de todas las cartas. */
 export class BootScene extends BaseScene {
@@ -63,6 +65,8 @@ export class BootScene extends BaseScene {
   }
 
   async create(): Promise<void> {
+    // accesibilidad (colores y tamaño de texto) antes de dibujar nada
+    applyAccessibility();
     if (this.failed) return;
     const manifest = this.cache.json.get('manifest') as Manifest | undefined;
     if (!manifest) return this.fail();
@@ -76,7 +80,10 @@ export class BootScene extends BaseScene {
       /* sin fuente */
     }
 
-    // la cuenta se pide al servidor mientras se cargan los retratos
+    // la cuenta y el balance de cartas se piden al servidor mientras se cargan los retratos
+    void api.balance().then(setLiveBalance, () => {
+      /* sin servidor: las cartas de siempre */
+    });
     const session = Profile.init().then(
       () => null,
       (e: unknown) => e,

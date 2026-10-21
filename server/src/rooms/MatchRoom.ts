@@ -66,7 +66,9 @@ import {
   type PickMsg,
 } from '@arena/shared';
 import { ctx, newFriendlyCode, settings, store } from '../context';
+import type { CardStatRow } from '../store/types';
 import { verifySession } from '../auth';
+import { reportError } from '../sentry';
 
 export interface MatchRoomOptions {
   mode: MatchMode;
@@ -405,6 +407,8 @@ export class MatchRoom extends Room {
       ...(this.teamSize === 2 ? { partners: { blue: P('blue2'), red: P('red2') } } : {}),
       // sin reglas especiales, la partida es idéntica a las de siempre (y sus repeticiones)
       ...(rules && Object.keys(rules).length ? { rules } : {}),
+      // balance de cartas en vigor (si el admin ha cambiado algo): viaja con la partida y su repetición
+      ...(ctx.balance.v ? { balance: ctx.balance } : {}),
     };
     this.match = new Match(setup);
     this.bots = makeBots(
@@ -423,6 +427,36 @@ export class MatchRoom extends Room {
     }
     this.clock.setTimeout(() => this.bots.forEach((b) => b.greet()), settings().matchStartDelayMs + 1500);
     this.setSimulationInterval(() => this.pump(), 10);
+  }
+
+  /**
+   * Estadísticas de las cartas (para el balance): por cada jugador (no bots), cada carta de su
+   * mazo suma una partida, una victoria si ganó su equipo y las veces que la jugó.
+   */
+  private async recordCardStats(m: Match): Promise<void> {
+    const rows = new Map<string, CardStatRow>();
+    for (const seat of this.seats.values()) {
+      if (!seat.accountId) continue;
+      const win = m.winner === seat.team;
+      const deck = seat.seat ? m.setup.partners![seat.team]!.deck : m.setup.players[seat.team].deck;
+      for (const key of deck) {
+        const r = rows.get(key) ?? { key, games: 0, wins: 0, plays: 0 };
+        r.games += 1;
+        if (win) r.wins += 1;
+        rows.set(key, r);
+      }
+      for (const { input } of m.log)
+        if (input.t === 'play' && input.team === seat.team && (input.seat ?? 0) === seat.seat) {
+          const r = rows.get(input.card);
+          if (r) r.plays += 1;
+        }
+    }
+    try {
+      await store().recordCardStats(m.setup.balance?.v ?? 0, [...rows.values()]);
+    } catch (e) {
+      console.error('[match] no se pudieron guardar las estadísticas de cartas', e);
+      reportError(e, 'match.cardStats');
+    }
   }
 
   /** Apunta el resultado en el torneo (si no fue contra un bot de relleno y el torneo sigue) y da el puesto. */
@@ -651,6 +685,7 @@ export class MatchRoom extends Room {
       });
     } catch (e) {
       console.error('[match] no se pudo guardar la partida', e);
+      reportError(e, 'match.save', { mode: this.mode });
       replayId = null;
     }
     const end: EndMsg = { winner: m.winner ?? 'draw', reason, crowns: { ...m.crowns }, replayId };
@@ -688,9 +723,11 @@ export class MatchRoom extends Room {
           seat.client?.send('rewards', { result, state, mode: this.mode, ...extra } satisfies RewardsMsg);
         } catch (e) {
           console.error('[match] no se pudieron dar las recompensas', e);
+          reportError(e, 'match.rewards', { mode: this.mode });
         }
       }
     }
+    if (this.mode !== 'friendly') void this.recordCardStats(m);
     void this.setMetadata({ finished: true });
     this.clock.setTimeout(() => void this.disconnect(), settings().linger * 1000);
   }

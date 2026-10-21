@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
-import { COLORS } from '@arena/shared';
 import { Pix, shade } from './pixel';
+import { TEAM } from '../systems/teamColors';
 
 // ─────────────────────────────────────────────────────────────
 //  PEANA DE LOS EDIFICIOS: losa de piedra redonda con el borde del color del equipo.
@@ -33,6 +33,6 @@ function base(team: number): Pix {
 }
 
 export function createBuildingArt(scene: Phaser.Scene): void {
-  base(COLORS.player).toTexture(scene, 'bld_base_player');
-  base(COLORS.enemy).toTexture(scene, 'bld_base_enemy');
+  base(TEAM.player).toTexture(scene, 'bld_base_player');
+  base(TEAM.enemy).toTexture(scene, 'bld_base_enemy');
 }

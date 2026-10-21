@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BALLS, getCard, type BallReward, type BallCardStack, type Rarity } from '@arena/shared';
+import { BALLS, liveCard, type BallReward, type BallCardStack, type Rarity } from '@arena/shared';
 import { Profile } from '../meta/Profile';
 import { Music, Sfx } from '../systems/Sfx';
 import { makeCardView, RARITY_COLOR, RARITY_CSS } from '../ui/CardView';
@@ -506,7 +506,7 @@ export class BallOpenScene extends BaseScene {
 
   /** La carta sale boca abajo, vuela en arco dejando estela y se da la vuelta en el centro. */
   flyCard(it: Extract<Item, { kind: 'card' }>, legendary: boolean): void {
-    const card = getCard(it.key);
+    const card = liveCard(it.key);
     const col = RARITY_COLOR[it.rarity];
     this.tintLight(col);
     const owned = Profile.d.cards[it.key];
@@ -659,7 +659,7 @@ export class BallOpenScene extends BaseScene {
     list.forEach((it, i) => {
       const x = W / 2 - ((used - 1) * 170) / 2 + (i % cols) * 170,
         y = sy(380) + Math.floor(i / cols) * 236;
-      const v = makeCardView(this, getCard(it.key), x, y, cw, ch, { isNew: it.isNew });
+      const v = makeCardView(this, liveCard(it.key), x, y, cw, ch, { isNew: it.isNew });
       v.add(kit.text(this, 0, ch / 2 + 24, `x${it.count}`, 'h3', '#ffffff', { size: 26 }));
       v.setScale(0).setDepth(10);
       this.tweens.add({ targets: v, scale: 1, duration: 240, delay: i * 70, ease: 'Back.easeOut' });

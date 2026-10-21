@@ -1,4 +1,4 @@
-import type { IdeaCategory, IdeaSort, IdeaStatus, IdeaView } from '@arena/shared';
+import type { Balance, CardOverride, IdeaCategory, IdeaSort, IdeaStatus, IdeaView } from '@arena/shared';
 import { request } from './session';
 
 // ─────────────────────────────────────────────────────────────
@@ -79,7 +79,22 @@ export interface AdminLogEntry {
 /** Horas de silencio que acepta el servidor (0 = quitarlo). */
 export const MUTE_OPTIONS = [1, 24, 168, 720] as const;
 
+/** Partidas, victorias y jugadas de una carta con una versión del balance. */
+export interface CardStat {
+  key: string;
+  games: number;
+  wins: number;
+  plays: number;
+}
+
 export const Admin = {
+  balance: () =>
+    request<{ current: Balance; history: Array<{ version: number; note: string; at: number; cards: number }> }>(
+      '/admin/balance',
+    ),
+  saveBalance: (overrides: Record<string, CardOverride>, note: string) =>
+    request<{ current: Balance }>('/admin/balance', { overrides, note }),
+  cards: () => request<{ version: number; decks: number; rows: CardStat[] }>('/admin/cards'),
   stats: () => request<AdminStats>('/admin/stats'),
   reports: () => request<{ reports: ReportGroup[] }>('/admin/reports').then((r) => r.reports),
   resolve: (messageId: string, action: 'dismiss' | 'punish', muteHours = 24) =>

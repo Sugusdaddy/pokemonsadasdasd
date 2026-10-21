@@ -1,5 +1,12 @@
 import crypto from 'node:crypto';
-import { ROLE_RANK, type ClanInput, type ClanRole, type DonationState, type ProfileState } from '@arena/shared';
+import {
+  ROLE_RANK,
+  type CardOverride,
+  type ClanInput,
+  type ClanRole,
+  type DonationState,
+  type ProfileState,
+} from '@arena/shared';
 import type {
   AccountRow,
   AdminLogRow,
@@ -24,6 +31,8 @@ import type {
   Store,
   TournamentPlayerRow,
   TournamentRow,
+  BalanceRow,
+  CardStatRow,
 } from './types';
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -49,6 +58,8 @@ export class MemoryStore implements Store {
   private ideaVotes = new Set<string>(); // idea|cuenta
   private adminLog: AdminLogRow[] = [];
   private tournaments = new Map<string, TournamentRow>();
+  private balances: BalanceRow[] = [];
+  private cardStatRows = new Map<string, CardStatRow & { version: number }>();
   private tPlayers: TournamentPlayerRow[] = [];
 
   private ranked(range: RankRange): AccountRow[] {
@@ -581,6 +592,46 @@ export class MemoryStore implements Store {
   }
 
   async close(): Promise<void> {}
+
+  // ───────────────────────── Balance y estadísticas de cartas ─────────────────────────
+
+  async currentBalance(): Promise<BalanceRow | null> {
+    const b = this.balances[this.balances.length - 1];
+    return b ? clone(b) : null;
+  }
+
+  async balanceHistory(limit: number): Promise<BalanceRow[]> {
+    return this.balances.slice(-limit).reverse().map(clone);
+  }
+
+  async saveBalance(overrides: Record<string, CardOverride>, note: string, adminId: string): Promise<BalanceRow> {
+    const row: BalanceRow = {
+      version: this.balances.length + 1,
+      overrides: clone(overrides),
+      note,
+      adminId,
+      createdAt: new Date(),
+    };
+    this.balances.push(row);
+    return clone(row);
+  }
+
+  async recordCardStats(version: number, rows: CardStatRow[]): Promise<void> {
+    for (const r of rows) {
+      const k = `${version}|${r.key}`;
+      const cur = this.cardStatRows.get(k) ?? { version, key: r.key, games: 0, wins: 0, plays: 0 };
+      cur.games += r.games;
+      cur.wins += r.wins;
+      cur.plays += r.plays;
+      this.cardStatRows.set(k, cur);
+    }
+  }
+
+  async cardStats(version: number): Promise<CardStatRow[]> {
+    return [...this.cardStatRows.values()]
+      .filter((r) => r.version === version)
+      .map(({ key, games, wins, plays }) => ({ key, games, wins, plays }));
+  }
 
   // ───────────────────────── Torneos ─────────────────────────
 

@@ -3,6 +3,7 @@ import { CHAT, CLAN, cleanChat, type ClanChatMessage, type ClanRoomEvent } from 
 import { verifySession } from '../auth';
 import { store } from '../context';
 import type { ClanMessageRow } from '../store/types';
+import { reportError } from '../sentry';
 
 /** Lo que ve el cliente de un mensaje (los ocultos van sin texto). */
 export const chatView = (m: ClanMessageRow): ClanChatMessage => ({
@@ -113,5 +114,6 @@ export async function toClan(clanId: string, ev: ClanRoomEvent, drop?: string): 
     }
   } catch (e) {
     console.error('[clan] no se pudo avisar a la sala', e);
+    reportError(e, 'clan');
   }
 }

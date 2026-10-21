@@ -195,8 +195,9 @@ export function levelMult(steps: number, base = LEVEL_STAT_MULT): number {
 }
 
 /** Copia de la carta con vida y daño escalados a un nivel. */
-export function cardAtLevel(key: string, level?: number): Card {
-  const c = getCard(key);
+/** `base`: la carta de partida si no es la de cardDefs (p. ej. con cambios de balance). */
+export function cardAtLevel(key: string, level?: number, base?: Card): Card {
+  const c = base ?? getCard(key);
   const lv = Math.max(level ?? startLevel(c), startLevel(c));
   const m = levelMult(lv - startLevel(c));
   return { ...c, level: lv, hp: Math.round(c.hp * m), dmg: Math.round(c.dmg * m) };

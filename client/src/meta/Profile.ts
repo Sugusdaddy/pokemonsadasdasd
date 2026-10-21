@@ -53,7 +53,15 @@ class ProfileStore {
     admin: false,
   };
   /** Ajustes de este navegador. `sfx`/`music` (sí/no) son de versiones antiguas: ahora manda `vol`. */
-  settings: { sfx: boolean; music: boolean; shake: ShakeLevel; vol?: Volumes; quality?: QualityLevel } = {
+  settings: {
+    sfx: boolean;
+    music: boolean;
+    shake: ShakeLevel;
+    vol?: Volumes;
+    quality?: QualityLevel;
+    colorblind?: boolean;
+    bigText?: boolean;
+  } = {
     sfx: true,
     music: true,
     shake: 'normal',

@@ -46,6 +46,7 @@ import {
 } from '../auth';
 import type { Store } from '../store/types';
 import { isAdminWallet } from './util';
+import { reportError } from '../sentry';
 
 /** Lo que ve el cliente de su cuenta. */
 export interface AccountView {
@@ -128,7 +129,10 @@ export function accountRoutes(
       } catch (e) {
         const code =
           e instanceof EconError ? e.code : e instanceof Error && e.message.startsWith('err.') ? e.message : null;
-        if (!code) console.error('[api]', e);
+        if (!code) {
+          console.error('[api]', e);
+          reportError(e, 'api.account', { path: req.path });
+        }
         res.status(code ? 400 : 500).json({ error: code ?? 'err.server' });
       }
     };
