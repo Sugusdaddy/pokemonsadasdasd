@@ -192,6 +192,7 @@ export class ProfileTab extends Tab {
     for (const o of sectionHeader(s, rx + 30, y + 10, W - 60, t('profile.tools'))) P.add(o);
     y += 50;
     const tools: Array<[string, kit.ButtonVariant, () => void]> = [
+      [t('profile.tutorial'), 'success', () => kit.goTo(s, 'Battle', { kind: 'tutorial' })],
       [
         t('profile.testResources'),
         'info',

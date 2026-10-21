@@ -42,6 +42,8 @@ export class LocalSource implements BattleSource {
   readonly kind = 'local';
   readonly match: Match;
   readonly me: Team = 'blue';
+  /** El tutorial para la partida mientras explica algo. */
+  paused = false;
   private bots: Bot[];
   private pending: Input[] = [];
   private acc = 0;
@@ -50,9 +52,11 @@ export class LocalSource implements BattleSource {
   constructor(
     setup: MatchSetup,
     readonly players: Record<Team, PlayerInfo>,
+    /** Equipos que juega el bot (el tutorial no usa bot: el rival lo lleva su guion). */
+    botTeams: readonly Team[] = ['red'],
   ) {
     this.match = new Match(setup);
-    this.bots = makeBots(setup, ['red']);
+    this.bots = makeBots(setup, botTeams);
   }
 
   get alpha(): number {
@@ -67,7 +71,7 @@ export class LocalSource implements BattleSource {
   advance(dt: number): SimEvent[] {
     const m = this.match;
     const out: SimEvent[] = [];
-    if (!this.running || m.over) return out;
+    if (!this.running || m.over || this.paused) return out;
     // como mucho 5 ticks por frame para no congelarse tras una pausa
     this.acc += Math.min(dt, 0.25);
     while (this.acc >= DT && !m.over) {

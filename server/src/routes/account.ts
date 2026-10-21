@@ -21,6 +21,11 @@ import {
   claimDailyGift,
   claimSeasonReward,
   rollSeason,
+  rollMissions,
+  trackMission,
+  claimMission,
+  claimMissionBonus,
+  completeTutorial,
   buyCardOffer,
   buyBall,
   buyGold,
@@ -110,7 +115,12 @@ export function accountRoutes(
           rollSeason(s, now);
           tickSlots(s, now);
           refreshShop(s, now);
-          return fn(s, req, now);
+          rollMissions(s, now, rand);
+          const gold = s.gold;
+          const out = fn(s, req, now);
+          // misión "gasta oro": cuenta cualquier acción que lo haya gastado (mejoras, tienda)
+          if (s.gold < gold) trackMission(s, 'goldSpent', gold - s.gold);
+          return out;
         });
         const acc = await store.getAccount(req.accountId!);
         res.json({ result, account: view(req.accountId!, acc?.isGuest ?? true, acc?.wallets ?? [], state) });
@@ -186,6 +196,7 @@ export function accountRoutes(
         rollSeason(s, now);
         tickSlots(s, now);
         refreshShop(s, now);
+        rollMissions(s, now, rand);
       });
       const acc = (await store.getAccount(req.accountId!))!;
       res.json({ account: view(acc.id, acc.isGuest, acc.wallets, state) });
@@ -212,7 +223,7 @@ export function accountRoutes(
   r.post(
     '/me/cards/upgrade',
     auth,
-    act((s, req) => upgrade(s, req.body?.key)),
+    act((s, req) => counted(s, 'upgrades', upgrade(s, req.body?.key))),
   );
 
   r.post(
@@ -228,23 +239,41 @@ export function accountRoutes(
   r.post(
     '/me/balls/open',
     auth,
-    act((s, req, now) => openSlot(s, req.body?.slot, now, rand)),
+    act((s, req, now) => counted(s, 'balls', openSlot(s, req.body?.slot, now, rand))),
   );
   r.post(
     '/me/balls/free',
     auth,
-    act((s, _req, now) => claimFreeBall(s, now, rand)),
+    act((s, _req, now) => counted(s, 'balls', claimFreeBall(s, now, rand))),
   );
   r.post(
     '/me/balls/crown',
     auth,
-    act((s) => claimCrownBall(s, rand)),
+    act((s) => counted(s, 'balls', claimCrownBall(s, rand))),
   );
 
   r.post(
     '/me/season/claim',
     auth,
     act((s) => claimSeasonReward(s, rand)),
+  );
+
+  // ── Misiones y tutorial ──
+
+  r.post(
+    '/me/missions/claim',
+    auth,
+    act((s, req) => claimMission(s, req.body?.period, req.body?.id, rand)),
+  );
+  r.post(
+    '/me/missions/bonus',
+    auth,
+    act((s, req) => claimMissionBonus(s, req.body?.period, rand)),
+  );
+  r.post(
+    '/me/tutorial/complete',
+    auth,
+    act((s) => completeTutorial(s)),
   );
 
   r.post(
@@ -266,7 +295,7 @@ export function accountRoutes(
   r.post(
     '/me/shop/ball',
     auth,
-    act((s, req) => buyBall(s, req.body?.type, rand)),
+    act((s, req) => counted(s, 'balls', buyBall(s, req.body?.type, rand))),
   );
   r.post(
     '/me/shop/gold',
@@ -293,6 +322,12 @@ export function accountRoutes(
   );
 
   return r;
+}
+
+/** Devuelve `result` tras sumar uno a las misiones de esa clase (la acción ya se ha hecho). */
+function counted<T>(s: ProfileState, kind: Parameters<typeof trackMission>[1], result: T): T {
+  trackMission(s, kind);
+  return result;
 }
 
 /** Azar de la economía (servidor): criptográfico. */

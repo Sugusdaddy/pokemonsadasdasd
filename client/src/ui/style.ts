@@ -132,6 +132,7 @@ export function fmtTime(sec: number): string {
   const h = Math.floor(sec / 3600),
     m = Math.floor((sec % 3600) / 60),
     s = sec % 60;
+  if (h >= 24) return t('time.dh', { d: Math.floor(h / 24), h: h % 24 });
   if (h) return t('time.hm', { h, m });
   if (m) return t('time.ms', { m, s: String(s).padStart(2, '0') });
   return t('time.s', { s });

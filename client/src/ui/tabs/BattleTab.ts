@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ARENAS, BALLS, CROWNS_FOR_CROWN_BALL, type BallType } from '@arena/shared';
+import { ARENAS, BALLS, CROWNS_FOR_CROWN_BALL, claimableMissions, missionDone } from '@arena/shared';
 import { L } from '../../layout';
 import { Profile, type BallSlot } from '../../meta/Profile';
 import { animInfo, portraitSprite } from '../../systems/Assets';
@@ -11,6 +11,7 @@ import { openModal, toast } from '../Modal';
 import { textPrompt } from '../textPrompt';
 import { Tab, runAction } from './Tab';
 import { BRIDGE_OF, DECO_VARIANTS } from '../../art';
+import { openMissions } from '../MissionsModal';
 
 type Txt = Phaser.GameObjects.Text;
 
@@ -237,10 +238,14 @@ export class BattleTab extends Tab {
     Ly.removeAll(true);
     const freeLeft = Profile.freeBallRemaining();
     const crowns = Profile.d.crowns;
-    const items: Array<{ x: number; type: BallType; title: string; sub: string; ready: boolean; onTap: () => void }> = [
+    const daily = Profile.d.missions?.daily.list ?? [];
+    const toClaim = claimableMissions(Profile.d.missions);
+    // tres recuadros: ball gratis, ball de coronas y misiones
+    const IW = 212;
+    const items: Array<{ x: number; icon: string; title: string; sub: string; ready: boolean; onTap: () => void }> = [
       {
         x: ox + 30,
-        type: 'free',
+        icon: 'ball_free',
         title: ballLabel('free'),
         sub: freeLeft > 0 ? fmtTime(freeLeft) : t('lobby.openIt'),
         ready: freeLeft <= 0,
@@ -258,8 +263,8 @@ export class BattleTab extends Tab {
         },
       },
       {
-        x: ox + 370,
-        type: 'crown',
+        x: ox + 30 + IW + 12,
+        icon: 'ball_crown',
         title: ballLabel('crown'),
         sub: t('lobby.crowns', { n: crowns, max: CROWNS_FOR_CROWN_BALL }),
         ready: crowns >= CROWNS_FOR_CROWN_BALL,
@@ -276,20 +281,36 @@ export class BattleTab extends Tab {
           );
         },
       },
+      {
+        x: ox + 30 + (IW + 12) * 2,
+        icon: 'ic_missions',
+        title: t('missions.title'),
+        sub: toClaim
+          ? t('missions.ready')
+          : t('missions.today', { a: daily.filter(missionDone).length, b: daily.length }),
+        ready: toClaim > 0,
+        onTap: () => openMissions(s, () => this.drawExtras()),
+      },
     ];
     this.freeSub = null;
     for (const it of items) {
-      const c = s.add.container(it.x + 160, ey + 48);
-      c.add(kit.panel(s, -160, -48, 320, 96, it.ready ? 'green' : 'card'));
-      const img = s.add.image(-108, -2, `ball_${it.type}`).setDisplaySize(72, 72);
+      const c = s.add.container(it.x + IW / 2, ey + 48);
+      c.add(kit.panel(s, -IW / 2, -48, IW, 96, it.ready ? 'green' : 'card'));
+      const img = s.add.image(-IW / 2 + 40, -2, it.icon).setDisplaySize(60, 60);
       c.add(img);
       if (it.ready) s.tweens.add({ targets: img, angle: { from: -8, to: 8 }, yoyo: true, repeat: -1, duration: 300 });
-      c.add(kit.text(s, -60, -16, it.title, 'h3', '#ffffff', { originX: 0, size: 24 }));
-      const sub = kit.text(s, -60, 18, it.sub, 'label', it.ready ? '#c9ffd9' : '#aab3e8', { originX: 0, size: 19 });
+      const title = kit.text(s, -IW / 2 + 76, -16, it.title, 'h3', '#ffffff', { originX: 0, size: 21 });
+      if (title.width > IW - 86) title.setScale((IW - 86) / title.width);
+      c.add(title);
+      const sub = kit.text(s, -IW / 2 + 76, 18, it.sub, 'label', it.ready ? '#c9ffd9' : '#aab3e8', {
+        originX: 0,
+        size: 17,
+      });
+      if (sub.width > IW - 86) sub.setScale((IW - 86) / sub.width);
       c.add(sub);
-      if (it.type === 'free') this.freeSub = sub;
+      if (it.icon === 'ball_free') this.freeSub = sub;
       Ly.add(c);
-      const z = s.add.zone(it.x + 160, ey + 48, 320, 96).setInteractive({ useHandCursor: true });
+      const z = s.add.zone(it.x + IW / 2, ey + 48, IW, 96).setInteractive({ useHandCursor: true });
       z.on('pointerup', () => {
         if (!s.modalOpen) {
           Sfx.play('click');

@@ -16,6 +16,7 @@ import {
   type EndMsg,
   type RejectMsg,
   type MatchedMsg,
+  type MissionsState,
 } from '@arena/shared';
 import { startServer, type RunningServer } from '../src/app';
 import nacl from 'tweetnacl';
@@ -307,6 +308,8 @@ interface AccountView {
     name: string;
     stats: { battles: number; losses: number };
     shop: { freeClaimed: boolean };
+    missions?: MissionsState;
+    tutorialDone?: boolean;
   };
   shop: { offers: Array<{ id: string; price: number }> };
 }
@@ -446,6 +449,43 @@ describe('cuentas y economía', () => {
     const saved = (await server.store.getAccount(o.accountId))!;
     expect(saved.state.trophies).toBe(120 + r.result.trophies);
     expect(saved.state.stats.losses).toBe(1);
+  });
+
+  it('misiones: se reparten, avanzan con las partidas del servidor y se cobran una vez', async () => {
+    const o = await opts(50, 'Misiones');
+    const me = await api<{ account: AccountView }>('/me', o.token);
+    const ms = me.json.account.state.missions!;
+    expect(ms.daily.list).toHaveLength(3);
+    expect(ms.weekly.list).toHaveLength(3);
+    // misión conocida de "jugar partidas" para comprobar el progreso
+    await server.store.mutate(o.accountId, (s) => {
+      s.missions!.daily.list[0] = { ...s.missions!.daily.list[0], kind: 'battles', target: 1, progress: 0 };
+    });
+    const id = ms.daily.list[0].id;
+    expect((await api('/me/missions/claim', o.token, { period: 'daily', id })).json.error).toBe('econ.missionUndone');
+    const client = new Client(endpoint);
+    const { room } = await queue(client, o);
+    const p = new Player(room);
+    await until(() => p.ticks.length > 5, 5000, 'inicio');
+    room.send('surrender');
+    await until(() => p.rewards.length > 0, 4000, 'recompensas');
+    expect(p.rewards[0].state.missions!.daily.list[0].progress).toBe(1);
+    const gold = p.rewards[0].state.gold;
+    const claim = await api<{ result: { gold: number }; account: AccountView }>('/me/missions/claim', o.token, {
+      period: 'daily',
+      id,
+    });
+    expect(claim.status).toBe(200);
+    expect(claim.json.account.state.gold).toBe(gold + claim.json.result.gold);
+    expect((await api('/me/missions/claim', o.token, { period: 'daily', id })).json.error).toBe('econ.claimed');
+  });
+
+  it('tutorial: el premio se cobra una vez por cuenta', async () => {
+    const o = await opts(0, 'Novato');
+    const first = await api('/me/tutorial/complete', o.token, {});
+    expect(first.status).toBe(200);
+    expect(first.json.account.state.tutorialDone).toBe(true);
+    expect((await api('/me/tutorial/complete', o.token, {})).json.error).toBe('econ.claimed');
   });
 });
 

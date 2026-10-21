@@ -264,6 +264,19 @@ export class Hand {
     this.b.showDeployOverlay(this.ghostCard);
   }
 
+  /** Centro de la carta i de la mano (para que el tutorial la señale). */
+  cardPos(i: number): { x: number; y: number } {
+    return { x: this.lay.slotX(i), y: this.lay.cardY };
+  }
+
+  readonly cardSize = { w: CARD_W, h: CARD_H };
+
+  /** Barra de elixir (esquina superior izquierda y tamaño). */
+  get elixirBox(): { x: number; y: number; w: number; h: number } {
+    const e = this.lay.elixir;
+    return { x: e.cx - 30, y: e.y0, w: e.x0 + e.w - (e.cx - 30), h: 30 };
+  }
+
   hideGhost(): void {
     this.ghost.setVisible(false);
     this.b.hideDeployOverlay();

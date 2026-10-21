@@ -420,6 +420,39 @@ export function createIconTextures(scene: Phaser.Scene): void {
     g.fillStyle(0xb9c2e8).fillRoundedRect(23, 42, 18, 14, 3);
     g.fillStyle(O).fillRect(23, 47, 18, 2).fillRect(23, 52, 18, 2);
   });
+  make('ic_missions', (g) => {
+    // tablilla con pinza y tres casillas marcadas
+    g.fillStyle(O).fillRoundedRect(10, 8, 44, 54, 7);
+    g.fillStyle(0xc98a4a).fillRoundedRect(13, 11, 38, 48, 5);
+    g.fillStyle(0xfff6dc).fillRoundedRect(17, 17, 30, 38, 3);
+    g.fillStyle(O).fillRoundedRect(22, 4, 20, 12, 4);
+    g.fillStyle(0xb9c2e8).fillRoundedRect(25, 6, 14, 7, 2);
+    for (const y of [24, 34, 44]) {
+      g.fillStyle(O).fillRect(21, y, 7, 7);
+      g.fillStyle(y < 44 ? 0x3fbf5a : 0xffffff).fillRect(22, y + 1, 5, 5);
+      g.fillStyle(O).fillRect(31, y + 2, 12, 3);
+    }
+  });
+  make('ic_spell', (g) => {
+    // llama
+    const flame = (s: number, c: number) =>
+      g.fillStyle(c).fillPoints(
+        [
+          { x: 32, y: 60 - 54 * s },
+          { x: 32 + 20 * s, y: 60 - 26 * s },
+          { x: 32 + 16 * s, y: 60 - 6 * s },
+          { x: 32, y: 60 },
+          { x: 32 - 16 * s, y: 60 - 6 * s },
+          { x: 32 - 20 * s, y: 60 - 26 * s },
+          { x: 32 - 8 * s, y: 60 - 36 * s },
+        ],
+        true,
+      );
+    flame(1.04, O);
+    flame(0.94, 0xe8503a);
+    flame(0.66, 0xffa31a);
+    flame(0.36, 0xfff1b8);
+  });
   make('ic_admin', (g) => {
     // escudo con estrella
     const shield = (inset: number) => [

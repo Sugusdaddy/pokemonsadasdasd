@@ -30,6 +30,7 @@ import { ROAD } from './road';
 import { defaultRand, randInt, type RandFn } from './random';
 import { hasProfanity } from '../social/filter';
 import { seasonAt, softReset, tierFor, type SeasonProgress, type SeasonReward } from './season';
+import { MISSION_BONUS, missionDone, type MissionPeriod, type MissionReward, type MissionsState } from './missions';
 
 export type SlotState = 'locked' | 'unlocking' | 'ready';
 export interface BallSlot {
@@ -66,6 +67,10 @@ export interface ProfileState {
   season?: SeasonProgress;
   /** Recompensa de la temporada anterior, pendiente de reclamar. */
   pendingSeason?: SeasonReward | null;
+  /** Misiones diarias y semanales (las reparte el servidor al empezar cada periodo). */
+  missions?: MissionsState;
+  /** Tutorial terminado (y su premio cobrado). */
+  tutorialDone?: boolean;
 }
 
 /** Error de regla de juego. `code` es una clave de traducción (`econ.*`). */
@@ -520,6 +525,59 @@ export function claimSeasonReward(
   s.gems += gems;
   s.pendingSeason = null;
   return { gold, gems, ball: ball ? applyReward(s, rollBall(ball, arenaOf(s), rand)) : undefined };
+}
+
+// ───────────────────────── Misiones y tutorial ─────────────────────────
+
+export interface MissionClaim {
+  gold: number;
+  gems: number;
+  xp: number;
+  kingLevelUp: boolean;
+  ball?: BallReward;
+}
+
+function grantMissionReward(s: ProfileState, r: MissionReward, rand: RandFn): MissionClaim {
+  const out: MissionClaim = { gold: r.gold ?? 0, gems: r.gems ?? 0, xp: r.xp ?? 0, kingLevelUp: false };
+  s.gold += out.gold;
+  s.gems += out.gems;
+  out.kingLevelUp = addXp(s, out.xp);
+  if (r.ball) out.ball = applyReward(s, rollBall(r.ball, arenaOf(s), rand));
+  return out;
+}
+
+const missionPeriod = (p: unknown): MissionPeriod => (p === 'daily' || p === 'weekly' ? p : fail('econ.mission'));
+
+/** Cobra una misión completada. */
+export function claimMission(s: ProfileState, period: unknown, id: unknown, rand: RandFn = defaultRand): MissionClaim {
+  const m = s.missions?.[missionPeriod(period)].list.find((x) => x.id === id);
+  if (!m) fail('econ.mission');
+  if (m!.claimed) fail('econ.claimed');
+  if (!missionDone(m!)) fail('econ.missionUndone');
+  m!.claimed = true;
+  return grantMissionReward(s, m!.reward, rand);
+}
+
+/** Premio extra por haber cobrado las tres misiones del periodo. */
+export function claimMissionBonus(s: ProfileState, period: unknown, rand: RandFn = defaultRand): MissionClaim {
+  const p = missionPeriod(period);
+  const board = s.missions?.[p];
+  if (!board?.list.length) fail('econ.mission');
+  if (board!.bonusClaimed) fail('econ.claimed');
+  if (!board!.list.every((m) => m.claimed)) fail('econ.missionUndone');
+  board!.bonusClaimed = true;
+  return grantMissionReward(s, MISSION_BONUS[p], rand);
+}
+
+/** Premio por terminar el tutorial (una vez por cuenta). */
+export const TUTORIAL_REWARD = { gold: 150, gems: 20 } as const;
+
+export function completeTutorial(s: ProfileState): { gold: number; gems: number } {
+  if (s.tutorialDone) fail('econ.claimed');
+  s.tutorialDone = true;
+  s.gold += TUTORIAL_REWARD.gold;
+  s.gems += TUTORIAL_REWARD.gems;
+  return { ...TUTORIAL_REWARD };
 }
 
 // ───────────────────────── Solo en desarrollo ─────────────────────────

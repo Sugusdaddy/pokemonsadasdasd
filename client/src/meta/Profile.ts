@@ -18,6 +18,8 @@ import {
   type BallReward,
   type BattleResult,
   type CardOffer,
+  type MissionClaim,
+  type MissionPeriod,
   type ProfileState,
 } from '@arena/shared';
 import { t } from '../i18n';
@@ -203,6 +205,9 @@ class ProfileStore {
   buyBall = (type: BallType) => this.act<BallReward>('/me/shop/ball', { type });
   buyGold = (index: number) => this.act<number>('/me/shop/gold', { index });
   claimSeasonReward = () => this.act<{ gold: number; gems: number; ball?: BallReward }>('/me/season/claim');
+  claimMission = (period: MissionPeriod, id: string) => this.act<MissionClaim>('/me/missions/claim', { period, id });
+  claimMissionBonus = (period: MissionPeriod) => this.act<MissionClaim>('/me/missions/bonus', { period });
+  completeTutorial = () => this.act<{ gold: number; gems: number }>('/me/tutorial/complete');
   devCheat = (kind: 'resources' | 'trophies') => this.act<void>('/me/dev', { kind });
   reset = () => this.act<void>('/me/reset');
 

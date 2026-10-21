@@ -42,6 +42,7 @@ import { TowerView } from '../battle/TowerView';
 import { ProjectileView } from '../battle/ProjectileView';
 import { View } from '../battle/View';
 import { LocalSource, OnlineSource, ReplaySource, type BattleSource } from '../battle/sources';
+import { TutorialCoach, tutorialMatch } from '../battle/Tutorial';
 import { L } from '../layout';
 import { t, arenaName, ballLabel, emoteText } from '../i18n';
 import * as kit from '../ui/kit';
@@ -56,6 +57,7 @@ export const LAST_REPLAY_KEY = 'arenaRoyale.lastReplay';
 
 export type BattleData =
   | { kind: 'local' }
+  | { kind: 'tutorial' }
   | { kind: 'online'; session: OnlineSession }
   | { kind: 'replay'; replay: Replay; players: Record<Team, PlayerInfo>; back?: string };
 
@@ -82,6 +84,8 @@ export class BattleScene extends BaseScene {
   /** Pausa breve en golpes fuertes (solo visual: el tiempo se recupera al salir). */
   private hitStop = new HitStop();
   private fpsWatch: FpsWatch | null = null;
+  /** Explicaciones del tutorial (solo en esa partida). */
+  private coach: TutorialCoach | null = null;
   /** Río animado (WebGL); sin él se dibujan las olas de siempre. */
   private river: Phaser.GameObjects.Shader | null = null;
   private units = new Map<number, UnitView>();
@@ -117,6 +121,9 @@ export class BattleScene extends BaseScene {
       this.source = new OnlineSource(d.session);
     } else if (d.kind === 'replay') {
       this.source = new ReplaySource(d.replay, d.players);
+    } else if (d.kind === 'tutorial') {
+      const tm = tutorialMatch(randomSeed());
+      this.source = new LocalSource(tm.setup, tm.players, []);
     } else {
       const opp = makeOpponent({
         arena: Profile.arena,
@@ -181,6 +188,7 @@ export class BattleScene extends BaseScene {
     this.elapsed = 0;
     this.netBanner = null;
     this.hand = null;
+    this.coach = null;
 
     this.fx = new FxPools(this);
     this.particles = new BattleParticles(this);
@@ -449,7 +457,7 @@ export class BattleScene extends BaseScene {
 
   // ───────────────────────── HUD ─────────────────────────
 
-  private get foe(): Team {
+  get foe(): Team {
     return other(this.me);
   }
 
@@ -860,6 +868,18 @@ export class BattleScene extends BaseScene {
     this.started = true;
     this.source.begin();
     Music.play('battle');
+    if (this.data_.kind === 'tutorial' && this.hand && this.source instanceof LocalSource) {
+      this.coach = new TutorialCoach(this, this.source, this.hand, () => this.skipTutorial());
+      this.coach.start();
+    }
+  }
+
+  /** Salir del tutorial sin terminarlo (se puede repetir desde Perfil). */
+  private skipTutorial(): void {
+    if (this.modalOpen || this.resultShown) return;
+    this.coach?.destroy();
+    this.coach = null;
+    kit.goTo(this, Profile.loaded ? 'Lobby' : 'Boot', { tab: 'battle' });
   }
 
   // ───────────────────────── Vistas y eventos ─────────────────────────
@@ -1002,6 +1022,8 @@ export class BattleScene extends BaseScene {
           break;
         case 'end':
           this.hand?.hideGhost();
+          this.coach?.destroy();
+          this.coach = null;
           this.time.delayedCall(ev.reason === 'king' ? 1200 : ev.reason === 'overtime' ? 1000 : 0, () =>
             this.endMatch(ev.winner),
           );
@@ -1092,6 +1114,7 @@ export class BattleScene extends BaseScene {
     const P = this.source.players;
     const outcome: BattleOutcome = winner === 'draw' ? 'draw' : winner === this.me ? 'win' : 'loss';
     Sfx.play(outcome === 'win' ? 'win' : 'lose');
+    if (this.data_.kind === 'tutorial') return this.showTutorialResult(outcome);
     const replay: Replay = { version: 1, setup: m.setup, inputs: [...m.log] };
     try {
       localStorage.setItem(LAST_REPLAY_KEY, JSON.stringify({ ...replay, players: P }));
@@ -1206,6 +1229,51 @@ export class BattleScene extends BaseScene {
     this.input.keyboard?.once('keydown-ENTER', go);
   }
 
+  /** Fin del tutorial: si se gana, el servidor da el premio (una vez); si no, se puede repetir. */
+  private showTutorialResult(outcome: BattleOutcome): void {
+    const c = this.add.container(0, 0).setDepth(9000);
+    if (!L.pc) c.add(this.add.rectangle(W / 2, H / 2, W, H, 0x05060f, 0.82));
+    this.fitOverlay(c, 0.82);
+    const win = outcome === 'win';
+    this.resultHeader(c, win ? t('result.victory') : t('result.defeat'), win ? 0xffc93c : 0xff5a64, win);
+    this.drawScore(c, this.source.players);
+    const exit = () => this.scene.start(Profile.loaded ? 'Lobby' : 'Boot', { tab: 'battle' });
+    const line = (msg: string, y: number, color = '#dfe4ff', size = 24) =>
+      c.add(kit.text(this, W / 2, y, msg, 'body', color, { size, wordWrap: { width: W - 120 } }));
+    if (!win) {
+      line(t('tut.retryBody'), 640);
+      c.add(
+        button(
+          this,
+          W / 2 - 170,
+          780,
+          300,
+          96,
+          t('tut.retry'),
+          COLORS.green,
+          () => this.scene.restart({ kind: 'tutorial' }),
+          36,
+        ),
+      );
+      c.add(button(this, W / 2 + 170, 780, 300, 96, t('tut.exit'), COLORS.panelDark, exit, 36));
+      return;
+    }
+    c.add(button(this, W / 2, 860, 340, 96, t('common.ok'), COLORS.green, exit, 42));
+    if (!Profile.loaded) return void line(t('tut.offline'), 660);
+    if (Profile.d.tutorialDone) return void line(t('tut.doneBefore'), 660, '#7dff8a');
+    void Profile.completeTutorial()
+      .then((r) => {
+        if (!this.sys.isActive()) return;
+        Sfx.play('coin');
+        line(t('tut.done'), 620, '#ffd75a', 34);
+        c.add(this.add.image(W / 2 - 150, 700, 'ic_gold').setDisplaySize(48, 48));
+        c.add(kit.text(this, W / 2 - 118, 700, `+${r.gold}`, 'number', '#ffd75a', { size: 34, originX: 0 }));
+        c.add(this.add.image(W / 2 + 60, 700, 'ic_gem').setDisplaySize(48, 48));
+        c.add(kit.text(this, W / 2 + 92, 700, `+${r.gems}`, 'number', '#7dff8a', { size: 34, originX: 0 }));
+      })
+      .catch(() => this.sys.isActive() && line(t('result.rewardsLater'), 660));
+  }
+
   /** Título del resultado con rayos de luz detrás (y coronas si se gana). */
   private resultHeader(c: Phaser.GameObjects.Container, title: string, tone: number, rays: boolean): void {
     if (rays) {
@@ -1289,6 +1357,8 @@ export class BattleScene extends BaseScene {
       const events = this.source.advance(this.hitStop.step(this.time.now, realDt));
       if (this.source.takeReset()) this.rebuildViews();
       else this.handle(events);
+      this.coach?.onEvents(events);
+      this.coach?.update(realDt);
       // una carta enviada que no llega a aplicarse (se perdió el mensaje) deja de marcarse
       for (const [card, p] of this.pendingPlays) if (this.time.now - p.at > 2000) this.clearPending(card);
     }

@@ -442,6 +442,27 @@ cuando y destellos en las legendarias.
   iPhone/iPad, Perfil explica cómo: Compartir → Añadir a pantalla de inicio.
 - Para probar el build con el service worker: `npm run build` y `npm run preview` (puerto 4173).
 
+## Tutorial y misiones (Fase 4A)
+
+- **Tutorial guiado**: la primera vez que entras al menú (cuenta nueva, sin batallas) se propone una partida de
+  práctica contra el **Guía**, con explicaciones encima: objetivo (la partida se para), cartas y elixir (se para),
+  juega tu primera carta (te señala dónde), defiende un ataque por la izquierda y luego partida libre con consejos
+  sueltos (corona, hechizos, elixir lleno). El Guía no es el bot normal: juega poco y donde conviene para enseñar.
+  Se puede saltar y repetir desde **Perfil → Jugar el tutorial**. Ganarlo da **150 de oro y 20 gemas** una sola vez
+  por cuenta (lo controla el servidor). El guion está en `client/src/battle/tutorialScript.ts` (sin Phaser, con
+  tests) y el dibujo en `client/src/battle/Tutorial.ts`.
+- **Misiones**: 3 diarias (día UTC) y 3 semanales (lunes a domingo, UTC), al azar entre las de
+  `shared/src/meta/missions.ts` y sin repetir clase: jugar, ganar, coronas, victorias de 3 coronas, hechizos, tropas,
+  elixir gastado, abrir balls, mejorar cartas y gastar oro. Cada una da oro (y gemas las semanales); cobrar las tres
+  de un periodo da un premio extra (Poké Ball + gemas al día, Ultra Ball + gemas a la semana).
+- **Todo lo decide el servidor**: reparte las misiones al empezar cada periodo (dentro del estado de la cuenta, sin
+  tablas nuevas) y el progreso de batalla sale de los inputs que aceptó SU simulación. Cuentan las clasificatorias y
+  las partidas contra el bot; las amistosas, no (como sus trofeos). El resto (balls, mejoras, oro) cuenta al hacer la
+  acción. API: `POST /api/me/missions/claim` `{ period, id }`, `POST /api/me/missions/bonus` `{ period }` y
+  `POST /api/me/tutorial/complete`.
+- En el menú, la fila de premios de la pestaña Batalla tiene ahora tres recuadros: ball gratis, ball de coronas y
+  **Misiones** (se pone verde y la pestaña lleva aviso cuando hay algo por cobrar).
+
 ## Arte y modo "solo fans"
 
 Ver [ART_PIPELINE.md](ART_PIPELINE.md): cómo se generan los atlas, la opción `ART.spriteSource = 'fan-only'`

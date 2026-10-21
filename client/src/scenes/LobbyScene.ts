@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { COLORS, KING_XP, type BallReward } from '@arena/shared';
+import { COLORS, KING_XP, TUTORIAL_REWARD, claimableMissions, type BallReward } from '@arena/shared';
 import { L } from '../layout';
 import { Profile } from '../meta/Profile';
 import { Music, Sfx } from '../systems/Sfx';
@@ -18,6 +18,9 @@ import { Social } from '../net/social';
 import { SIDEBAR_W, TOP_BAR, playerName, runAction, type MenuScene, type Tab, type TabKey } from '../ui/tabs/Tab';
 import { shortAddress } from '../net/wallet';
 import { BaseScene } from './BaseScene';
+
+/** Ya se le propuso el tutorial en este navegador. */
+const TUTORIAL_ASKED = 'arenaRoyale.tutorialAsked';
 
 /** Invitaciones ya enseñadas (no se repiten al volver al menú). */
 const shownInvites = new Set<string>();
@@ -126,6 +129,7 @@ export class LobbyScene extends BaseScene implements MenuScene {
     this.bindKeys();
     kit.fadeIn(this);
     this.maybeSeasonEnd();
+    this.maybeTutorial();
     // si la ventana cambió de forma durante la batalla, se aplica ahora
     this.game.events.emit('layout-check');
     (window as unknown as { __lobby: LobbyScene }).__lobby = this;
@@ -299,6 +303,7 @@ export class LobbyScene extends BaseScene implements MenuScene {
       Object.keys(Profile.d.cards).some((k) => Profile.canUpgrade(k) && Profile.d.gold >= Profile.goldNeeded(k)),
     );
     dot('road', RoadTab.claimable());
+    dot('battle', claimableMissions(Profile.d.missions) > 0);
     // el servidor renueva la tienda cada día: basta con mirar si el regalo está sin cobrar
     dot('shop', !Profile.d.shop.freeClaimed);
     dot('social', !!Profile.d.pendingSeason || Social.pending > 0);
@@ -379,6 +384,42 @@ export class LobbyScene extends BaseScene implements MenuScene {
           );
         }),
       );
+    });
+  }
+
+  /** Primera visita: propone el tutorial (una vez por navegador; luego está en Perfil). */
+  maybeTutorial(): void {
+    if (Profile.d.tutorialDone || Profile.d.stats.battles > 0 || this.modalOpen) return;
+    try {
+      if (localStorage.getItem(TUTORIAL_ASKED)) return;
+      localStorage.setItem(TUTORIAL_ASKED, '1');
+    } catch {
+      /* sin almacenamiento: se propone cada vez hasta que juegue */
+    }
+    openModal(this, 620, 470, t('tut.welcomeTitle'), (box, close) => {
+      box.add(
+        kit.text(this, 0, -120, t('tut.welcomeBody', { ...TUTORIAL_REWARD }), 'body', '#dfe4ff', {
+          size: 24,
+          wordWrap: { width: 540 },
+        }),
+      );
+      box.add(
+        kit.button(
+          this,
+          0,
+          30,
+          440,
+          100,
+          t('tut.start'),
+          'success',
+          () => {
+            close();
+            kit.goTo(this, 'Battle', { kind: 'tutorial' });
+          },
+          { size: 34 },
+        ),
+      );
+      box.add(kit.button(this, 0, 150, 300, 76, t('tut.later'), 'neutral', close, { size: 26 }));
     });
   }
 

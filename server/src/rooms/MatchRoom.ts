@@ -16,6 +16,9 @@ import {
   startLevel,
   getCard,
   applyBattle,
+  battleStats,
+  rollMissions,
+  trackBattle,
   deckOf,
   levelsOf,
   DEFAULT_NAME,
@@ -412,9 +415,13 @@ export class MatchRoom extends Room {
         if (!seat.accountId) continue;
         const outcome = m.winner === 'draw' || !m.winner ? 'draw' : m.winner === seat.team ? 'win' : 'loss';
         try {
-          const { result, state } = await store().mutate(seat.accountId, (s) =>
-            applyBattle(s, outcome, m.crowns[seat.team], rewardRand),
-          );
+          const { result, state } = await store().mutate(seat.accountId, (s) => {
+            const res = applyBattle(s, outcome, m.crowns[seat.team], rewardRand);
+            // misiones: con lo que ha pasado en ESTA simulación (los inputs que aceptó)
+            rollMissions(s, Date.now(), rewardRand);
+            trackBattle(s, battleStats(m.log, seat.team, outcome, m.crowns[seat.team]));
+            return res;
+          });
           seat.client?.send('rewards', { result, state } satisfies RewardsMsg);
         } catch (e) {
           console.error('[match] no se pudieron dar las recompensas', e);
