@@ -1,0 +1,2207 @@
+{
+ "source": {
+  "title": "PokéSurvivor · Mundo Misterioso",
+  "version": "025032c5a0",
+  "spriteSource": "all",
+  "generatedFrom": "assets/SpritesPokemon"
+ },
+ "castAnim": {
+  "melee": "Attack",
+  "beam": "Shoot",
+  "projectile": "Shoot",
+  "nova": "Attack",
+  "aura": "Charge",
+  "buff": "Charge",
+  "orbit": "Charge",
+  "boomerang": "Shoot",
+  "chain": "Shoot",
+  "mine": "Charge",
+  "meteor": "Charge",
+  "turret": "Charge",
+  "dash": "Attack",
+  "trail": "Walk",
+  "cone": "Shoot"
+ },
+ "typePalettes": {
+  "fire": [
+   "#6b1200",
+   "#b8300a",
+   "#ff6a1f",
+   "#ffb22e",
+   "#fff2a0"
+  ],
+  "water": [
+   "#0f2f78",
+   "#1f56c4",
+   "#3d8bff",
+   "#8ccaff",
+   "#eaf7ff"
+  ],
+  "grass": [
+   "#14400f",
+   "#24721e",
+   "#45b23c",
+   "#97e36c",
+   "#eaffd0"
+  ],
+  "electric": [
+   "#6b4300",
+   "#c48a00",
+   "#ffd21a",
+   "#fff36a",
+   "#ffffff"
+  ],
+  "psychic": [
+   "#5e0a3a",
+   "#b0246e",
+   "#ff4f9a",
+   "#ff9fcf",
+   "#ffe8f3"
+  ],
+  "ice": [
+   "#134a60",
+   "#2f8aa8",
+   "#62d2ea",
+   "#bff3ff",
+   "#ffffff"
+  ],
+  "fighting": [
+   "#561208",
+   "#9a2a16",
+   "#e04a2e",
+   "#ff9c6c",
+   "#ffe2cc"
+  ],
+  "poison": [
+   "#2e0a3c",
+   "#5e1f7e",
+   "#a043d0",
+   "#d995f2",
+   "#f7e2ff"
+  ],
+  "ground": [
+   "#3a250c",
+   "#6e4c1e",
+   "#aa7c3c",
+   "#dcb66c",
+   "#f6e6b8"
+  ],
+  "flying": [
+   "#283c66",
+   "#5672b0",
+   "#93b2ff",
+   "#d2e2ff",
+   "#ffffff"
+  ],
+  "bug": [
+   "#2e3a06",
+   "#5b7414",
+   "#90b82a",
+   "#cbe86c",
+   "#f4ffd2"
+  ],
+  "rock": [
+   "#2e2418",
+   "#5a4a34",
+   "#8e7a5a",
+   "#c6b08a",
+   "#f0e4c6"
+  ],
+  "ghost": [
+   "#160e2c",
+   "#33256a",
+   "#5c48aa",
+   "#9e8aea",
+   "#e8deff"
+  ],
+  "dragon": [
+   "#160a50",
+   "#2e1ea0",
+   "#5a3cff",
+   "#a490ff",
+   "#e8e2ff"
+  ],
+  "dark": [
+   "#0e0a0c",
+   "#2a2026",
+   "#463840",
+   "#7c6a74",
+   "#d4c4cc"
+  ],
+  "steel": [
+   "#232d38",
+   "#56667a",
+   "#8c9caf",
+   "#cad6e2",
+   "#ffffff"
+  ],
+  "fairy": [
+   "#6a2050",
+   "#b04a8a",
+   "#ff8acb",
+   "#ffc4e6",
+   "#ffffff"
+  ],
+  "normal": [
+   "#3e3834",
+   "#7a7068",
+   "#c4bcb0",
+   "#ece6dc",
+   "#ffffff"
+  ],
+  "aura": [
+   "#0c2460",
+   "#1c4cb0",
+   "#3a7cff",
+   "#90d2ff",
+   "#ffffff"
+  ]
+ },
+ "pokemon": {
+  "1": {
+   "id": 1,
+   "name": "Bulbasaur",
+   "types": [
+    "grass",
+    "poison"
+   ],
+   "stats": {
+    "bst": 318,
+    "atk": 1.06,
+    "spd": 97,
+    "rarity": 1,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.4,
+    "Attack": 0.4667,
+    "Idle": 0.8667,
+    "Shoot": 0.4667,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "4": {
+   "id": 4,
+   "name": "Charmander",
+   "types": [
+    "fire"
+   ],
+   "stats": {
+    "bst": 309,
+    "atk": 1.03,
+    "spd": 105,
+    "rarity": 1,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.4667,
+    "Attack": 0.4,
+    "Idle": 0.6,
+    "Shoot": 0.3333,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "6": {
+   "id": 6,
+   "name": "Charizard",
+   "types": [
+    "fire",
+    "flying"
+   ],
+   "stats": {
+    "bst": 534,
+    "atk": 1.3,
+    "spd": 120,
+    "rarity": 4,
+    "legendary": false
+   },
+   "shadow_size": 2,
+   "hovers": false,
+   "idleH": 48,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.4667,
+    "Idle": 1,
+    "Shoot": 0.4667,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "mixed",
+   "placeholder": false
+  },
+  "7": {
+   "id": 7,
+   "name": "Squirtle",
+   "types": [
+    "water"
+   ],
+   "stats": {
+    "bst": 314,
+    "atk": 0.97,
+    "spd": 96,
+    "rarity": 1,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 32,
+   "animDur": {
+    "Walk": 0.6667,
+    "Attack": 0.3167,
+    "Idle": 0.8333,
+    "Shoot": 0.4333,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "16": {
+   "id": 16,
+   "name": "Pidgey",
+   "types": [
+    "normal",
+    "flying"
+   ],
+   "stats": {
+    "bst": 251,
+    "atk": 0.95,
+    "spd": 102,
+    "rarity": 1,
+    "legendary": false
+   },
+   "shadow_size": 0,
+   "hovers": false,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.3667,
+    "Attack": 0.4667,
+    "Idle": 0.7667,
+    "Shoot": 0.5,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "mixed",
+   "placeholder": false
+  },
+  "19": {
+   "id": 19,
+   "name": "Rattata",
+   "types": [
+    "normal"
+   ],
+   "stats": {
+    "bst": 253,
+    "atk": 1.01,
+    "spd": 108,
+    "rarity": 1,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 32,
+   "animDur": {
+    "Walk": 0.5,
+    "Attack": 0.3167,
+    "Idle": 0.9333,
+    "Shoot": 0.45,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "25": {
+   "id": 25,
+   "name": "Pikachu",
+   "types": [
+    "electric"
+   ],
+   "stats": {
+    "bst": 320,
+    "atk": 1,
+    "spd": 116,
+    "rarity": 2,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 56,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.35,
+    "Idle": 0.8833,
+    "Shoot": 0.4167,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "26": {
+   "id": 26,
+   "name": "Raichu",
+   "types": [
+    "electric"
+   ],
+   "stats": {
+    "bst": 485,
+    "atk": 1.2,
+    "spd": 124,
+    "rarity": 3,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 56,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.3167,
+    "Idle": 0.9333,
+    "Shoot": 0.4167,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "mixed",
+   "placeholder": false
+  },
+  "35": {
+   "id": 35,
+   "name": "Clefairy",
+   "types": [
+    "fairy"
+   ],
+   "stats": {
+    "bst": 323,
+    "atk": 1.03,
+    "spd": 93,
+    "rarity": 2,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.8,
+    "Attack": 0.3167,
+    "Idle": 0.8167,
+    "Shoot": 0.3167,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "37": {
+   "id": 37,
+   "name": "Vulpix",
+   "types": [
+    "fire"
+   ],
+   "stats": {
+    "bst": 299,
+    "atk": 0.97,
+    "spd": 105,
+    "rarity": 1,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 32,
+   "animDur": {
+    "Walk": 0.4,
+    "Attack": 0.4333,
+    "Idle": 1.4,
+    "Shoot": 0.4833,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "39": {
+   "id": 39,
+   "name": "Jigglypuff",
+   "types": [
+    "normal",
+    "fairy"
+   ],
+   "stats": {
+    "bst": 270,
+    "atk": 0.95,
+    "spd": 86,
+    "rarity": 1,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 32,
+   "animDur": {
+    "Walk": 0.4,
+    "Attack": 0.4667,
+    "Idle": 1.1833,
+    "Shoot": 0.4333,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "mixed",
+   "placeholder": false
+  },
+  "41": {
+   "id": 41,
+   "name": "Zubat",
+   "types": [
+    "poison",
+    "flying"
+   ],
+   "stats": {
+    "bst": 245,
+    "atk": 0.95,
+    "spd": 101,
+    "rarity": 1,
+    "legendary": false
+   },
+   "shadow_size": 0,
+   "hovers": true,
+   "idleH": 56,
+   "animDur": {
+    "Walk": 0.8,
+    "Attack": 0.3667,
+    "Idle": 0.9,
+    "Shoot": 0.5,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "54": {
+   "id": 54,
+   "name": "Psyduck",
+   "types": [
+    "water"
+   ],
+   "stats": {
+    "bst": 320,
+    "atk": 1.06,
+    "spd": 101,
+    "rarity": 2,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.6667,
+    "Attack": 0.4667,
+    "Idle": 1.2,
+    "Shoot": 0.4,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "58": {
+   "id": 58,
+   "name": "Growlithe",
+   "types": [
+    "fire"
+   ],
+   "stats": {
+    "bst": 350,
+    "atk": 1.08,
+    "spd": 103,
+    "rarity": 2,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 48,
+   "animDur": {
+    "Walk": 0.4667,
+    "Attack": 0.5,
+    "Idle": 0.7667,
+    "Shoot": 0.45,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "mixed",
+   "placeholder": false
+  },
+  "59": {
+   "id": 59,
+   "name": "Arcanine",
+   "types": [
+    "fire"
+   ],
+   "stats": {
+    "bst": 555,
+    "atk": 1.31,
+    "spd": 118,
+    "rarity": 4,
+    "legendary": false
+   },
+   "shadow_size": 2,
+   "hovers": false,
+   "idleH": 48,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.4667,
+    "Idle": 0.1333,
+    "Shoot": 0.45,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "66": {
+   "id": 66,
+   "name": "Machop",
+   "types": [
+    "fighting"
+   ],
+   "stats": {
+    "bst": 305,
+    "atk": 1.14,
+    "spd": 93,
+    "rarity": 1,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.5333,
+    "Attack": 0.35,
+    "Idle": 0.8667,
+    "Shoot": 0.4167,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "mixed",
+   "placeholder": false
+  },
+  "68": {
+   "id": 68,
+   "name": "Machamp",
+   "types": [
+    "fighting"
+   ],
+   "stats": {
+    "bst": 505,
+    "atk": 1.42,
+    "spd": 101,
+    "rarity": 4,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 48,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.3667,
+    "Idle": 1.1333,
+    "Shoot": 0.3333,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "74": {
+   "id": 74,
+   "name": "Geodude",
+   "types": [
+    "rock",
+    "ground"
+   ],
+   "stats": {
+    "bst": 300,
+    "atk": 1.14,
+    "spd": 86,
+    "rarity": 1,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 24,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.4,
+    "Idle": 0.6667,
+    "Shoot": 0.4667,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "76": {
+   "id": 76,
+   "name": "Golem",
+   "types": [
+    "rock",
+    "ground"
+   ],
+   "stats": {
+    "bst": 495,
+    "atk": 1.36,
+    "spd": 97,
+    "rarity": 4,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.6667,
+    "Attack": 0.5667,
+    "Idle": 0.9167,
+    "Shoot": 0.4667,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "mixed",
+   "placeholder": false
+  },
+  "92": {
+   "id": 92,
+   "name": "Gastly",
+   "types": [
+    "ghost",
+    "poison"
+   ],
+   "stats": {
+    "bst": 310,
+    "atk": 1.25,
+    "spd": 112,
+    "rarity": 1,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": true,
+   "idleH": 56,
+   "animDur": {
+    "Walk": 1.2,
+    "Attack": 0.4167,
+    "Idle": 1,
+    "Shoot": 0.4667,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "93": {
+   "id": 93,
+   "name": "Haunter",
+   "types": [
+    "ghost",
+    "poison"
+   ],
+   "stats": {
+    "bst": 405,
+    "atk": 1.33,
+    "spd": 118,
+    "rarity": 2,
+    "legendary": false
+   },
+   "shadow_size": 2,
+   "hovers": true,
+   "idleH": 56,
+   "animDur": {
+    "Walk": 1.1333,
+    "Attack": 0.4667,
+    "Idle": 0.7333,
+    "Shoot": 0.4667,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "94": {
+   "id": 94,
+   "name": "Gengar",
+   "types": [
+    "ghost",
+    "poison"
+   ],
+   "stats": {
+    "bst": 500,
+    "atk": 1.42,
+    "spd": 124,
+    "rarity": 4,
+    "legendary": false
+   },
+   "shadow_size": 2,
+   "hovers": false,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.4167,
+    "Idle": 1.05,
+    "Shoot": 0.5333,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "mixed",
+   "placeholder": false
+  },
+  "95": {
+   "id": 95,
+   "name": "Onix",
+   "types": [
+    "rock",
+    "ground"
+   ],
+   "stats": {
+    "bst": 385,
+    "atk": 0.95,
+    "spd": 107,
+    "rarity": 2,
+    "legendary": false
+   },
+   "shadow_size": 2,
+   "hovers": false,
+   "idleH": 104,
+   "animDur": {
+    "Walk": 0.8,
+    "Attack": 0.3833,
+    "Idle": 1.0667,
+    "Shoot": 0.4,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "104": {
+   "id": 104,
+   "name": "Cubone",
+   "types": [
+    "ground"
+   ],
+   "stats": {
+    "bst": 320,
+    "atk": 0.97,
+    "spd": 93,
+    "rarity": 2,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.3167,
+    "Idle": 0.8167,
+    "Shoot": 0.3333,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "mixed",
+   "placeholder": false
+  },
+  "105": {
+   "id": 105,
+   "name": "Marowak",
+   "types": [
+    "ground"
+   ],
+   "stats": {
+    "bst": 425,
+    "atk": 1.14,
+    "spd": 97,
+    "rarity": 3,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 48,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.3333,
+    "Idle": 1.1333,
+    "Shoot": 0.3167,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "123": {
+   "id": 123,
+   "name": "Scyther",
+   "types": [
+    "bug",
+    "flying"
+   ],
+   "stats": {
+    "bst": 500,
+    "atk": 1.31,
+    "spd": 122,
+    "rarity": 4,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 48,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.3167,
+    "Idle": 1.2333,
+    "Shoot": 0.3833,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "124": {
+   "id": 124,
+   "name": "Jynx",
+   "types": [
+    "ice",
+    "psychic"
+   ],
+   "stats": {
+    "bst": 455,
+    "atk": 1.33,
+    "spd": 118,
+    "rarity": 3,
+    "legendary": false
+   },
+   "shadow_size": 2,
+   "hovers": false,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.6667,
+    "Attack": 0.3167,
+    "Idle": 1.4667,
+    "Shoot": 0.4167,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "126": {
+   "id": 126,
+   "name": "Magmar",
+   "types": [
+    "fire"
+   ],
+   "stats": {
+    "bst": 495,
+    "atk": 1.25,
+    "spd": 117,
+    "rarity": 4,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 48,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.3167,
+    "Idle": 1.0667,
+    "Shoot": 0.4667,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "130": {
+   "id": 130,
+   "name": "Gyarados",
+   "types": [
+    "water",
+    "flying"
+   ],
+   "stats": {
+    "bst": 540,
+    "atk": 1.39,
+    "spd": 112,
+    "rarity": 4,
+    "legendary": false
+   },
+   "shadow_size": 2,
+   "hovers": true,
+   "idleH": 128,
+   "animDur": {
+    "Walk": 0.8,
+    "Attack": 0.3833,
+    "Idle": 0.8667,
+    "Shoot": 0.4167,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "131": {
+   "id": 131,
+   "name": "Lapras",
+   "types": [
+    "water",
+    "ice"
+   ],
+   "stats": {
+    "bst": 535,
+    "atk": 1.17,
+    "spd": 103,
+    "rarity": 4,
+    "legendary": false
+   },
+   "shadow_size": 2,
+   "hovers": false,
+   "idleH": 56,
+   "animDur": {
+    "Walk": 0.7333,
+    "Attack": 0.4167,
+    "Idle": 1.3333,
+    "Shoot": 0.45,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "133": {
+   "id": 133,
+   "name": "Eevee",
+   "types": [
+    "normal"
+   ],
+   "stats": {
+    "bst": 325,
+    "atk": 1,
+    "spd": 101,
+    "rarity": 2,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 32,
+   "animDur": {
+    "Walk": 0.4333,
+    "Attack": 0.5,
+    "Idle": 0.5333,
+    "Shoot": 0.5333,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "134": {
+   "id": 134,
+   "name": "Vaporeon",
+   "types": [
+    "water"
+   ],
+   "stats": {
+    "bst": 525,
+    "atk": 1.31,
+    "spd": 105,
+    "rarity": 4,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 56,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.3167,
+    "Idle": 1.2667,
+    "Shoot": 0.45,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "136": {
+   "id": 136,
+   "name": "Flareon",
+   "types": [
+    "fire"
+   ],
+   "stats": {
+    "bst": 525,
+    "atk": 1.42,
+    "spd": 105,
+    "rarity": 4,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.5333,
+    "Attack": 0.4667,
+    "Idle": 0.9333,
+    "Shoot": 0.4333,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "mixed",
+   "placeholder": false
+  },
+  "143": {
+   "id": 143,
+   "name": "Snorlax",
+   "types": [
+    "normal"
+   ],
+   "stats": {
+    "bst": 540,
+    "atk": 1.31,
+    "spd": 91,
+    "rarity": 4,
+    "legendary": false
+   },
+   "shadow_size": 2,
+   "hovers": false,
+   "idleH": 64,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.3833,
+    "Idle": 0.8667,
+    "Shoot": 0.4333,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "144": {
+   "id": 144,
+   "name": "Articuno",
+   "types": [
+    "ice",
+    "flying"
+   ],
+   "stats": {
+    "bst": 580,
+    "atk": 1.22,
+    "spd": 114,
+    "rarity": 5,
+    "legendary": true
+   },
+   "shadow_size": 2,
+   "hovers": true,
+   "idleH": 88,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.3,
+    "Idle": 0.7,
+    "Shoot": 0.6,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "145": {
+   "id": 145,
+   "name": "Zapdos",
+   "types": [
+    "electric",
+    "flying"
+   ],
+   "stats": {
+    "bst": 580,
+    "atk": 1.39,
+    "spd": 120,
+    "rarity": 5,
+    "legendary": true
+   },
+   "shadow_size": 2,
+   "hovers": true,
+   "idleH": 96,
+   "animDur": {
+    "Walk": 0.4,
+    "Attack": 0.35,
+    "Idle": 0.6,
+    "Shoot": 0.5,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "146": {
+   "id": 146,
+   "name": "Moltres",
+   "types": [
+    "fire",
+    "flying"
+   ],
+   "stats": {
+    "bst": 580,
+    "atk": 1.39,
+    "spd": 116,
+    "rarity": 5,
+    "legendary": true
+   },
+   "shadow_size": 2,
+   "hovers": true,
+   "idleH": 96,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.4167,
+    "Idle": 0.6667,
+    "Shoot": 0.5333,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "official",
+   "placeholder": false
+  },
+  "149": {
+   "id": 149,
+   "name": "Dragonite",
+   "types": [
+    "dragon",
+    "flying"
+   ],
+   "stats": {
+    "bst": 600,
+    "atk": 1.44,
+    "spd": 112,
+    "rarity": 5,
+    "legendary": false
+   },
+   "shadow_size": 2,
+   "hovers": false,
+   "idleH": 64,
+   "animDur": {
+    "Walk": 0.6667,
+    "Attack": 0.4167,
+    "Idle": 0.9,
+    "Shoot": 0.4667,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.1667
+   },
+   "origin": "mixed",
+   "placeholder": false
+  },
+  "150": {
+   "id": 150,
+   "name": "Mewtwo",
+   "types": [
+    "psychic"
+   ],
+   "stats": {
+    "bst": 680,
+    "atk": 1.55,
+    "spd": 133,
+    "rarity": 5,
+    "legendary": true
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 64,
+   "animDur": {
+    "Walk": 0.8,
+    "Attack": 0.3667,
+    "Idle": 1.2,
+    "Shoot": 0.4333,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "mixed",
+   "placeholder": false
+  },
+  "225": {
+   "id": 225,
+   "name": "Delibird",
+   "types": [
+    "ice",
+    "flying"
+   ],
+   "stats": {
+    "bst": 330,
+    "atk": 1.06,
+    "spd": 110,
+    "rarity": 2,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 40,
+   "animDur": {
+    "Walk": 0.6,
+    "Attack": 0.3167,
+    "Idle": 0.8,
+    "Shoot": 0.5,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "mixed",
+   "placeholder": false
+  },
+  "448": {
+   "id": 448,
+   "name": "Lucario",
+   "types": [
+    "fighting",
+    "steel"
+   ],
+   "stats": {
+    "bst": 525,
+    "atk": 1.33,
+    "spd": 116,
+    "rarity": 4,
+    "legendary": false
+   },
+   "shadow_size": 1,
+   "hovers": false,
+   "idleH": 56,
+   "animDur": {
+    "Walk": 0.4,
+    "Attack": 0.5,
+    "Idle": 0.8667,
+    "Shoot": 0.5,
+    "Charge": 0.3333,
+    "Hurt": 0.1667,
+    "Faint": 0.5667
+   },
+   "origin": "mixed",
+   "placeholder": false
+  }
+ },
+ "attacks": {
+  "tackle": {
+   "name": "Placaje",
+   "type": "normal",
+   "kind": "melee",
+   "base_stats": {
+    "cd": 0.5,
+    "dmg": 16,
+    "radius": 60,
+    "arc": 2.13,
+    "knock": 90
+   },
+   "palette": "normal"
+  },
+  "quick-attack": {
+   "name": "Ataque Rápido",
+   "type": "normal",
+   "kind": "dash",
+   "base_stats": {
+    "cd": 0.75,
+    "dmg": 20,
+    "radius": 110,
+    "knock": 40
+   },
+   "palette": "normal"
+  },
+  "swords-dance": {
+   "name": "Danza Espada",
+   "type": "normal",
+   "kind": "buff",
+   "base_stats": {
+    "cd": 0.85,
+    "stat": "atk",
+    "amount": 0.13,
+    "dur": 7,
+    "stacks": 5
+   },
+   "palette": "fighting"
+  },
+  "agility": {
+   "name": "Agilidad",
+   "type": "normal",
+   "kind": "buff",
+   "base_stats": {
+    "cd": 0.85,
+    "stat": "spd",
+    "amount": 0.1,
+    "dur": 7,
+    "stacks": 5
+   },
+   "palette": "flying"
+  },
+  "harden": {
+   "name": "Fortaleza",
+   "type": "normal",
+   "kind": "buff",
+   "base_stats": {
+    "cd": 0.85,
+    "stat": "def",
+    "amount": 0.07,
+    "dur": 7,
+    "stacks": 5
+   },
+   "palette": "steel"
+  },
+  "ember": {
+   "name": "Ascuas",
+   "type": "fire",
+   "kind": "projectile",
+   "base_stats": {
+    "cd": 0.52,
+    "dmg": 18,
+    "speed": 310,
+    "count": 1,
+    "spread": 0.12,
+    "pierce": 0,
+    "life": 1.6,
+    "size": 7,
+    "burn": 1
+   },
+   "palette": "fire"
+  },
+  "flamethrower": {
+   "name": "Lanzallamas",
+   "type": "fire",
+   "kind": "cone",
+   "base_stats": {
+    "cd": 0.7,
+    "dmg": 7,
+    "speed": 380,
+    "count": 7,
+    "pierce": 1,
+    "life": 0.42,
+    "size": 6,
+    "arc": 0.9,
+    "burn": 1
+   },
+   "palette": "fire"
+  },
+  "fire-spin": {
+   "name": "Giro Fuego",
+   "type": "fire",
+   "kind": "orbit",
+   "base_stats": {
+    "cd": 0.3,
+    "dmg": 14,
+    "speed": 2.4,
+    "count": 3,
+    "size": 9,
+    "radius": 62,
+    "burn": 1
+   },
+   "palette": "fire"
+  },
+  "heat-wave": {
+   "name": "Onda Ígnea",
+   "type": "fire",
+   "kind": "nova",
+   "base_stats": {
+    "cd": 1.25,
+    "dmg": 13,
+    "speed": 250,
+    "count": 10,
+    "pierce": 1,
+    "life": 1.1,
+    "size": 7,
+    "burn": 1
+   },
+   "palette": "fire"
+  },
+  "water-gun": {
+   "name": "Pistola Agua",
+   "type": "water",
+   "kind": "projectile",
+   "base_stats": {
+    "cd": 0.44,
+    "dmg": 14,
+    "speed": 350,
+    "count": 1,
+    "spread": 0.1,
+    "pierce": 1,
+    "life": 1.5,
+    "size": 6
+   },
+   "palette": "water"
+  },
+  "bubble": {
+   "name": "Burbuja",
+   "type": "water",
+   "kind": "nova",
+   "base_stats": {
+    "cd": 1,
+    "dmg": 9,
+    "speed": 210,
+    "count": 8,
+    "pierce": 0,
+    "life": 1.3,
+    "size": 8,
+    "slow": 0.45
+   },
+   "palette": "water"
+  },
+  "hydro-pump": {
+   "name": "Hidrobomba",
+   "type": "water",
+   "kind": "beam",
+   "base_stats": {
+    "cd": 1.5,
+    "dmg": 29,
+    "radius": 250
+   },
+   "palette": "water"
+  },
+  "aqua-ring": {
+   "name": "Acua Aro",
+   "type": "water",
+   "kind": "buff",
+   "base_stats": {
+    "cd": 0.9,
+    "stat": "regen",
+    "amount": 1.6,
+    "dur": 8,
+    "stacks": 4
+   },
+   "palette": "water"
+  },
+  "vine-whip": {
+   "name": "Látigo Cepa",
+   "type": "grass",
+   "kind": "melee",
+   "base_stats": {
+    "cd": 0.62,
+    "dmg": 19,
+    "radius": 85,
+    "arc": 1.63,
+    "knock": 60
+   },
+   "palette": "grass"
+  },
+  "razor-leaf": {
+   "name": "Hoja Afilada",
+   "type": "grass",
+   "kind": "boomerang",
+   "base_stats": {
+    "cd": 0.9,
+    "dmg": 10,
+    "speed": 330,
+    "count": 2,
+    "spread": 0.5,
+    "size": 6,
+    "radius": 210
+   },
+   "palette": "grass"
+  },
+  "leaf-storm": {
+   "name": "Tormenta Floral",
+   "type": "grass",
+   "kind": "orbit",
+   "base_stats": {
+    "cd": 0.26,
+    "dmg": 14,
+    "speed": 2.6,
+    "count": 4,
+    "size": 8,
+    "radius": 74
+   },
+   "palette": "grass"
+  },
+  "giga-drain": {
+   "name": "Hierba Lazo",
+   "type": "grass",
+   "kind": "aura",
+   "base_stats": {
+    "cd": 0.55,
+    "dmg": 9,
+    "radius": 76
+   },
+   "palette": "grass"
+  },
+  "thunder-shock": {
+   "name": "Impactrueno",
+   "type": "electric",
+   "kind": "projectile",
+   "base_stats": {
+    "cd": 0.4,
+    "dmg": 13,
+    "speed": 480,
+    "count": 1,
+    "spread": 0.08,
+    "pierce": 2,
+    "life": 1.1,
+    "size": 5
+   },
+   "palette": "electric"
+  },
+  "discharge": {
+   "name": "Chispazo",
+   "type": "electric",
+   "kind": "aura",
+   "base_stats": {
+    "cd": 0.45,
+    "dmg": 8,
+    "radius": 70
+   },
+   "palette": "electric"
+  },
+  "thunderbolt": {
+   "name": "Rayo",
+   "type": "electric",
+   "kind": "chain",
+   "base_stats": {
+    "cd": 0.95,
+    "dmg": 21,
+    "count": 4,
+    "radius": 140
+   },
+   "palette": "electric"
+  },
+  "confusion": {
+   "name": "Confusión",
+   "type": "psychic",
+   "kind": "projectile",
+   "base_stats": {
+    "cd": 0.58,
+    "dmg": 13,
+    "speed": 280,
+    "count": 1,
+    "spread": 0.1,
+    "pierce": 0,
+    "life": 2.2,
+    "size": 8
+   },
+   "palette": "psychic"
+  },
+  "psybeam": {
+   "name": "Psicorrayo",
+   "type": "psychic",
+   "kind": "beam",
+   "base_stats": {
+    "cd": 1.15,
+    "dmg": 17,
+    "radius": 215
+   },
+   "palette": "psychic"
+  },
+  "psychic": {
+   "name": "Psíquico",
+   "type": "psychic",
+   "kind": "nova",
+   "base_stats": {
+    "cd": 1.35,
+    "dmg": 10,
+    "speed": 230,
+    "count": 12,
+    "pierce": 1,
+    "life": 1.6,
+    "size": 7
+   },
+   "palette": "psychic"
+  },
+  "sludge": {
+   "name": "Residuos",
+   "type": "poison",
+   "kind": "projectile",
+   "base_stats": {
+    "cd": 0.6,
+    "dmg": 17,
+    "speed": 290,
+    "count": 1,
+    "spread": 0.12,
+    "pierce": 0,
+    "life": 1.5,
+    "size": 8
+   },
+   "palette": "poison"
+  },
+  "mud-shot": {
+   "name": "Disparo Lodo",
+   "type": "ground",
+   "kind": "nova",
+   "base_stats": {
+    "cd": 1.1,
+    "dmg": 11,
+    "speed": 200,
+    "count": 7,
+    "pierce": 0,
+    "life": 1,
+    "size": 9,
+    "slow": 0.4
+   },
+   "palette": "ground"
+  },
+  "gust": {
+   "name": "Tornado",
+   "type": "flying",
+   "kind": "orbit",
+   "base_stats": {
+    "cd": 0.26,
+    "dmg": 13,
+    "speed": 2.8,
+    "count": 3,
+    "size": 8,
+    "radius": 72,
+    "knock": 40
+   },
+   "palette": "flying"
+  },
+  "wing-attack": {
+   "name": "Ataque Ala",
+   "type": "flying",
+   "kind": "melee",
+   "base_stats": {
+    "cd": 0.55,
+    "dmg": 17,
+    "radius": 73,
+    "arc": 2.38,
+    "knock": 70
+   },
+   "palette": "flying"
+  },
+  "body-slam": {
+   "name": "Golpe Cuerpo",
+   "type": "normal",
+   "kind": "melee",
+   "base_stats": {
+    "cd": 0.95,
+    "dmg": 36,
+    "radius": 58,
+    "arc": 2.75,
+    "knock": 140
+   },
+   "palette": "normal"
+  },
+  "hyper-voice": {
+   "name": "Vozarrón",
+   "type": "normal",
+   "kind": "nova",
+   "base_stats": {
+    "cd": 1.15,
+    "dmg": 12,
+    "speed": 260,
+    "count": 9,
+    "pierce": 1,
+    "life": 0.9,
+    "size": 7
+   },
+   "palette": "normal"
+  },
+  "poison-sting": {
+   "name": "Picotazo Veneno",
+   "type": "poison",
+   "kind": "projectile",
+   "base_stats": {
+    "cd": 0.34,
+    "dmg": 8,
+    "speed": 420,
+    "count": 1,
+    "spread": 0.08,
+    "pierce": 0,
+    "life": 1,
+    "size": 4
+   },
+   "palette": "poison"
+  },
+  "toxic": {
+   "name": "Tóxico",
+   "type": "poison",
+   "kind": "trail",
+   "base_stats": {
+    "cd": 0.3,
+    "dmg": 6,
+    "radius": 26,
+    "dur": 3
+   },
+   "palette": "poison"
+  },
+  "bulldoze": {
+   "name": "Terratemblor",
+   "type": "ground",
+   "kind": "aura",
+   "base_stats": {
+    "cd": 0.7,
+    "dmg": 11,
+    "radius": 80,
+    "slow": 0.35
+   },
+   "palette": "ground"
+  },
+  "bug-bite": {
+   "name": "Picadura",
+   "type": "bug",
+   "kind": "melee",
+   "base_stats": {
+    "cd": 0.42,
+    "dmg": 13,
+    "radius": 55,
+    "arc": 2,
+    "knock": 40
+   },
+   "palette": "bug"
+  },
+  "string-shot": {
+   "name": "Disparo Demora",
+   "type": "bug",
+   "kind": "mine",
+   "base_stats": {
+    "cd": 1.1,
+    "dmg": 14,
+    "count": 2,
+    "radius": 56,
+    "slow": 0.6,
+    "dur": 7
+   },
+   "palette": "bug"
+  },
+  "bug-buzz": {
+   "name": "Zumbido",
+   "type": "bug",
+   "kind": "aura",
+   "base_stats": {
+    "cd": 0.45,
+    "dmg": 8,
+    "radius": 66
+   },
+   "palette": "bug"
+  },
+  "rock-throw": {
+   "name": "Lanzarrocas",
+   "type": "rock",
+   "kind": "projectile",
+   "base_stats": {
+    "cd": 0.7,
+    "dmg": 24,
+    "speed": 260,
+    "count": 1,
+    "spread": 0.12,
+    "pierce": 0,
+    "life": 1.4,
+    "size": 9,
+    "knock": 90
+   },
+   "palette": "rock"
+  },
+  "rock-slide": {
+   "name": "Avalancha",
+   "type": "rock",
+   "kind": "meteor",
+   "base_stats": {
+    "cd": 1.3,
+    "dmg": 21,
+    "count": 3,
+    "radius": 46,
+    "knock": 50
+   },
+   "palette": "rock"
+  },
+  "ice-beam": {
+   "name": "Rayo Hielo",
+   "type": "ice",
+   "kind": "beam",
+   "base_stats": {
+    "cd": 1.1,
+    "dmg": 20,
+    "radius": 220,
+    "slow": 0.7
+   },
+   "palette": "ice"
+  },
+  "powder-snow": {
+   "name": "Nieve Polvo",
+   "type": "ice",
+   "kind": "aura",
+   "base_stats": {
+    "cd": 0.55,
+    "dmg": 8,
+    "radius": 76,
+    "slow": 0.45
+   },
+   "palette": "ice"
+  },
+  "karate-chop": {
+   "name": "Golpe Kárate",
+   "type": "fighting",
+   "kind": "melee",
+   "base_stats": {
+    "cd": 0.5,
+    "dmg": 22,
+    "radius": 63,
+    "arc": 1.5,
+    "knock": 110
+   },
+   "palette": "fighting"
+  },
+  "aura-sphere": {
+   "name": "Esfera Aural",
+   "type": "fighting",
+   "kind": "projectile",
+   "base_stats": {
+    "cd": 0.62,
+    "dmg": 17,
+    "speed": 300,
+    "count": 1,
+    "spread": 0.1,
+    "pierce": 0,
+    "life": 2,
+    "size": 8
+   },
+   "palette": "aura"
+  },
+  "lick": {
+   "name": "Lengüetazo",
+   "type": "ghost",
+   "kind": "melee",
+   "base_stats": {
+    "cd": 0.48,
+    "dmg": 14,
+    "radius": 60,
+    "arc": 2.25,
+    "slow": 0.4
+   },
+   "palette": "ghost"
+  },
+  "shadow-ball": {
+   "name": "Bola Sombra",
+   "type": "ghost",
+   "kind": "projectile",
+   "base_stats": {
+    "cd": 0.66,
+    "dmg": 19,
+    "speed": 280,
+    "count": 1,
+    "spread": 0.1,
+    "pierce": 2,
+    "life": 1.6,
+    "size": 9
+   },
+   "palette": "ghost"
+  },
+  "dragon-rage": {
+   "name": "Furia Dragón",
+   "type": "dragon",
+   "kind": "beam",
+   "base_stats": {
+    "cd": 1,
+    "dmg": 24,
+    "radius": 230
+   },
+   "palette": "dragon"
+  },
+  "dragon-dance": {
+   "name": "Danza Dragón",
+   "type": "dragon",
+   "kind": "buff",
+   "base_stats": {
+    "cd": 0.7,
+    "stat": "atk",
+    "amount": 0.11,
+    "dur": 7,
+    "stacks": 5
+   },
+   "palette": "dragon"
+  },
+  "fairy-wind": {
+   "name": "Viento Feérico",
+   "type": "fairy",
+   "kind": "nova",
+   "base_stats": {
+    "cd": 1,
+    "dmg": 11,
+    "speed": 230,
+    "count": 10,
+    "pierce": 0,
+    "life": 1.2,
+    "size": 7
+   },
+   "palette": "fairy"
+  },
+  "dazzling-gleam": {
+   "name": "Brillo Mágico",
+   "type": "fairy",
+   "kind": "aura",
+   "base_stats": {
+    "cd": 0.5,
+    "dmg": 9,
+    "radius": 72
+   },
+   "palette": "fairy"
+  },
+  "metal-claw": {
+   "name": "Garra Metal",
+   "type": "steel",
+   "kind": "melee",
+   "base_stats": {
+    "cd": 0.5,
+    "dmg": 18,
+    "radius": 63,
+    "arc": 2,
+    "knock": 60
+   },
+   "palette": "steel"
+  },
+  "flash-cannon": {
+   "name": "Foco Resplandor",
+   "type": "steel",
+   "kind": "beam",
+   "base_stats": {
+    "cd": 1.05,
+    "dmg": 23,
+    "radius": 220
+   },
+   "palette": "steel"
+  },
+  "bite": {
+   "name": "Mordisco",
+   "type": "dark",
+   "kind": "melee",
+   "base_stats": {
+    "cd": 0.45,
+    "dmg": 17,
+    "radius": 58,
+    "arc": 1.88,
+    "knock": 70
+   },
+   "palette": "dark"
+  },
+  "dark-pulse": {
+   "name": "Pulso Umbrío",
+   "type": "dark",
+   "kind": "nova",
+   "base_stats": {
+    "cd": 1.15,
+    "dmg": 14,
+    "speed": 240,
+    "count": 10,
+    "pierce": 1,
+    "life": 1.1,
+    "size": 8
+   },
+   "palette": "dark"
+  },
+  "night-shade": {
+   "name": "Tinieblas",
+   "type": "dark",
+   "kind": "aura",
+   "base_stats": {
+    "cd": 0.5,
+    "dmg": 9,
+    "radius": 72
+   },
+   "palette": "dark"
+  },
+  "bonemerang": {
+   "name": "Huesomerang",
+   "type": "ground",
+   "kind": "boomerang",
+   "base_stats": {
+    "cd": 0.95,
+    "dmg": 16,
+    "speed": 300,
+    "count": 1,
+    "size": 8,
+    "radius": 230,
+    "knock": 40
+   },
+   "palette": "ground"
+  },
+  "psycho-cut": {
+   "name": "Psicocorte",
+   "type": "psychic",
+   "kind": "boomerang",
+   "base_stats": {
+    "cd": 0.8,
+    "dmg": 9,
+    "speed": 360,
+    "count": 2,
+    "spread": 0.6,
+    "size": 7,
+    "radius": 200
+   },
+   "palette": "psychic"
+  },
+  "spikes": {
+   "name": "Púas",
+   "type": "ground",
+   "kind": "mine",
+   "base_stats": {
+    "cd": 1.2,
+    "dmg": 18,
+    "count": 2,
+    "radius": 60,
+    "dur": 8
+   },
+   "palette": "ground"
+  },
+  "toxic-spikes": {
+   "name": "Púas Tóxicas",
+   "type": "poison",
+   "kind": "mine",
+   "base_stats": {
+    "cd": 1.1,
+    "dmg": 11,
+    "count": 2,
+    "radius": 56,
+    "dur": 8
+   },
+   "palette": "poison"
+  },
+  "hail": {
+   "name": "Granizo",
+   "type": "ice",
+   "kind": "meteor",
+   "base_stats": {
+    "cd": 1.2,
+    "dmg": 18,
+    "count": 4,
+    "radius": 40,
+    "slow": 0.4
+   },
+   "palette": "ice"
+  },
+  "meteor-mash": {
+   "name": "Puño Meteoro",
+   "type": "steel",
+   "kind": "meteor",
+   "base_stats": {
+    "cd": 1.4,
+    "dmg": 34,
+    "count": 2,
+    "radius": 54,
+    "knock": 80
+   },
+   "palette": "steel"
+  },
+  "will-o-wisp": {
+   "name": "Fuego Fatuo",
+   "type": "fire",
+   "kind": "turret",
+   "base_stats": {
+    "cd": 3.5,
+    "dmg": 15,
+    "speed": 300,
+    "count": 1,
+    "size": 7,
+    "burn": 1,
+    "dur": 6
+   },
+   "palette": "fire"
+  },
+  "substitute": {
+   "name": "Sustituto",
+   "type": "normal",
+   "kind": "turret",
+   "base_stats": {
+    "cd": 4,
+    "dmg": 14,
+    "speed": 320,
+    "count": 1,
+    "size": 6,
+    "dur": 6
+   },
+   "palette": "normal"
+  },
+  "aerial-ace": {
+   "name": "Golpe Aéreo",
+   "type": "flying",
+   "kind": "dash",
+   "base_stats": {
+    "cd": 0.75,
+    "dmg": 18,
+    "radius": 120,
+    "knock": 60
+   },
+   "palette": "flying"
+  },
+  "flame-wheel": {
+   "name": "Rueda Fuego",
+   "type": "fire",
+   "kind": "trail",
+   "base_stats": {
+    "cd": 0.28,
+    "dmg": 10,
+    "radius": 28,
+    "burn": 1,
+    "dur": 2.6
+   },
+   "palette": "fire"
+  },
+  "bubble-beam": {
+   "name": "Rayo Burbuja",
+   "type": "water",
+   "kind": "cone",
+   "base_stats": {
+    "cd": 0.65,
+    "dmg": 6,
+    "speed": 340,
+    "count": 7,
+    "life": 0.45,
+    "size": 6,
+    "arc": 1,
+    "slow": 0.3
+   },
+   "palette": "water"
+  },
+  "hex": {
+   "name": "Infortunio",
+   "type": "ghost",
+   "kind": "chain",
+   "base_stats": {
+    "cd": 0.9,
+    "dmg": 17,
+    "count": 4,
+    "radius": 150
+   },
+   "palette": "ghost"
+  }
+ }
+}
